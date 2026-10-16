@@ -20,3 +20,14 @@ jobs:
       - run: ./gradlew build shadowJar
       - name: Check merged SLF4J service file
         run: test "$(unzip -p build/libs/dirl.jar META-INF/services/org.slf4j.spi.SLF4JServiceProvider)" = "bayern.kickner.klogger.slf4j.KloggerServiceProvider"
+      - name: Upload fat JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: dirl-jar
+          path: build/libs/dirl.jar
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: build/reports/tests/

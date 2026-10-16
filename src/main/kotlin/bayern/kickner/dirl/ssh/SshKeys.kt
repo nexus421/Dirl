@@ -83,7 +83,7 @@ fun fingerprint(key: PublicKey): String =
  */
 fun authorizedKeysLine(host: Host, key: SshKey, allHosts: List<Host>, sourceAddress: String?): String {
     val from = "from=\"${sourceAddress ?: "<DIRL-IP>"}\""
-    val permits = allHosts.filter { it.jumpHostId == host.id }.joinToString(",") { "permitopen=\"${it.address}:${it.port}\"" }
+    val permits = allHosts.filter { it.jumpHostId == host.id }.map { "permitopen=\"${it.address}:${it.port}\"" }.distinct().joinToString(",")
     val options = when {
         host.jumpOnly && permits.isEmpty() -> "restrict,command=\"/bin/false\",$from"
         host.jumpOnly -> "restrict,port-forwarding,$permits,command=\"/bin/false\",$from"

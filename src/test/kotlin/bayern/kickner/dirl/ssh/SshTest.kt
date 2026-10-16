@@ -42,6 +42,9 @@ class SshTest {
             "restrict,pty,port-forwarding,permitopen=\"10.0.0.5:22\",$from ${key.publicKey} dirl",
             authorizedKeysLine(jump.copy(jumpOnly = false), key, hosts, "192.0.2.9"),
         )
+        // Two targets with the same address need only one permitopen.
+        val twin = target.copy(id = "t2", name = "db2")
+        assertEquals(1, Regex("permitopen").findAll(authorizedKeysLine(jump, key, hosts + twin, null)).count())
         // Without targets a pure jump host must not get port-forwarding, it would allow every destination.
         assertEquals("restrict,command=\"/bin/false\",$from ${key.publicKey} dirl", authorizedKeysLine(jump, key, listOf(jump), "192.0.2.9"))
     }
