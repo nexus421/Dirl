@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dirl-dev",
+      "runtimeExecutable": "./gradlew",
+      "runtimeArgs": ["devRun", "--console=plain"],
+      "port": 18080
+    }
+  ]
+}

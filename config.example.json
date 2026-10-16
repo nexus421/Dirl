@@ -1,0 +1,19 @@
+{
+  "host": "127.0.0.1",
+  "port": 8080,
+  "publicUrl": "https://ssh.example.com",
+  "dataDir": "/var/lib/dirl",
+  "unlockMode": "passphrase",
+  "keyFile": "/etc/dirl/kek",
+  "oidc": {
+    "issuer": "https://id.example.com",
+    "clientId": "00000000-0000-0000-0000-000000000000",
+    "allowedSubjects": [],
+    "forceReauth": true,
+    "scopes": ["openid", "profile"]
+  },
+  "session": {
+    "idleTimeoutMinutes": 30,
+    "maxAgeHours": 12
+  }
+}

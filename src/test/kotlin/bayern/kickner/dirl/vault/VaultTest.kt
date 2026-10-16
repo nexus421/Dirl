@@ -1,0 +1,171 @@
+package bayern.kickner.dirl.vault
+
+import bayern.kickner.dirl.audit.Actor
+import bayern.kickner.dirl.audit.AuditLog
+import bayern.kickner.dirl.crypto.KdfParams
+import kotlinx.serialization.json.Json
+import kotnexlib.ResultOf2
+import java.io.File
+import java.nio.file.Files
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class VaultTest {
+    private val dir: File = Files.createTempDirectory("dirl-vault").toFile()
+    private val actor = Actor("sub-1", "Tester")
+    private val passphrase = "correct horse battery staple extra"
+    private var now = 1_000_000L
+
+    /** Cheap Argon2 parameters, the real ones take a second per derivation. */
+    private fun vault(keyFile: File? = null) = Vault(
+        store = VaultStore(dir),
+        audit = AuditLog(File(dir, "audit.jsonl")),
+        keyFile = keyFile,
+        clock = { now },
+        kdfParams = { KdfParams.generate().copy(memKiB = 64, iterations = 1) },
+    )
+
+    private val host = Host(id = "h1", name = "web", address = "10.0.0.1", username = "root", keyId = "k1")
+
+    @Test
+    fun `setup, update and unlock in a new process keep the content`() {
+        val first = vault()
+        assertIs<VaultState.Uninitialized>(first.state)
+        assertIs<ResultOf2.Success<Unit>>(first.setup(passphrase.toCharArray(), actor))
+        first.update { it.copy(hosts = listOf(host)) }
+
+        val second = vault()
+        assertIs<VaultState.Sealed>(second.state)
+        assertNull(second.content)
+        assertIs<ResultOf2.Success<Unit>>(second.unlock(passphrase.toCharArray(), actor))
+        assertEquals(listOf(host), second.content?.hosts)
+    }
+
+    @Test
+    fun `the file on disk contains no plaintext`() {
+        vault().apply {
+            setup(passphrase.toCharArray(), actor)
+            update { it.copy(hosts = listOf(host)) }
+        }
+        val raw = File(dir, "vault.json").readText()
+        assertTrue("10.0.0.1" !in raw && "web" !in raw)
+    }
+
+    @Test
+    fun `setup rejects a weak passphrase and never overwrites`() {
+        val v = vault()
+        assertIs<ResultOf2.Failure<SetupError.PassphraseTooWeak>>(v.setup("short".toCharArray(), actor))
+        v.setup(passphrase.toCharArray(), actor)
+        assertEquals(SetupError.AlreadySetUp, (vault().setup(passphrase.toCharArray(), actor) as ResultOf2.Failure).value)
+    }
+
+    @Test
+    fun `five wrong passphrases lock unlocking until the lockout ends`() {
+        vault().setup(passphrase.toCharArray(), actor)
+        val v = vault()
+        repeat(4) { i ->
+            val error = (v.unlock("wrong passphrase number $i!!".toCharArray(), actor) as ResultOf2.Failure).value
+            assertEquals(UnlockError.WrongPassphrase(4 - i), error)
+        }
+        assertIs<UnlockError.LockedOut>((v.unlock("still wrong passphrase!!".toCharArray(), actor) as ResultOf2.Failure).value)
+        // Locked even with the right passphrase.
+        assertIs<UnlockError.LockedOut>((v.unlock(passphrase.toCharArray(), actor) as ResultOf2.Failure).value)
+
+        now += 16 * 60 * 1000
+        assertIs<ResultOf2.Success<Unit>>(v.unlock(passphrase.toCharArray(), actor))
+    }
+
+    @Test
+    fun `changing the passphrase keeps the data and retires the old passphrase`() {
+        val v = vault()
+        v.setup(passphrase.toCharArray(), actor)
+        v.update { it.copy(hosts = listOf(host)) }
+        val newPassphrase = "another very long passphrase 42"
+        assertIs<ResultOf2.Success<Unit>>(v.changePassphrase(passphrase.toCharArray(), newPassphrase.toCharArray(), actor))
+
+        assertIs<ResultOf2.Failure<UnlockError>>(vault().unlock(passphrase.toCharArray(), actor))
+        val reopened = vault()
+        assertIs<ResultOf2.Success<Unit>>(reopened.unlock(newPassphrase.toCharArray(), actor))
+        assertEquals(listOf(host), reopened.content?.hosts)
+    }
+
+    @Test
+    fun `a modified ciphertext is detected`() {
+        vault().setup(passphrase.toCharArray(), actor)
+        val file = File(dir, "vault.json")
+        val json = Json { prettyPrint = true }
+        val envelope = json.decodeFromString(VaultEnvelope.serializer(), file.readText())
+        val ct = envelope.data.ct
+        val flipped = (if (ct[5] == 'A') 'B' else 'A').let { ct.substring(0, 5) + it + ct.substring(6) }
+        file.writeText(json.encodeToString(VaultEnvelope.serializer(), envelope.copy(data = envelope.data.copy(ct = flipped))))
+
+        assertIs<UnlockError.Unusable>((vault().unlock(passphrase.toCharArray(), actor) as ResultOf2.Failure).value)
+    }
+
+    @Test
+    fun `writes keep three backups`() {
+        val v = vault()
+        v.setup(passphrase.toCharArray(), actor)
+        repeat(5) { i -> v.update { it.copy(snippets = listOf(Snippet("s$i", "n", "c"))) } }
+        assertTrue(File(dir, "vault.json.3").isFile)
+        assertTrue(File(dir, "vault.json.4").exists().not())
+        assertTrue(File(dir, "vault.json.tmp").exists().not())
+    }
+
+    @Test
+    fun `key file mode unlocks without passphrase and still accepts the passphrase`() {
+        val keyFile = File(dir, "kek").apply { writeBytes(ByteArray(32) { it.toByte() }) }
+        vault(keyFile).setup(passphrase.toCharArray(), actor)
+
+        assertIs<ResultOf2.Success<Unit>>(vault(keyFile).unlockWithKeyFile())
+        assertIs<ResultOf2.Success<Unit>>(vault(keyFile).unlock(passphrase.toCharArray(), actor))
+
+        keyFile.writeBytes(ByteArray(32))
+        assertIs<ResultOf2.Failure<UnlockError>>(vault(keyFile).unlockWithKeyFile())
+    }
+
+    @Test
+    fun `the creator is the first allowed user`() {
+        val v = vault()
+        v.setup(passphrase.toCharArray(), actor)
+        assertEquals(listOf(actor.sub), v.content?.settings?.allowedUsers?.map { it.sub })
+    }
+
+    @Test
+    fun `passphrase checks while unlocked share the lockout`() {
+        val v = vault()
+        v.setup(passphrase.toCharArray(), actor)
+        assertIs<ResultOf2.Success<Unit>>(v.verifyPassphrase(passphrase.toCharArray(), actor))
+        repeat(4) { assertIs<UnlockError.WrongPassphrase>((v.verifyPassphrase("wrong passphrase for export".toCharArray(), actor) as ResultOf2.Failure).value) }
+        assertIs<UnlockError.LockedOut>((v.verifyPassphrase("wrong passphrase for export".toCharArray(), actor) as ResultOf2.Failure).value)
+        assertIs<UnlockError.LockedOut>((v.verifyPassphrase(passphrase.toCharArray(), actor) as ResultOf2.Failure).value)
+    }
+
+    @Test
+    fun `an exported backup restores into a fresh installation`() {
+        val v = vault()
+        v.setup(passphrase.toCharArray(), actor)
+        v.update { it.copy(hosts = listOf(host)) }
+        val backup = v.exportEncrypted()!!
+
+        val freshDir = Files.createTempDirectory("dirl-restore").toFile()
+        val fresh = Vault(VaultStore(freshDir), AuditLog(File(freshDir, "audit.jsonl")), kdfParams = { KdfParams.generate().copy(memKiB = 64, iterations = 1) })
+        assertTrue(fresh.restore("not a vault".toByteArray(), actor) != null)
+        assertNull(fresh.restore(backup, actor))
+        assertIs<VaultState.Sealed>(fresh.state)
+        assertIs<ResultOf2.Success<Unit>>(fresh.unlock(passphrase.toCharArray(), actor))
+        assertEquals(listOf(host), fresh.content?.hosts)
+        assertTrue(fresh.restore(backup, actor) != null, "restore must never overwrite an existing vault")
+    }
+
+    @Test
+    fun `passphrase policy accepts long phrases and Diceware words`() {
+        assertNull(checkPassphrase("a".repeat(20).toCharArray()))
+        assertNull(checkPassphrase("tug-fox-elm-jar-ivy".toCharArray()))
+        assertTrue(checkPassphrase("tug-tug-tug-tug-tug".toCharArray()) != null)
+        assertTrue(checkPassphrase("Sh0rt!".toCharArray()) != null)
+    }
+}

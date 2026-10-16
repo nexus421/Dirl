@@ -1,0 +1,102 @@
+package bayern.kickner.dirl.web
+
+import bayern.kickner.dirl.audit.Actor
+import bayern.kickner.dirl.config.AppConfig
+import bayern.kickner.dirl.config.OidcConfig
+import bayern.kickner.dirl.config.validateConfig
+import bayern.kickner.dirl.createDirl
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.testing.ApplicationTestBuilder
+import io.ktor.server.testing.testApplication
+import java.nio.file.Files
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class WebTest {
+    private val config = AppConfig(
+        publicUrl = "https://ssh.example.com",
+        dataDir = Files.createTempDirectory("dirl-web").toString(),
+        oidc = OidcConfig(issuer = "https://id.example.com", clientId = "dirl", allowedSubjects = listOf("user-1")),
+    )
+    private val dirl = createDirl(config, java.io.File(config.dataDir))
+
+    private fun ApplicationTestBuilder.noRedirects() = createClient { followRedirects = false }
+
+    @Test
+    fun `every response carries the security headers`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val response = noRedirects().get("/healthz")
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(CONTENT_SECURITY_POLICY, response.headers["Content-Security-Policy"])
+        assertEquals("nosniff", response.headers["X-Content-Type-Options"])
+        // "no-referrer" makes browsers send "Origin: null" on form posts, which the origin check rejects.
+        assertEquals("same-origin", response.headers["Referrer-Policy"])
+        assertEquals("max-age=31536000", response.headers["Strict-Transport-Security"])
+    }
+
+    @Test
+    fun `pages require a login`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val response = noRedirects().get("/")
+        assertEquals(HttpStatusCode.Found, response.status)
+        assertEquals("/login", response.headers[HttpHeaders.Location])
+    }
+
+    @Test
+    fun `a logged in user is sent to the vault setup first`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val session = dirl.sessions.create(Actor("user-1", "Ada"))
+        val response = noRedirects().get("/") { header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}") }
+        assertEquals("/unlock", response.headers[HttpHeaders.Location])
+    }
+
+    @Test
+    fun `posts and websockets from a foreign origin are rejected`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val session = dirl.sessions.create(Actor("user-1", "Ada"))
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${session.token}"
+
+        assertEquals(HttpStatusCode.Forbidden, client.post("/logout") { header(HttpHeaders.Cookie, cookie) }.status)
+        assertEquals(HttpStatusCode.Forbidden, client.post("/logout") { header(HttpHeaders.Cookie, cookie); header(HttpHeaders.Origin, "https://evil.example") }.status)
+        assertEquals(HttpStatusCode.Found, client.post("/logout") { header(HttpHeaders.Cookie, cookie); header(HttpHeaders.Origin, "https://ssh.example.com") }.status)
+
+        // The handshake with the right origin succeeds (the server then closes for the unknown host), with a foreign one it fails.
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        val wsSession = dirl.sessions.create(Actor("user-1", "Ada"))
+        val wsClient = createClient { install(WebSockets) }
+        suspend fun handshake(origin: String) = runCatching {
+            wsClient.webSocket("/ws/terminal/x", request = {
+                header(HttpHeaders.Cookie, "$SESSION_COOKIE=${wsSession.token}")
+                header(HttpHeaders.Origin, origin)
+            }) {}
+        }
+        assertTrue(handshake("https://ssh.example.com").isSuccess)
+        assertTrue(handshake("https://evil.example").isFailure)
+    }
+
+    @Test
+    fun `config validation reports every problem`() {
+        val broken = config.copy(port = 0, publicUrl = "http://ssh.example.com/", oidc = config.oidc.copy(issuer = "ftp://x", scopes = listOf("profile")))
+        val issues = validateConfig(broken)
+        assertEquals(5, issues.size, issues.joinToString("\n"))
+        assertTrue(validateConfig(config.copy(publicUrl = "http://localhost:8080")).isEmpty())
+    }
+
+    @Test
+    fun `uploaded names cannot leave the directory`() {
+        assertEquals("a.txt", safeFileName("../../a.txt"))
+        assertEquals("b.txt", safeFileName("C:\\x\\b.txt"))
+        assertEquals(null, safeFileName(".."))
+        assertEquals(null, decodeUtf8Strict(byteArrayOf(0xC3.toByte(), 0x28)))
+        assertEquals("a__b_c_.txt", headerSafeFileName("a\r\nb\"c\\.txt"))
+        assertEquals("parent", parentOf("/parent/child").removePrefix("/"))
+    }
+}

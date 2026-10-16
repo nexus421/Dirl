@@ -1,0 +1,22 @@
+[Unit]
+Description=Dirl web SSH client
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dirl
+WorkingDirectory=/var/lib/dirl
+ExecStart=/usr/bin/java -Xmx256m -XX:+ExitOnOutOfMemoryError -jar /opt/dirl/dirl.jar config=/etc/dirl/config.json
+Restart=on-failure
+# 78 is a rejected config or a port that cannot be bound, a restart does not fix either.
+RestartPreventExitStatus=78
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/dirl
+
+[Install]
+WantedBy=multi-user.target
