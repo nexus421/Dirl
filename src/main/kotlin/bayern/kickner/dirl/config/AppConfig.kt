@@ -41,7 +41,7 @@ enum class UnlockMode {
 
     /**
      * The process unlocks itself at startup with the key file. Convenient, but a full system backup or snapshot
-     * then contains both the vault and the key to open it. See README.md for the trade-offs.
+     * then contains both the vault and the key to open it. See docs/configuration.md for the trade-offs.
      */
     @SerialName("keyfile")
     KEYFILE,

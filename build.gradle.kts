@@ -21,7 +21,7 @@ repositories {
 val ktorVersion = "3.6.0"
 
 // Exact versions of every dependency, transitive ones included, are pinned in gradle.lockfile.
-// Update it after a version change, see README.md "Updating dependencies".
+// Update it after a version change, see docs/development.md "Updating dependencies".
 dependencyLocking {
     lockAllConfigurations()
 }

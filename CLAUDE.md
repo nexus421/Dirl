@@ -6,9 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dirl, a self-hosted web SSH client (Kotlin, Ktor CIO, sshj, xterm.js) that replaces Termix. Everything is managed in
 the browser, the config file only holds what is needed before login. The German concept
-[termix-eigenbau-konzept.md](termix-eigenbau-konzept.md) is the source of the design decisions, [README.md](README.md)
-documents behaviour, configuration, endpoints, deployment and the verification status in English. Read both before
-changing security-relevant code (vault, auth, access control, web guards, host key handling).
+[termix-eigenbau-konzept.md](termix-eigenbau-konzept.md) is the source of the design decisions. [README.md](README.md)
+is the short project page (screenshots, features, quick start), the details live in [docs/](docs): usage,
+configuration, deployment, security and development (tests, dependencies, project layout, endpoints, verification
+status). Read the concept and [docs/security.md](docs/security.md) before changing security-relevant code (vault,
+auth, access control, web guards, host key handling).
 
 ## Commands
 
@@ -30,11 +32,11 @@ DIRL_SSHD_ROOT=/path/to/unpacked/openssh-server ./gradlew test
 ```
 
 The SSH integration tests need an `sshd` binary (system `/usr/sbin/sshd` or `DIRL_SSHD_ROOT`) and are skipped without
-one, see README.md "Development". JUnit silently skips test methods that do not return `Unit`, so write
+one, see docs/development.md. JUnit silently skips test methods that do not return `Unit`, so write
 `fun x(): Unit = runBlocking { ... }` and `fun x(): Unit = testApplication { ... }`.
 
 Dependencies are locked (`gradle.lockfile`). After a version change run `./gradlew dependencies --write-locks`, see
-README.md "Updating dependencies". There is deliberately no `verification-metadata.xml`, it broke the IntelliJ sync.
+docs/development.md "Updating dependencies". There is deliberately no `verification-metadata.xml`, it broke the IntelliJ sync.
 
 The fat JAR is `build/libs/dirl.jar`. After changing dependencies or the Shadow config, check that
 `unzip -p build/libs/dirl.jar META-INF/services/org.slf4j.spi.SLF4JServiceProvider` prints
@@ -54,7 +56,7 @@ The fat JAR is `build/libs/dirl.jar`. After changing dependencies or the Shadow 
 ## Architecture
 
 `Main.kt` wires everything into one `web.Dirl` object that all routes receive (`createDirl` takes a `clock` for
-tests). Packages: `config`, `crypto`, `vault`, `audit`, `auth`, `ssh`, `web`, see README.md "Development".
+tests). Packages: `config`, `crypto`, `vault`, `audit`, `auth`, `ssh`, `web`, see docs/development.md "Project layout".
 
 Security invariants, keep them when adding code:
 
@@ -88,4 +90,5 @@ pages in the browser at desktop and phone width.
 Deliberate deviations from DemoAiProject, decided in the concept: Shadow instead of the Ktor Gradle plugin for the
 fat JAR, Klogger's SLF4J provider instead of `slf4j-simple`, server-rendered kotlinx.html instead of Compose.
 
-Keep README.md and KDoc in sync with the code in the same change.
+Keep the README short: no implementation details there, they belong into docs/. Update docs/ and KDoc in the same
+change as the code. Screenshots in docs/images come from the dev instance (`./gradlew devRun`) at 1280x800, scale 2.
