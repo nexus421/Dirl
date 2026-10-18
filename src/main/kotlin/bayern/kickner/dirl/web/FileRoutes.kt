@@ -2,6 +2,7 @@ package bayern.kickner.dirl.web
 
 import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.formatTimestamp
+import bayern.kickner.dirl.readAtMost
 import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.vault.Host
 import io.ktor.http.ContentDisposition
@@ -47,6 +48,8 @@ import kotlinx.html.tr
 import kotnexlib.ResultOf2
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
+import net.schmizz.sshj.sftp.RemoteResourceFilter
+import net.schmizz.sshj.sftp.RemoteResourceInfo
 import net.schmizz.sshj.sftp.RenameFlags
 import net.schmizz.sshj.sftp.SFTPClient
 import java.io.InputStream
@@ -57,6 +60,9 @@ import java.util.EnumSet
 
 /** Files up to this size can be opened in the text editor. */
 const val MAX_EDIT_BYTES = 1L * 1024 * 1024
+
+/** Directories with more entries are not listed, a compromised server could otherwise send an endless listing. */
+const val MAX_LIST_ENTRIES = 10_000
 
 /** Upload limit per request. */
 private const val MAX_UPLOAD_BYTES = 4L * 1024 * 1024 * 1024
@@ -83,7 +89,7 @@ fun Route.fileRoutes(dirl: Dirl) {
         val requested = call.request.queryParameters["path"]
         val listing = withSftp(dirl, host) { sftp ->
             val dir = sftp.canonicalize(requested?.trim()?.ifBlank { null } ?: ".")
-            dir to sftp.ls(dir).sortedWith(compareBy({ it.isDirectory.not() }, { it.name.lowercase() }))
+            dir to listDirectory(sftp, dir).sortedWith(compareBy({ it.isDirectory.not() }, { it.name.lowercase() }))
         } ?: return@get
         val (dir, entries) = listing
 
@@ -291,8 +297,9 @@ fun Route.fileRoutes(dirl: Dirl) {
         val (_, host) = hostOr404(dirl) ?: return@get
         val path = call.request.queryParameters["path"].orEmpty()
         val bytes = withSftp(dirl, host) { sftp ->
+            // The size check only saves a pointless read, the server may report a wrong size. The read is capped as well.
             if (sftp.size(path) > MAX_EDIT_BYTES) null
-            else sftp.open(path, EnumSet.of(OpenMode.READ)).use { f -> f.RemoteFileInputStream(0).use { it.readBytes() } }
+            else sftp.open(path, EnumSet.of(OpenMode.READ)).use { f -> f.RemoteFileInputStream(0).use { it.readAtMost(MAX_EDIT_BYTES.toInt()) } }
         } ?: return@get
         val text = decodeUtf8Strict(bytes) ?: return@get call.fileError(host, "This file is not valid UTF-8 text. Download it instead.")
         call.page("Edit ${path.substringAfterLast('/')}", call.session, Nav.HOSTS, frame = PageFrame.WIDE) {
@@ -373,6 +380,21 @@ private fun FlowContent.breadcrumbs(host: Host, dir: String) = div("crumbs") {
         if (i > 0) span("sep") { +"/" }
         a(href = filesUrl(host, current)) { +segment }
     }
+}
+
+/**
+ * Lists [dir], at most [max] entries. sshj collects the whole listing in memory, so the filter aborts the read once
+ * the limit is passed instead of letting a hostile server fill the heap.
+ *
+ * @throws IllegalStateException with a message for the user if the directory has more than [max] entries.
+ */
+fun listDirectory(sftp: SFTPClient, dir: String, max: Int = MAX_LIST_ENTRIES): List<RemoteResourceInfo> {
+    var count = 0
+    return sftp.ls(dir, RemoteResourceFilter {
+        count++
+        check(count <= max) { "This directory has more than $max entries. Dirl does not list it, use the terminal instead." }
+        true
+    })
 }
 
 /**

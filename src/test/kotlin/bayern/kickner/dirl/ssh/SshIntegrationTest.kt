@@ -10,6 +10,7 @@ import bayern.kickner.dirl.vault.PinnedHostKey
 import bayern.kickner.dirl.web.Dirl
 import bayern.kickner.dirl.web.SESSION_COOKIE
 import bayern.kickner.dirl.web.dirlModule
+import bayern.kickner.dirl.web.listDirectory
 import bayern.kickner.dirl.web.writeAtomically
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
@@ -225,6 +226,14 @@ class SshIntegrationTest {
 
         assertEquals("new äöü\r\n", target.readText())
         assertEquals(listOf("config.txt"), dir.list()!!.toList(), "no temporary file may be left behind")
+
+        // Listings stop at the limit with a message for the user instead of growing without bound.
+        repeat(9) { File(dir, "f$it").writeText("x") }
+        client.newSFTPClient().use { sftp ->
+            assertEquals(10, listDirectory(sftp, dir.absolutePath, max = 10).size)
+            val tooMany = runCatching { listDirectory(sftp, dir.absolutePath, max = 5) }.exceptionOrNull()
+            assertTrue(tooMany?.message.orEmpty().contains("more than 5 entries"), "was: $tooMany")
+        }
         dir.deleteRecursively()
     }
 

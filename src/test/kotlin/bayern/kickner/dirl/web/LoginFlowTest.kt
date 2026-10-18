@@ -9,6 +9,13 @@ import bayern.kickner.dirl.dev.MockOidcProvider
 import bayern.kickner.dirl.dev.MockUser
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.http.contentType
+import io.ktor.http.Headers
+import io.ktor.http.ContentType
+import io.ktor.client.request.setBody
+import io.ktor.client.request.post
+import io.ktor.client.request.forms.submitFormWithBinaryData
+import io.ktor.client.request.forms.formData
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
@@ -111,6 +118,64 @@ class LoginFlowTest {
         assertNotNull(adaCookie)
         assertTrue(client.get("/unlock") { header(HttpHeaders.Cookie, adaCookie) }.bodyAsText().contains("Unlock vault"))
         assertEquals(HttpStatusCode.Forbidden, login(client, bob).first)
+    }
+
+    @Test
+    fun `restoring a backup leads to the unlock page and unlocks`(): Unit = testApplication {
+        val sourceDir = Files.createTempDirectory("dirl-source").toFile()
+        val source = createDirl(AppConfig(publicUrl = "https://ssh.example.com", dataDir = sourceDir.absolutePath, oidc = OidcConfig(issuer = mock.issuer, clientId = "dirl")), sourceDir)
+        val passphrase = "correct horse battery staple extra"
+        source.vault.setup(passphrase.toCharArray(), Actor(ada.sub, ada.name))
+        val backup = source.vault.exportEncrypted()!!
+
+        application { dirlModule(dirl) }
+        val client = createClient { followRedirects = false }
+        val (_, cookie) = login(client, ada)
+        assertNotNull(cookie)
+        val headers: io.ktor.client.request.HttpRequestBuilder.() -> Unit = {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        val restore = client.submitFormWithBinaryData("/setup/restore", formData {
+            append("backup", backup, Headers.build { append(HttpHeaders.ContentDisposition, "filename=\"vault.json\"") })
+        }, block = headers)
+        assertEquals("/unlock?done=restored", restore.headers[HttpHeaders.Location])
+        assertTrue(client.get("/unlock") { header(HttpHeaders.Cookie, cookie) }.bodyAsText().contains("Unlock vault"))
+
+        val unlock = client.post("/unlock") {
+            headers()
+            contentType(ContentType.Application.FormUrlEncoded)
+            setBody("passphrase=" + passphrase.replace(" ", "+"))
+        }
+        assertEquals("/", unlock.headers[HttpHeaders.Location])
+        assertEquals(HttpStatusCode.OK, client.get("/") { header(HttpHeaders.Cookie, cookie) }.status)
+    }
+
+    @Test
+    fun `anonymous login starts cannot block the login`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val client = createClient { followRedirects = false }
+        repeat(1500) { assertEquals(HttpStatusCode.Found, client.get("/auth/start").status) }
+        val (status, cookie) = login(client, ada)
+        assertEquals(HttpStatusCode.OK, status)
+        assertNotNull(cookie)
+    }
+
+    @Test
+    fun `a tampered login cookie is rejected`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val client = createClient { followRedirects = false }
+        val start = client.get("/auth/start")
+        val loginCookie = start.headers.getAll(HttpHeaders.SetCookie)!!.first { it.startsWith(LOGIN_COOKIE) }.substringBefore(';')
+        val provider = jdk.send(HttpRequest.newBuilder(URI(start.headers[HttpHeaders.Location]!!)).build(), HttpResponse.BodyHandlers.discarding())
+        val callback = URI(provider.headers().firstValue("Location").get())
+        val url = "${callback.path}?${callback.rawQuery}"
+        // Flip one character of the signed payload: the signature no longer matches.
+        val value = loginCookie.substringAfter('=')
+        val forged = "$LOGIN_COOKIE=" + value.replaceRange(3, 4, if (value[3] == 'A') "B" else "A")
+        assertEquals(HttpStatusCode.Forbidden, client.get(url) { header(HttpHeaders.Cookie, forged) }.status)
+        // The genuine cookie still works, so the rejection above came from the signature.
+        assertEquals(HttpStatusCode.OK, client.get(url) { header(HttpHeaders.Cookie, loginCookie) }.status)
     }
 
     @Test

@@ -81,9 +81,16 @@ fun Route.vaultRoutes(dirl: Dirl) {
             }
             part.release()
         }
-        val error = bytes?.let { dirl.vault.restore(it, call.session.actor) } ?: "No file uploaded"
-        if (error == null) call.respondRedirect("/unlock?done=restored")
-        else call.setupPage(dirl, error)
+        val upload = bytes ?: return@post call.setupPage(dirl, "No file uploaded")
+        val actor = call.session.actor
+        when (val error = dirl.vault.restore(upload, actor)) {
+            null -> {
+                dirl.access.allowUntilUnlock(actor.sub, actor.name)
+                call.respondRedirect("/unlock?done=restored")
+            }
+
+            else -> call.setupPage(dirl, error)
+        }
     }
 
     post("/unlock") {

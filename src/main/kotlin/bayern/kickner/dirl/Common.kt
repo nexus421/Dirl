@@ -1,6 +1,7 @@
 package bayern.kickner.dirl
 
 import java.io.File
+import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.SecureRandom
@@ -54,4 +55,16 @@ fun CharArray.wipe() = fill('\u0000')
  */
 fun restrictToOwner(file: File) {
     runCatching { Files.setPosixFilePermissions(file.toPath(), PosixFilePermissions.fromString("rw-------")) }
+}
+
+/**
+ * Reads the stream up to its end, but at most [max] bytes. Everything a remote server sends is untrusted, a
+ * compromised server could otherwise stream until the heap is gone, and `-XX:+ExitOnOutOfMemoryError` would then
+ * restart Dirl sealed.
+ *
+ * @return the bytes, or `null` if the stream holds more than [max] bytes.
+ */
+fun InputStream.readAtMost(max: Int): ByteArray? {
+    val bytes = readNBytes(max + 1)
+    return if (bytes.size > max) null else bytes
 }

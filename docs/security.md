@@ -27,7 +27,8 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   sessions and open terminals.
 - While the vault is sealed, a plain copy (`dataDir/access.json`, `0600`) decides who reaches the unlock page.
   Tampering with it gives access to the passphrase prompt and nothing else. It is rewritten on every unlock.
-- Before a vault exists, everybody the provider lets through may create it (first-run bootstrap).
+- Before a vault exists, everybody the provider lets through may create it or restore a backup (first-run
+  bootstrap). Whoever restores a backup may reach the unlock page, after the unlock the restored user list decides.
 - `oidc.allowedSubjects` in the config is a break-glass list for the case that nobody in the UI list can log in.
 - Rejected logins appear under Settings as access requests (in memory, the latest 20).
 - You cannot remove yourself and the last user cannot be removed.
@@ -61,6 +62,9 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   files" is ticked, the skipped names are shown at the form. Uploads and edits go to a temporary file and are renamed over the target
   (`posix-rename`, with a fallback for servers without it). The editor only opens valid UTF-8 up to 1 MiB and keeps
   CRLF line endings and a leading empty line.
+- A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust
+  the heap (which would restart Dirl sealed): metrics output at 256 KiB, the editor at 1 MiB even if the server
+  reports a smaller size, directory listings at 10000 entries. Terminal output and downloads are streamed.
 - sshj has no ML-KEM or sntrup key exchange, connections use curve25519. Fine for internal hops, MINA SSHD would be
   the replacement if post-quantum key exchange becomes a requirement.
 
@@ -94,8 +98,10 @@ password manager and the provider's console.
 
 ## Login and web hardening
 
-- OIDC Authorization Code Flow with PKCE S256, `state` and `nonce`. The login attempt is kept on the server, the
-  browser only holds a random ID in a `SameSite=Lax` cookie for ten minutes. A callback URL works once.
+- OIDC Authorization Code Flow with PKCE S256, `state` and `nonce`. The login attempt (state, nonce, PKCE
+  verifier) travels in a `SameSite=Lax` cookie for ten minutes, signed with an HMAC key that is new on every start.
+  The server keeps no state for started logins, so anonymous requests cannot fill memory or block the login. The
+  callback deletes the cookie and the provider accepts each code once, so a callback URL works once.
 - The ID token is not signature-checked. It comes straight from the token endpoint over TLS, which OIDC Core 1.0
   section 3.1.3.7 allows as replacement. `iss`, `aud`, `azp`, `exp`, `iat` and `nonce` are checked
   ([auth/IdToken.kt](../src/main/kotlin/bayern/kickner/dirl/auth/IdToken.kt)).
@@ -122,6 +128,6 @@ password manager and the provider's console.
 access granted and removed, sessions ended, vault setup, restore, backup download, unlocks, failures and lockouts,
 passphrase and settings changes, host and key changes, key exports, host key pins and mismatches, terminal open and
 close, every SFTP change and download. Never terminal contents, passphrases or keys. The Audit page shows and filters
-the latest entries.
+the latest entries and only reads the last MiB of the file, so a log that grows for years stays cheap to view.
 
 [Back to the README](../README.md)

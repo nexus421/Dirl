@@ -115,6 +115,17 @@ class AccessControl(
         return true
     }
 
+    /**
+     * Lets [sub] reach the unlock page of a vault that was just restored from a backup. Without this the person who
+     * restored it would be locked out at once: the restored vault is sealed, and no copy of its user list exists on
+     * this machine yet. After the unlock the list inside the vault decides again, so a user who is not in it loses
+     * access right there.
+     */
+    fun allowUntilUnlock(sub: String, name: String) {
+        val users = readMirror().filterNot { it.sub == sub } + AllowedUser(sub, name, clock())
+        writeMirror(users)
+    }
+
     /** Removes [sub]. The last user cannot be removed, someone has to be able to log in. */
     fun revoke(sub: String, actor: Actor): ResultOf2<Unit, RevokeError> {
         val users = vault.content?.settings?.allowedUsers ?: return ResultOf2.Failure(RevokeError.NotUnlocked)

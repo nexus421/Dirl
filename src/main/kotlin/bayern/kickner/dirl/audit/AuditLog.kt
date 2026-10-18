@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.time.Instant
 
 /**
@@ -82,12 +83,33 @@ class AuditLog(private val file: File, private val clock: () -> Instant = Instan
         }.onFailure { errorLog("Could not write audit entry $action", it) }
     }
 
-    /** Returns the last [limit] entries, newest first. Lines that cannot be parsed are skipped. */
+    /**
+     * Returns the last [limit] entries, newest first. Lines that cannot be parsed are skipped.
+     *
+     * Only the last [TAIL_BYTES] of the file are read. The log grows forever, reading it whole on every visit of the
+     * Audit page would sooner or later exhaust the heap.
+     */
     @Synchronized
     fun tail(limit: Int = 100): List<AuditEntry> {
         if (file.isFile.not()) return emptyList()
-        return file.readLines().takeLast(limit).reversed().mapNotNull {
-            runCatching { json.decodeFromString(AuditEntry.serializer(), it) }.getOrNull()
+        val chunk = RandomAccessFile(file, "r").use { raf ->
+            val start = (raf.length() - TAIL_BYTES).coerceAtLeast(0)
+            val bytes = ByteArray((raf.length() - start).toInt())
+            raf.seek(start)
+            raf.readFully(bytes)
+            // A chunk that starts inside the file starts inside a line, that first line is incomplete.
+            val text = bytes.decodeToString()
+            if (start > 0) text.substringAfter('\n') else text
         }
+        return chunk.lineSequence()
+            .mapNotNull { line -> runCatching { json.decodeFromString(AuditEntry.serializer(), line) }.getOrNull() }
+            .toList()
+            .takeLast(limit)
+            .reversed()
+    }
+
+    companion object {
+        /** How much of the end of the file [tail] reads, a few thousand entries. */
+        const val TAIL_BYTES = 1024 * 1024
     }
 }

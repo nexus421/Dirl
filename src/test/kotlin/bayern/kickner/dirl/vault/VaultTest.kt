@@ -196,6 +196,18 @@ class VaultTest {
     }
 
     @Test
+    fun `the audit page reads only the end of a large log`() {
+        val log = File(dir, "big-audit.jsonl")
+        // About 2.5 MiB of entries, more than the tail window, so the read starts in the middle of a line.
+        log.bufferedWriter().use { out ->
+            repeat(12_000) { i -> out.write("""{"time":"t$i","sub":"s","name":"n","action":"LOGIN","detail":"${"x".repeat(150)}"}""" + "\n") }
+        }
+        assertTrue(log.length() > AuditLog.TAIL_BYTES)
+        val tail = AuditLog(log).tail(50)
+        assertEquals((11_999 downTo 11_950).map { "t$it" }, tail.map { it.time })
+    }
+
+    @Test
     fun `passphrase policy accepts long phrases and Diceware words`() {
         assertNull(checkPassphrase("a".repeat(20).toCharArray()))
         assertNull(checkPassphrase("tug-fox-elm-jar-ivy".toCharArray()))

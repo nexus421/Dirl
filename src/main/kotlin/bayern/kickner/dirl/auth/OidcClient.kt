@@ -3,6 +3,7 @@ package bayern.kickner.dirl.auth
 import bayern.kickner.dirl.config.OidcConfig
 import bayern.kickner.dirl.config.isLoopback
 import bayern.kickner.dirl.randomToken
+import bayern.kickner.dirl.secureRandom
 import bayern.kickner.dirl.toBase64Url
 import bayern.kickner.klogger.infoLog
 import kotlinx.serialization.SerialName
@@ -17,7 +18,8 @@ import java.net.http.HttpResponse
 import java.security.MessageDigest
 import java.time.Duration
 import java.util.Base64
-import java.util.concurrent.ConcurrentHashMap
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import kotlin.time.Duration.Companion.minutes
 
 /**
@@ -35,8 +37,9 @@ data class ProviderMetadata(
 )
 
 /**
- * A login in progress, between the redirect to the provider and the callback. Kept on the server, the browser only
- * holds a random ID in a short-lived cookie, so none of the values can be tampered with.
+ * A login in progress, between the redirect to the provider and the callback. It travels in the short-lived login
+ * cookie, signed with a per-process HMAC key (see [OidcClient.startLogin]), so the server keeps no state for logins
+ * that were started but never finished.
  *
  * @property state Echoed back by the provider, binds the callback to this browser.
  * @property nonce Ends up in the ID token, binds the token to this login.
@@ -48,17 +51,17 @@ class LoginAttempt(val state: String, val nonce: String, val codeVerifier: Strin
 /**
  * Result of [OidcClient.startLogin].
  *
- * @property attemptId Value for the short-lived login cookie.
+ * @property cookie Value for the short-lived login cookie: the signed [LoginAttempt].
  * @property redirectUrl The provider's authorization URL to redirect the browser to.
  */
-data class LoginStart(val attemptId: String, val redirectUrl: String)
+data class LoginStart(val cookie: String, val redirectUrl: String)
 
 /** Why a login failed. Shown to the user only in general terms, the detail goes to the log. */
 sealed interface LoginError {
     /** The provider could not be reached or returned something unusable. @property reason For the log. */
     data class ProviderUnavailable(val reason: String) : LoginError
 
-    /** Callback without a matching login attempt (expired, cookie missing, replayed). */
+    /** Callback without a valid login cookie (expired, missing, tampered with, or from before a restart). */
     data object UnknownAttempt : LoginError
 
     /** The `state` parameter does not match: a forged or mixed-up callback. */
@@ -88,21 +91,23 @@ class OidcClient(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
-    private val attempts = ConcurrentHashMap<String, LoginAttempt>()
+
+    /** Signs login cookies. New on every start, so a restart invalidates logins in progress, nothing else. */
+    private val cookieKey = SecretKeySpec(ByteArray(32).also(secureRandom::nextBytes), "HmacSHA256")
 
     @Volatile
     private var metadata: ProviderMetadata? = null
 
-    /** Creates a login attempt and the provider URL to send the browser to. */
+    /**
+     * Creates a login attempt and the provider URL to send the browser to.
+     *
+     * Anybody on the internet can call this, so it keeps no state on the server: the attempt goes into the signed
+     * login cookie instead. Earlier versions kept attempts in a capped map, and a thousand anonymous requests locked
+     * every user out of the login.
+     */
     fun startLogin(): ResultOf2<LoginStart, LoginError> {
-        purgeExpired()
-        // Unauthenticated callers can start logins, so the map is capped to keep memory bounded.
-        if (attempts.size >= MAX_PENDING_ATTEMPTS) return ResultOf2.Failure(LoginError.ProviderUnavailable("Too many pending logins"))
-
         val provider = providerMetadata().getOrElse { return ResultOf2.Failure(LoginError.ProviderUnavailable(it.message ?: it.toString())) }
         val attempt = LoginAttempt(randomToken(), randomToken(), randomToken(), clock())
-        val attemptId = randomToken()
-        attempts[attemptId] = attempt
 
         val params = buildMap {
             put("response_type", "code")
@@ -115,24 +120,24 @@ class OidcClient(
             put("code_challenge_method", "S256")
             if (config.forceReauth) put("prompt", "login")
         }
-        return ResultOf2.Success(LoginStart(attemptId, provider.authorizationEndpoint + "?" + formEncode(params)))
+        return ResultOf2.Success(LoginStart(signAttempt(attempt), provider.authorizationEndpoint + "?" + formEncode(params)))
     }
 
     /**
-     * Completes the login from the callback parameters. The attempt is consumed in any case, a callback URL can
-     * never be used twice.
+     * Completes the login from the callback parameters. The route deletes the login cookie in any case, and the
+     * provider accepts each code only once, so a callback URL cannot be used twice.
      *
-     * @param attemptId Value of the login cookie, `null` if the browser did not send it.
+     * @param cookie Value of the login cookie, `null` if the browser did not send it.
      * @param state, code, error, errorDescription Query parameters of the callback.
      */
     fun finishLogin(
-        attemptId: String?,
+        cookie: String?,
         state: String?,
         code: String?,
         error: String?,
         errorDescription: String?,
     ): ResultOf2<IdTokenClaims, LoginError> {
-        val attempt = attemptId?.let { attempts.remove(it) } ?: return ResultOf2.Failure(LoginError.UnknownAttempt)
+        val attempt = cookie?.let(::verifyAttempt) ?: return ResultOf2.Failure(LoginError.UnknownAttempt)
         val expired = clock() - attempt.createdAt > ATTEMPT_TTL.inWholeMilliseconds
         if (expired) return ResultOf2.Failure(LoginError.UnknownAttempt)
         if (state == null || constantTimeEquals(state, attempt.state).not()) return ResultOf2.Failure(LoginError.StateMismatch)
@@ -189,10 +194,23 @@ class OidcClient(
         body.idToken ?: error("Token response contains no id_token")
     }
 
-    private fun purgeExpired() {
-        val oldest = clock() - ATTEMPT_TTL.inWholeMilliseconds
-        attempts.entries.removeIf { it.value.createdAt < oldest }
+    /** `payload.signature`, both Base64url. The payload fields are Base64url tokens and a number, `|` never occurs in them. */
+    private fun signAttempt(attempt: LoginAttempt): String {
+        val payload = "${attempt.state}|${attempt.nonce}|${attempt.codeVerifier}|${attempt.createdAt}".toByteArray(Charsets.UTF_8)
+        return payload.toBase64Url() + "." + hmac(payload).toBase64Url()
     }
+
+    /** The attempt from a login cookie, or `null` if the signature does not match or the format is broken. */
+    private fun verifyAttempt(cookie: String): LoginAttempt? = runCatching {
+        val (payloadPart, signaturePart) = cookie.split('.').takeIf { it.size == 2 } ?: return null
+        val payload = Base64.getUrlDecoder().decode(payloadPart)
+        if (MessageDigest.isEqual(hmac(payload), Base64.getUrlDecoder().decode(signaturePart)).not()) return null
+        val fields = payload.decodeToString().split('|')
+        if (fields.size != 4) return null
+        LoginAttempt(fields[0], fields[1], fields[2], fields[3].toLong())
+    }.getOrNull()
+
+    private fun hmac(data: ByteArray): ByteArray = Mac.getInstance("HmacSHA256").apply { init(cookieKey) }.doFinal(data)
 
     private fun isSecureEndpoint(url: String): Boolean {
         val uri = runCatching { URI(url) }.getOrNull() ?: return false
@@ -205,9 +223,6 @@ class OidcClient(
     companion object {
         /** How long a login may take between redirect and callback. */
         val ATTEMPT_TTL = 10.minutes
-
-        /** Upper bound of logins in progress. */
-        const val MAX_PENDING_ATTEMPTS = 1000
     }
 }
 

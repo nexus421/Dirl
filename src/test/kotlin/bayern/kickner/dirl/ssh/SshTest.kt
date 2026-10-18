@@ -1,5 +1,6 @@
 package bayern.kickner.dirl.ssh
 
+import bayern.kickner.dirl.readAtMost
 import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.VaultContent
 import kotnexlib.ResultOf2
@@ -95,6 +96,15 @@ class SshTest {
         assertEquals(50.0, cpuPercent(CpuTimes(1000, 150), CpuTimes(1200, 250)))
         assertNull(cpuPercent(CpuTimes(1000, 150), CpuTimes(10, 5)))
         assertIs<ResultOf2.Failure<String>>(parseMetrics(""))
+    }
+
+    @Test
+    fun `reads from remote servers stop at the limit`() {
+        assertEquals(10, ByteArray(10).inputStream().readAtMost(10)?.size)
+        assertNull(ByteArray(11).inputStream().readAtMost(10))
+        // An endless stream ends at the limit instead of filling the heap.
+        val endless = object : java.io.InputStream() { override fun read() = 'x'.code }
+        assertNull(endless.readAtMost(MAX_METRICS_OUTPUT))
     }
 
     @Test

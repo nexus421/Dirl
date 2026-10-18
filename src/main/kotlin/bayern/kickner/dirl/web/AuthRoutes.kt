@@ -44,7 +44,7 @@ fun Route.authRoutes(dirl: Dirl) {
         when (val start = withContext(Dispatchers.IO) { dirl.oidc.startLogin() }) {
             is ResultOf2.Success -> {
                 // Lax, so the cookie survives the top-level navigation back from the provider
-                call.response.cookies.append(secureCookie(LOGIN_COOKIE, start.value.attemptId, 600, "Lax"))
+                call.response.cookies.append(secureCookie(LOGIN_COOKIE, start.value.cookie, 600, "Lax"))
                 call.respondRedirect(start.value.redirectUrl)
             }
 
@@ -57,11 +57,11 @@ fun Route.authRoutes(dirl: Dirl) {
 
     get("/auth/callback") {
         val q = call.request.queryParameters
-        val attemptId = call.request.cookies[LOGIN_COOKIE]
+        val loginCookie = call.request.cookies[LOGIN_COOKIE]
         call.response.cookies.append(secureCookie(LOGIN_COOKIE, "", 0, "Lax"))
 
         val result = withContext(Dispatchers.IO) {
-            dirl.oidc.finishLogin(attemptId, q["state"], q["code"], q["error"], q["error_description"])
+            dirl.oidc.finishLogin(loginCookie, q["state"], q["code"], q["error"], q["error_description"])
         }
         val claims = when (result) {
             is ResultOf2.Success -> result.value

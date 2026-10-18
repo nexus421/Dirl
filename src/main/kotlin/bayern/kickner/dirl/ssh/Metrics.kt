@@ -1,5 +1,6 @@
 package bayern.kickner.dirl.ssh
 
+import bayern.kickner.dirl.readAtMost
 import bayern.kickner.dirl.vault.Vault
 import bayern.kickner.dirl.vault.VaultState
 import bayern.kickner.klogger.debugLog
@@ -25,6 +26,9 @@ const val METRICS_COMMAND =
     "LC_ALL=C sh -c 'cat /proc/uptime /proc/loadavg; head -n1 /proc/stat; " +
         "grep -E \"^(MemTotal|MemAvailable|SwapTotal|SwapFree):\" /proc/meminfo; " +
         "timeout 5 df -PlkT -x tmpfs -x devtmpfs -x squashfs -x overlay -x efivarfs'"
+
+/** Upper bound of the metrics command's output. Real output is a few KiB even with many mounts. */
+const val MAX_METRICS_OUTPUT = 256 * 1024
 
 /**
  * Cumulative CPU counters from the first line of `/proc/stat`, in jiffies.
@@ -198,7 +202,8 @@ class MetricsPoller(
             runCatching {
                 client.startSession().use { session ->
                     val command = session.exec(METRICS_COMMAND)
-                    runInterruptible { command.inputStream.readBytes().decodeToString() }
+                    // The normal output is a few KiB, anything beyond the limit is dropped as unusable.
+                    runInterruptible { command.inputStream.readAtMost(MAX_METRICS_OUTPUT)?.decodeToString() }
                 }
             }.getOrNull()
         } ?: return
