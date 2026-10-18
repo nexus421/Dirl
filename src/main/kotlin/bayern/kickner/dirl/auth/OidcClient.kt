@@ -18,9 +18,12 @@ import java.net.http.HttpResponse
 import java.security.MessageDigest
 import java.time.Duration
 import java.util.Base64
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The parts of the provider's discovery document (`/.well-known/openid-configuration`) Dirl needs.
@@ -98,6 +101,17 @@ class OidcClient(
     @Volatile
     private var metadata: ProviderMetadata? = null
 
+    /** Unix milliseconds of the last failed discovery fetch, see [DISCOVERY_RETRY_AFTER]. */
+    @Volatile
+    private var discoveryFailedAt = 0L
+
+    /**
+     * Limits blocking calls to the provider. Anonymous requests can trigger them (`/auth/start` before the discovery
+     * is cached, `/auth/callback` with a signed cookie), and with a slow or unreachable provider each one holds an IO
+     * thread for up to ten seconds. Without a limit that starves terminals and file transfers.
+     */
+    private val providerCalls = Semaphore(MAX_CONCURRENT_PROVIDER_CALLS)
+
     /**
      * Creates a login attempt and the provider URL to send the browser to.
      *
@@ -154,11 +168,16 @@ class OidcClient(
         }
     }
 
-    /** Fetches and caches the discovery document. A failed fetch is retried on the next login. */
+    /**
+     * Fetches and caches the discovery document. After a failure no new fetch happens for [DISCOVERY_RETRY_AFTER],
+     * so a flood of login attempts against an unreachable provider does not turn into a flood of requests.
+     */
     private fun providerMetadata(): Result<ProviderMetadata> = metadata?.let { Result.success(it) } ?: runCatching {
+        val recentlyFailed = clock() - discoveryFailedAt < DISCOVERY_RETRY_AFTER.inWholeMilliseconds
+        check(recentlyFailed.not()) { "Provider discovery failed recently, retrying later" }
         val request = HttpRequest.newBuilder(URI("${config.issuer}/.well-known/openid-configuration"))
             .timeout(Duration.ofSeconds(10)).GET().build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+        val response = limited { http.send(request, HttpResponse.BodyHandlers.ofString()) }
         check(response.statusCode() == 200) { "Discovery returned HTTP ${response.statusCode()}" }
 
         val parsed = json.decodeFromString(ProviderMetadata.serializer(), response.body())
@@ -167,6 +186,16 @@ class OidcClient(
         check(isSecureEndpoint(parsed.authorizationEndpoint)) { "Authorization endpoint must use https" }
         infoLog { "Loaded OIDC discovery document of ${parsed.issuer}" }
         parsed.also { metadata = it }
+    }.onFailure { discoveryFailedAt = clock() }
+
+    /** Runs [call] if a provider slot is free within a second, fails otherwise instead of queueing up threads. */
+    private fun <T> limited(call: () -> T): T {
+        check(providerCalls.tryAcquire(1, TimeUnit.SECONDS)) { "Too many concurrent requests to the identity provider" }
+        return try {
+            call()
+        } finally {
+            providerCalls.release()
+        }
     }
 
     /** Exchanges the code for tokens and returns the raw ID token. */
@@ -187,7 +216,7 @@ class OidcClient(
             .apply { config.clientSecret?.let { header("Authorization", basicAuth(config.clientId, it)) } }
             .POST(HttpRequest.BodyPublishers.ofString(form))
             .build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+        val response = limited { http.send(request, HttpResponse.BodyHandlers.ofString()) }
         check(response.statusCode() == 200) { "Token endpoint returned HTTP ${response.statusCode()}" }
 
         val body = json.decodeFromString(TokenResponse.serializer(), response.body())
@@ -223,6 +252,12 @@ class OidcClient(
     companion object {
         /** How long a login may take between redirect and callback. */
         val ATTEMPT_TTL = 10.minutes
+
+        /** Pause after a failed discovery fetch before the next one. */
+        val DISCOVERY_RETRY_AFTER = 15.seconds
+
+        /** Blocking calls to the provider at the same time, logins of a few people never need more. */
+        const val MAX_CONCURRENT_PROVIDER_CALLS = 4
     }
 }
 
