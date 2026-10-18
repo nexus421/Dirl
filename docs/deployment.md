@@ -47,6 +47,10 @@ the `publicUrl` origin), but anyone on the path between the two could read along
 Backup: the encrypted download under Settings, or `tar czf dirl-$(date +%F).tgz -C /var/lib/dirl .`. Both are
 useless without the passphrase.
 
+Starting over: if the vault cannot be unlocked any more (forgotten passphrase, or a restored file that does not
+belong to its passphrase), stop the service and delete `vault.json`, `vault.json.*` and `access.json` in the data
+directory. The next login creates a new vault. Without the passphrase the old data is lost, that is the point.
+
 Logs go to the console (journald) and to `dataDir/logs/app.log` (5 MiB, rotated). Libraries log through Klogger's
 SLF4J provider, sshj only from WARN on.
 

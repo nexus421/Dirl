@@ -38,6 +38,12 @@ private val publicPrefixes = listOf("/login", "/auth/", "/static/", "/healthz")
 /** Paths reachable with a session while the vault is not unlocked. */
 private val sealedAllowed = setOf("/unlock", "/setup", "/setup/restore", "/logout")
 
+/**
+ * Query parameter of automatic page reloads (the host overview reloads itself every minute). Such a request does
+ * not count as activity, otherwise an unattended browser with the overview open would never reach the idle timeout.
+ */
+const val AUTO_REFRESH_PARAM = "autorefresh"
+
 /** Key of the [Session] in the call attributes, set by [installGuards] for every protected path. */
 val SessionKey = AttributeKey<Session>("dirl.session")
 
@@ -81,7 +87,9 @@ fun Application.installGuards(dirl: Dirl) {
         if (publicPrefixes.any { path == it || path.startsWith(it) }) return@intercept
 
         val token = call.request.cookies[SESSION_COOKIE]
-        val session = dirl.sessions.get(token)?.takeIf { dirl.access.isAllowed(it.actor.sub) }
+        val automatic = call.request.queryParameters[AUTO_REFRESH_PARAM] != null
+        val valid = if (automatic) dirl.sessions.peek(token) else dirl.sessions.get(token)
+        val session = valid?.takeIf { dirl.access.isAllowed(it.actor.sub) }
         if (session == null) {
             // A session of a user whose access was removed ends here.
             dirl.sessions.remove(token)

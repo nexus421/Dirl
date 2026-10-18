@@ -142,10 +142,10 @@ Verified:
   width, Ctrl+C from the key bar, snippets), files (upload with progress, CRLF preserving edit, rename, download,
   delete), metrics, audit log, settings, seal closing open terminals, key export, encrypted backup.
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines, jump host forwarding, `PerSourcePenalties`.
-- 49 tests: vault (round trip, lockout, passphrase change including the old passphrase opening nothing, tampering,
+- 51 tests: vault (round trip, lockout, passphrase change including the old passphrase opening nothing, tampering,
   backups, key file, restore), audit log tail of a large file, OIDC (token checks, PKCE, the full flow, replayed
   callback, tampered login cookie, a flood of anonymous logins), backup restore through the UI up to the unlock,
-  access control, security headers, origin checks and path tricks, SSH integration as listed above plus both jump
+  access control, idle timeout with automatic reloads, security headers, origin checks and path tricks, SSH integration as listed above plus both jump
   host variants, the upload overwrite protection and the limits on data read from servers.
 - Dependency locking of every configuration.
 - Argon2id with 64 MiB and 3 passes takes 100 to 200 ms on a fast desktop. Measure on the target, the concept aims

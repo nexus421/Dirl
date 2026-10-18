@@ -91,6 +91,40 @@ class WebTest {
     }
 
     @Test
+    fun `automatic reloads do not keep an idle session alive`(): Unit = testApplication {
+        var now = 1_000_000L
+        val dataDir = Files.createTempDirectory("dirl-idle").toFile()
+        val clocked = createDirl(config.copy(dataDir = dataDir.absolutePath), dataDir) { now }
+        clocked.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        application { dirlModule(clocked) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${clocked.sessions.create(Actor("user-1", "Ada")).token}"
+
+        // Every minute for 40 minutes the overview reloads itself, nobody touches the browser.
+        repeat(40) {
+            now += 60_000
+            val reload = client.get("/?$AUTO_REFRESH_PARAM=1") { header(HttpHeaders.Cookie, cookie) }
+            if (it < 29) assertEquals(HttpStatusCode.OK, reload.status, "minute ${it + 1}")
+        }
+        assertEquals("/login", client.get("/") { header(HttpHeaders.Cookie, cookie) }.headers[HttpHeaders.Location])
+    }
+
+    @Test
+    fun `real requests keep the session alive`(): Unit = testApplication {
+        var now = 1_000_000L
+        val dataDir = Files.createTempDirectory("dirl-active").toFile()
+        val clocked = createDirl(config.copy(dataDir = dataDir.absolutePath), dataDir) { now }
+        clocked.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        application { dirlModule(clocked) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${clocked.sessions.create(Actor("user-1", "Ada")).token}"
+        repeat(40) {
+            now += 60_000
+            assertEquals(HttpStatusCode.OK, client.get("/") { header(HttpHeaders.Cookie, cookie) }.status)
+        }
+    }
+
+    @Test
     fun `config validation reports every problem`() {
         val broken = config.copy(port = 0, publicUrl = "http://ssh.example.com/", oidc = config.oidc.copy(issuer = "ftp://x", scopes = listOf("profile")))
         val issues = validateConfig(broken)

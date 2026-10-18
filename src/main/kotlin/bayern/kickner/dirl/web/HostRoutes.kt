@@ -76,7 +76,9 @@ fun Route.hostRoutes(dirl: Dirl) {
         val allTags = content.hosts.flatMap { it.tags }.distinct().sorted()
         val hosts = content.hosts.filter { tag == null || tag in it.tags }.sortedBy { it.name.lowercase() }
 
-        call.page("Hosts", call.session, Nav.HOSTS, refresh = "60") {
+        // The automatic reload carries AUTO_REFRESH_PARAM, so it does not count as activity for the idle timeout.
+        val reloadUrl = "/?" + listOfNotNull(tag?.let { "tag=" + URLEncoder.encode(it, Charsets.UTF_8) }, "$AUTO_REFRESH_PARAM=1").joinToString("&")
+        call.page("Hosts", call.session, Nav.HOSTS, refresh = "60; url=$reloadUrl") {
             pageHeader("Hosts", if (content.hosts.isEmpty()) null else "${content.hosts.size} host(s), status refreshes every minute") {
                 linkButton("/hosts/new", "Add host", "primary")
             }
