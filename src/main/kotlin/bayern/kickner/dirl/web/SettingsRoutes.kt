@@ -124,6 +124,7 @@ fun Route.settingsRoutes(dirl: Dirl) {
                     ChangePassphraseError.NotUnlocked -> "The vault is not unlocked."
                     ChangePassphraseError.WrongPassphrase -> "The current passphrase is wrong."
                     is ChangePassphraseError.TooWeak -> e.reason
+                    is ChangePassphraseError.KeyFileUnavailable -> e.reason
                 },
             )
         }
@@ -286,7 +287,10 @@ private suspend fun ApplicationCall.settingsPage(dirl: Dirl, error: String?) {
                         passwordField("Current passphrase", "old", "current-password")
                         passwordField("New passphrase", "new", "new-password", hint = "At least $MIN_PASSPHRASE_LENGTH characters or $MIN_PASSPHRASE_WORDS Diceware words.")
                         passwordField("Repeat new passphrase", "confirm", "new-password")
-                        p("muted small") { +"Only the wrapped data key changes. Older backups keep the old passphrase." }
+                        p("muted small") {
+                            +"Everything is re-encrypted with a new key and the local backups are deleted, so the old passphrase opens nothing here any more. "
+                            +"Backups you downloaded earlier still open with the old passphrase."
+                        }
                         div("btn-row") { submit("Change passphrase") }
                     }
                 }

@@ -71,6 +71,9 @@ sealed interface ChangePassphraseError {
 
     /** @property reason Shown to the user. */
     data class TooWeak(val reason: String) : ChangePassphraseError
+
+    /** Key file mode is configured, but the key file cannot be read to wrap the new data key. @property reason Shown. */
+    data class KeyFileUnavailable(val reason: String) : ChangePassphraseError
 }
 
 /**
@@ -78,8 +81,8 @@ sealed interface ChangePassphraseError {
  *
  * A random 256 bit data encryption key (DEK) encrypts the whole content with AES-256-GCM, with a new nonce on every
  * write. The DEK itself is stored only wrapped: encrypted with a key encryption key (KEK) derived from the passphrase
- * with Argon2id, and in key file mode additionally with the key file. Changing the passphrase rewraps the DEK, the
- * data stays as it is.
+ * with Argon2id, and in key file mode additionally with the key file. Changing the passphrase creates a new DEK and
+ * deletes the local backups, see [changePassphrase].
  *
  * After [MAX_ATTEMPTS] wrong passphrases further attempts are refused for [lockoutDuration] without even running
  * Argon2. The counter is kept in memory only, a restart resets it, which costs an attacker a restart per five tries.
@@ -282,8 +285,16 @@ class Vault(
     }
 
     /**
-     * Replaces the passphrase by rewrapping the DEK with a key derived from [new] (and a new salt). The data and the
-     * key file wrap stay untouched. Both arrays are wiped before returning.
+     * Replaces the passphrase. A passphrase is usually changed because the old one may be known to someone, so this
+     * makes sure the old one opens nothing on this machine any more:
+     *
+     * - A new random DEK encrypts the content. Rewrapping the old DEK would not be enough: every older copy of the
+     *   file would still give the old passphrase the very key that encrypts the current vault.
+     * - The local backups `vault.json.1` to `.N` are deleted, they hold the old wrap and the old data.
+     * - In key file mode the new DEK is wrapped with the key file as well, otherwise any key file wrap is dropped.
+     *
+     * Encrypted backups downloaded earlier still open with the old passphrase and contain the data of that time. Both
+     * arrays are wiped before returning.
      */
     fun changePassphrase(old: CharArray, new: CharArray, actor: Actor): ResultOf2<Unit, ChangePassphraseError> {
         val result = synchronized(lock) {
@@ -296,10 +307,23 @@ class Vault(
             val matches = Aead.open(current.wrappedDek.passphrase, Aead.keyOf(oldKek)).isSuccess.also { oldKek.wipe() }
             if (matches.not()) return@synchronized ResultOf2.Failure(ChangePassphraseError.WrongPassphrase)
 
+            val keyFileKek = keyFile?.let { file ->
+                readKeyFile(file).getOrElse { return@synchronized ResultOf2.Failure(ChangePassphraseError.KeyFileUnavailable(it.message ?: "unreadable")) }
+            }
+            val dek = Aead.generateKey()
             val params = kdfParams()
-            val newEnvelope = current.copy(kdf = params, wrappedDek = current.wrappedDek.copy(passphrase = wrapDek(unlocked.dek, new, params)))
+            val newEnvelope = VaultEnvelope(
+                kdf = params,
+                wrappedDek = WrappedDek(
+                    passphrase = wrapDek(dek, new, params),
+                    keyfile = keyFileKek?.let { kek -> wrapWith(dek, kek).also { kek.wipe() } },
+                ),
+                data = encryptContent(unlocked.content, dek),
+            )
             store.write(newEnvelope)
+            store.deleteBackups()
             envelope = newEnvelope
+            state = VaultState.Unlocked(dek, unlocked.content)
             ResultOf2.Success(Unit)
         }
         old.wipe()

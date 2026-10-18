@@ -83,6 +83,14 @@ class WebTest {
     }
 
     @Test
+    fun `path tricks neither bypass the login nor end as server errors`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        assertEquals(HttpStatusCode.BadRequest, client.get("/static/..%2Fsettings").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/login/..%2Fsettings").status)
+    }
+
+    @Test
     fun `config validation reports every problem`() {
         val broken = config.copy(port = 0, publicUrl = "http://ssh.example.com/", oidc = config.oidc.copy(issuer = "ftp://x", scopes = listOf("profile")))
         val issues = validateConfig(broken)

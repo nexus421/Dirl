@@ -80,7 +80,7 @@ One package per concern under `bayern.kickner.dirl`:
 | `Main.kt`          | Argument parsing, config, logging, wiring, server start                                   |
 | `config`           | Config model and strict loader with validation                                            |
 | `crypto`           | Argon2id KEK derivation, AES-GCM with explicit nonce                                      |
-| `vault`            | Vault model, crash-safe store, lifecycle (setup, unlock, lockout, rewrap, backup, restore) |
+| `vault`            | Vault model, crash-safe store, lifecycle (setup, unlock, lockout, passphrase change, backup, restore) |
 | `audit`            | Append-only JSON lines audit log                                                          |
 | `auth`             | OIDC client with PKCE, ID token validation, sessions, access control                      |
 | `ssh`              | Keys, routes through jump hosts, connection manager, metrics                              |
@@ -142,7 +142,7 @@ Verified:
   width, Ctrl+C from the key bar, snippets), files (upload with progress, CRLF preserving edit, rename, download,
   delete), metrics, audit log, settings, seal closing open terminals, key export, encrypted backup.
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines, jump host forwarding, `PerSourcePenalties`.
-- 41 tests: vault (round trip, lockout, passphrase change, tampering, backups, key file, restore), OIDC (token
+- 44 tests: vault (round trip, lockout, passphrase change including the old passphrase opening nothing, tampering, backups, key file, restore), OIDC (token
   checks, PKCE, the full flow, replayed callback), access control, security headers and origin checks, SSH
   integration as listed above plus both jump host variants and the upload overwrite protection.
 - Dependency locking of every configuration.

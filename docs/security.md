@@ -7,7 +7,8 @@ How Dirl protects keys, access and the browser session, and why.
 `dataDir/vault.json` holds hosts, keys, host key pins, snippets and the UI settings as one AES-256-GCM ciphertext,
 with a new random nonce on every write. The data key (DEK) is random and stored only wrapped: encrypted with a key
 derived from the passphrase with Argon2id (64 MiB, 3 passes, stored next to the salt so they can be raised later),
-and in key file mode additionally with the key file. Changing the passphrase rewraps the DEK, the data stays. GCM
+and in key file mode additionally with the key file. Changing the passphrase creates a new DEK, re-encrypts the vault and deletes the local
+backups, so the old passphrase opens nothing on the server any more. Backups downloaded earlier still open with it. GCM
 also protects integrity, so nobody with write access can silently swap a pinned host key or add a user.
 
 Writes go to a temporary file, are `fsync`ed and renamed over the old file. The previous three versions are kept as

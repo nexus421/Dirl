@@ -6,6 +6,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
+import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.path
 import kotlinx.html.p
@@ -13,13 +14,19 @@ import kotlinx.html.p
 private const val TAG = "ErrorPages"
 
 /**
- * Styled pages for unknown paths, wrong methods and unexpected exceptions. An exception is logged with its stack
- * trace, the page only says that something went wrong, so no internals reach the browser.
+ * Styled pages for unknown paths, wrong methods, malformed requests and unexpected exceptions. An unexpected exception
+ * is logged with its stack trace, the page only says that something went wrong, so no internals reach the browser.
+ * Malformed requests (path traversal attempts, broken encodings, scanners) get a plain 400 and only a debug line, so
+ * they cannot fill the log with stack traces.
  */
 fun Application.installErrorPages() {
     install(StatusPages) {
         status(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed) { call, status ->
             call.errorPage(status, "Page not found", "This address does not exist in Dirl.")
+        }
+        exception<BadRequestException> { call, cause ->
+            staticLog(KLogger.Level.DEBUG, TAG) { "Bad request ${call.request.path()}: ${cause.message}" }
+            call.errorPage(HttpStatusCode.BadRequest, "Bad request", "The request was malformed.")
         }
         exception<Throwable> { call, cause ->
             staticLog(KLogger.Level.ERROR, TAG) { "Request ${call.request.path()} failed: ${cause.stackTraceToString()}" }

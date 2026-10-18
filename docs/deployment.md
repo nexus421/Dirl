@@ -26,8 +26,23 @@ incus config set <container> limits.memory 512MiB
 incus config set <container> limits.memory.swap false
 ```
 
-Zoraxy: proxy `publicUrl` to `127.0.0.1:8080` with WebSocket support. The 20 second WebSocket ping keeps idle
-terminals open.
+Zoraxy: proxy `publicUrl` to Dirl's port with WebSocket support. The 20 second WebSocket ping keeps idle terminals
+open.
+
+## Network between Zoraxy and Dirl
+
+TLS ends at Zoraxy. From there to Dirl the traffic is plain HTTP and carries session cookies, the vault passphrase
+when unlocking and everything typed into terminals. Keep that hop off any physical network:
+
+- Zoraxy on the same machine or in a container on the same host: Dirl listens on the container's address on the
+  Incus bridge, the traffic never leaves the host. Set `host` in the config to that address, not `0.0.0.0`.
+- Allow the port only from Zoraxy, e.g. with a firewall rule in the container or an Incus network ACL. Nobody else
+  should be able to reach Dirl without going through Zoraxy.
+- Zoraxy on another machine: do not proxy plain HTTP across the network. Put Dirl behind a reverse proxy on its own
+  host instead, or tunnel the hop (WireGuard, an SSH tunnel).
+
+Requests that bypass Zoraxy cannot log in anyway (the session cookies are `Secure` and every form post must carry
+the `publicUrl` origin), but anyone on the path between the two could read along.
 
 Backup: the encrypted download under Settings, or `tar czf dirl-$(date +%F).tgz -C /var/lib/dirl .`. Both are
 useless without the passphrase.

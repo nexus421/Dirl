@@ -3,6 +3,8 @@ package bayern.kickner.dirl.vault
 import bayern.kickner.dirl.audit.Actor
 import bayern.kickner.dirl.audit.AuditLog
 import bayern.kickner.dirl.crypto.KdfParams
+import bayern.kickner.dirl.crypto.deriveKek
+import bayern.kickner.dirl.crypto.Aead
 import kotlinx.serialization.json.Json
 import kotnexlib.ResultOf2
 import java.io.File
@@ -90,6 +92,38 @@ class VaultTest {
         val reopened = vault()
         assertIs<ResultOf2.Success<Unit>>(reopened.unlock(newPassphrase.toCharArray(), actor))
         assertEquals(listOf(host), reopened.content?.hosts)
+    }
+
+    @Test
+    fun `after a passphrase change the old passphrase opens nothing on disk`() {
+        val v = vault()
+        v.setup(passphrase.toCharArray(), actor)
+        v.update { it.copy(hosts = listOf(host)) }
+        val oldCopy = VaultStore(dir).read()
+        val newPassphrase = "another very long passphrase 42"
+        assertIs<ResultOf2.Success<Unit>>(v.changePassphrase(passphrase.toCharArray(), newPassphrase.toCharArray(), actor))
+
+        assertTrue((1..3).none { File(dir, "vault.json.$it").exists() }, "local backups must be deleted")
+        // An attacker with the old passphrase and an old copy of the file gets the old data key, which no longer
+        // decrypts the current vault.
+        val oldDek = Aead.open(oldCopy.wrappedDek.passphrase, Aead.keyOf(deriveKek(passphrase.toCharArray(), oldCopy.kdf))).getOrThrow()
+        assertTrue(Aead.open(VaultStore(dir).read().data, Aead.keyOf(oldDek)).isFailure)
+
+        // The vault keeps working in this process and after a restart.
+        v.update { it.copy(snippets = listOf(Snippet("s", "n", "c"))) }
+        val reopened = vault()
+        assertIs<ResultOf2.Success<Unit>>(reopened.unlock(newPassphrase.toCharArray(), actor))
+        assertEquals(listOf(host), reopened.content?.hosts)
+        assertEquals(1, reopened.content?.snippets?.size)
+    }
+
+    @Test
+    fun `a passphrase change in key file mode keeps the key file working`() {
+        val keyFile = File(dir, "kek").apply { writeBytes(ByteArray(32) { it.toByte() }) }
+        val v = vault(keyFile)
+        v.setup(passphrase.toCharArray(), actor)
+        assertIs<ResultOf2.Success<Unit>>(v.changePassphrase(passphrase.toCharArray(), "another very long passphrase 42".toCharArray(), actor))
+        assertIs<ResultOf2.Success<Unit>>(vault(keyFile).unlockWithKeyFile())
     }
 
     @Test

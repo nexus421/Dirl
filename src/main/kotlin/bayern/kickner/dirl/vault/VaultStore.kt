@@ -39,6 +39,14 @@ class VaultStore(private val dir: File, private val backups: Int = 3) {
     /** Reads the envelope. Throws if the file is missing or not a valid vault. */
     fun read(): VaultEnvelope = json.decodeFromString(VaultEnvelope.serializer(), file.readText())
 
+    /**
+     * Deletes the backups `vault.json.1` to `vault.json.N`, e.g. after a passphrase change. The files are only
+     * unlinked: overwriting them first would not reliably erase the data on copy-on-write file systems or SSDs.
+     */
+    fun deleteBackups() {
+        for (i in 1..backups) File(dir, "vault.json.$i").delete()
+    }
+
     /** Atomically replaces the vault with [envelope] and rotates the backups. */
     fun write(envelope: VaultEnvelope) {
         dir.mkdirs()
