@@ -213,7 +213,7 @@ class OidcClient(
             .timeout(Duration.ofSeconds(10))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("Accept", "application/json")
-            .apply { config.clientSecret?.let { header("Authorization", basicAuth(config.clientId, it)) } }
+            .header("Authorization", basicAuth(config.clientId, config.clientSecret))
             .POST(HttpRequest.BodyPublishers.ofString(form))
             .build()
         val response = limited { http.send(request, HttpResponse.BodyHandlers.ofString()) }

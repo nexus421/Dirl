@@ -44,7 +44,7 @@ class LoginFlowTest {
         AppConfig(
             publicUrl = "https://ssh.example.com",
             dataDir = dataDir.absolutePath,
-            oidc = OidcConfig(issuer = mock.issuer, clientId = "dirl"),
+            oidc = OidcConfig(issuer = mock.issuer, clientId = "dirl", clientSecret = mock.clientSecret),
         ),
         dataDir,
     )
@@ -108,6 +108,18 @@ class LoginFlowTest {
     }
 
     @Test
+    fun `a wrong client secret creates no session`(): Unit = testApplication {
+        val otherDir = Files.createTempDirectory("dirl-secret").toFile()
+        val wrong = createDirl(
+            AppConfig(publicUrl = "https://ssh.example.com", dataDir = otherDir.absolutePath, oidc = OidcConfig(issuer = mock.issuer, clientId = "dirl", clientSecret = "not-the-secret")),
+            otherDir,
+        )
+        application { dirlModule(wrong) }
+        val (_, cookie) = login(createClient { followRedirects = false }, ada)
+        assertEquals(null, cookie, "the provider must refuse the code without the right secret")
+    }
+
+    @Test
     fun `while sealed only users from the mirror reach the unlock page`(): Unit = testApplication {
         application { dirlModule(dirl) }
         dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor(ada.sub, ada.name))
@@ -123,7 +135,7 @@ class LoginFlowTest {
     @Test
     fun `restoring a backup leads to the unlock page and unlocks`(): Unit = testApplication {
         val sourceDir = Files.createTempDirectory("dirl-source").toFile()
-        val source = createDirl(AppConfig(publicUrl = "https://ssh.example.com", dataDir = sourceDir.absolutePath, oidc = OidcConfig(issuer = mock.issuer, clientId = "dirl")), sourceDir)
+        val source = createDirl(AppConfig(publicUrl = "https://ssh.example.com", dataDir = sourceDir.absolutePath, oidc = OidcConfig(issuer = mock.issuer, clientId = "dirl", clientSecret = mock.clientSecret)), sourceDir)
         val passphrase = "correct horse battery staple extra"
         source.vault.setup(passphrase.toCharArray(), Actor(ada.sub, ada.name))
         val backup = source.vault.exportEncrypted()!!

@@ -33,7 +33,7 @@ class OidcClientTest {
     }
     private var now = 1_000_000L
     private val client = OidcClient(
-        OidcConfig(issuer = "http://localhost:${server.address.port}", clientId = "dirl"),
+        OidcConfig(issuer = "http://localhost:${server.address.port}", clientId = "dirl", clientSecret = "secret"),
         "https://ssh.example.com/auth/callback",
         clock = { now },
     )
@@ -54,7 +54,7 @@ class OidcClientTest {
     fun `a slow provider holds at most a few threads`() {
         delayMillis = 2_000
         // Twelve logins at once against a provider that takes two seconds to answer.
-        val shared = OidcClient(OidcConfig(issuer = "http://localhost:${server.address.port}", clientId = "dirl"), "https://x/cb")
+        val shared = OidcClient(OidcConfig(issuer = "http://localhost:${server.address.port}", clientId = "dirl", clientSecret = "secret"), "https://x/cb")
         val sharedThreads = (1..12).map { thread { shared.startLogin() } }
         sharedThreads.forEach { it.join() }
         assertTrue(maxInFlight.get() <= OidcClient.MAX_CONCURRENT_PROVIDER_CALLS, "max in flight was ${maxInFlight.get()}")

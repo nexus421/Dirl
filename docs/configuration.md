@@ -22,7 +22,7 @@ provider and how the vault is unlocked. Everything else (users, hosts, keys, sni
 passphrase) is managed in the UI and stored in the encrypted vault.
 
 The file is read once at startup. Unknown keys are errors and all problems are reported at once. It holds no secret
-except an optional OIDC client secret, so `0400` and owned by the service user.
+except the OIDC client secret, so `0400` and owned by the service user.
 
 | Field        | Type   | Default         | Description                                                                              |
 |--------------|--------|-----------------|------------------------------------------------------------------------------------------|
@@ -41,7 +41,7 @@ except an optional OIDC client secret, so `0400` and owned by the service user.
 |-------------------|----------|-------------------------|----------------------------------------------------------------------------------|
 | `issuer`          | string   | required                | Issuer exactly as in the discovery document. `https` (or `http` on localhost)    |
 | `clientId`        | string   | required                | Client ID in Pocket ID                                                           |
-| `clientSecret`    | string   | `null`                  | Only for a confidential client. Pocket ID public clients with PKCE do not need it |
+| `clientSecret`    | string   | required                | Secret of the confidential client, sent to the token endpoint with HTTP Basic    |
 | `allowedSubjects` | string[] | `[]`                    | Break-glass list, always allowed. Only needed if nobody in the UI list can log in |
 | `forceReauth`     | bool     | `true`                  | Sends `prompt=login`, so every login needs a fresh passkey                       |
 | `scopes`          | string[] | `["openid", "profile"]` | Must contain `openid`                                                            |
@@ -53,8 +53,9 @@ except an optional OIDC client secret, so `0400` and owned by the service user.
 | `idleTimeoutMinutes` | int  | `30`    | Session expires after this much idle time |
 | `maxAgeHours`        | int  | `12`    | Session expires this long after the login |
 
-Pocket ID client setup: callback URL `<publicUrl>/auth/callback`, PKCE enabled, public client, under Access
-"Selected user groups" a group like `dirl`. Optionally "Requires Re-Authentication".
+Pocket ID client setup: callback URL `<publicUrl>/auth/callback`, PKCE enabled, **not** a public client (Dirl
+authenticates with the client secret in addition to PKCE), under Access "Selected user groups" a group like `dirl`.
+Optionally "Requires Re-Authentication".
 
 ## Unlocking
 

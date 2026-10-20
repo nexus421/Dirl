@@ -60,7 +60,7 @@ class SshIntegrationTest {
         val config = AppConfig(
             publicUrl = "https://ssh.example.com",
             dataDir = dataDir.absolutePath,
-            oidc = OidcConfig(issuer = "https://id.example.com", clientId = "dirl"),
+            oidc = OidcConfig(issuer = "https://id.example.com", clientId = "dirl", clientSecret = "secret"),
         )
         dirl = createDirl(config, dataDir, clock = { now })
         dirl.vault.setup("correct horse battery staple extra".toCharArray(), actor)

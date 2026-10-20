@@ -103,10 +103,12 @@ password manager and the provider's console.
 
 ## Login and web hardening
 
-- OIDC Authorization Code Flow with PKCE S256, `state` and `nonce`. The login attempt (state, nonce, PKCE
-  verifier) travels in a `SameSite=Lax` cookie for ten minutes, signed with an HMAC key that is new on every start.
-  The server keeps no state for started logins, so anonymous requests cannot fill memory or block the login. The
-  callback deletes the cookie and the provider accepts each code once, so a callback URL works once.
+- OIDC Authorization Code Flow with PKCE S256, `state` and `nonce`, as a confidential client: the token request
+  carries the client secret (HTTP Basic), so a stolen code and verifier are still useless to anybody but Dirl. The
+  login attempt (state, nonce, PKCE verifier) travels in a `SameSite=Lax` cookie for ten minutes, signed with an HMAC
+  key that is new on every start. The server keeps no state for started logins, so anonymous requests cannot fill
+  memory or block the login. The callback deletes the cookie and the provider accepts each code once, so a callback
+  URL works once.
 - Calls to the provider are limited to four at a time, and a failed discovery fetch is not repeated for 15 seconds.
   Anonymous login requests against a slow or unreachable provider can therefore not tie up the threads that serve
   terminals and file transfers. The discovery document is fetched once and kept until restart, so restart Dirl after

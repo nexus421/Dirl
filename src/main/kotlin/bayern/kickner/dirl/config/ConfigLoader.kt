@@ -46,6 +46,7 @@ fun validateConfig(config: AppConfig): List<String> = buildList {
 
     checkUrl("oidc.issuer", config.oidc.issuer)?.let(::add)
     if (config.oidc.clientId.isBlank()) add("oidc.clientId must not be blank")
+    if (config.oidc.clientSecret.isBlank()) add("oidc.clientSecret must not be blank, register Dirl as a confidential client")
     if ("openid" !in config.oidc.scopes) add("oidc.scopes must contain \"openid\"")
 
     if (config.session.idleTimeoutMinutes < 1) add("session.idleTimeoutMinutes must be at least 1")

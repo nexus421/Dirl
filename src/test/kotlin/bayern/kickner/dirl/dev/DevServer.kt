@@ -25,7 +25,7 @@ fun main() {
           "port": $DEV_PORT,
           "publicUrl": "http://localhost:$DEV_PORT",
           "dataDir": "${File(dir, "data").absolutePath}",
-          "oidc": { "issuer": "${oidc.issuer}", "clientId": "dirl-dev", "forceReauth": false }
+          "oidc": { "issuer": "${oidc.issuer}", "clientId": "dirl-dev", "clientSecret": "${oidc.clientSecret}", "forceReauth": false }
         }
         """.trimIndent()
     )

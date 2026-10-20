@@ -53,8 +53,9 @@ enum class UnlockMode {
  * @property issuer Issuer URL exactly as the provider reports it in its discovery document, e.g.
  *   `https://id.example.com`. The `iss` claim of every ID token must match it byte for byte.
  * @property clientId Client ID registered in the provider.
- * @property clientSecret Only for a confidential client. Pocket ID supports public clients with PKCE, so this is
- *   usually `null`.
+ * @property clientSecret Secret of the confidential client, sent to the token endpoint with HTTP Basic. Required:
+ *   Dirl runs on a server and can keep a secret, so it authenticates itself in addition to PKCE and the client is
+ *   never registered as public.
  * @property allowedSubjects Break-glass list of `sub` claims that are always allowed, in addition to the users
  *   managed in the UI. Normally empty: the user who creates the vault is allowed automatically and grants access
  *   to others under Settings. Only needed when nobody in the UI list can log in any more.
@@ -66,7 +67,7 @@ enum class UnlockMode {
 data class OidcConfig(
     val issuer: String,
     val clientId: String,
-    val clientSecret: String? = null,
+    val clientSecret: String,
     val allowedSubjects: List<String> = emptyList(),
     val forceReauth: Boolean = true,
     val scopes: List<String> = listOf("openid", "profile"),

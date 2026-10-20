@@ -10,6 +10,7 @@ import kotlinx.serialization.json.put
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -25,15 +26,17 @@ data class MockUser(val sub: String, val name: String)
  * the test sources.
  *
  * It implements just enough of the protocol to exercise Dirl's client for real: discovery, an authorization page
- * that lets you pick a user (or logs in [autoLogin] right away), and a token endpoint that checks client ID,
- * redirect URI and the PKCE verifier before issuing an unsigned ID token with the requested nonce.
+ * that lets you pick a user (or logs in [autoLogin] right away), and a token endpoint that checks client ID, client
+ * secret (HTTP Basic), redirect URI and the PKCE verifier before issuing an unsigned ID token with the requested nonce.
  *
+ * @property clientSecret The secret the token endpoint expects from the client.
  * @property users Users offered on the authorization page.
  * @property autoLogin If set, `/authorize` redirects back immediately as this user, for automated tests.
  */
 class MockOidcProvider(
     port: Int = 0,
     private val host: String = "localhost",
+    val clientSecret: String = "mock-client-secret",
     val users: List<MockUser> = listOf(MockUser("dev-ada", "Ada Lovelace"), MockUser("dev-bob", "Bob Builder")),
     var autoLogin: MockUser? = null,
 ) : AutoCloseable {
@@ -82,7 +85,8 @@ class MockOidcProvider(
         val form = parse(ex.requestBody.readBytes().decodeToString())
         val pending = codes.remove(form["code"].orEmpty())
         val valid = pending != null && pending.clientId == form["client_id"] && pending.redirectUri == form["redirect_uri"] &&
-            pkceChallenge(form["code_verifier"].orEmpty()) == pending.challenge
+            pkceChallenge(form["code_verifier"].orEmpty()) == pending.challenge &&
+            basicCredentials(ex) == (pending.clientId to clientSecret)
         if (valid.not() || pending == null) return respond(ex, 400, "application/json", """{"error":"invalid_grant"}""")
 
         val now = System.currentTimeMillis() / 1000
@@ -114,4 +118,11 @@ class MockOidcProvider(
     }
 
     private fun enc(v: String) = URLEncoder.encode(v, Charsets.UTF_8)
+
+    /** Client ID and secret from `Authorization: Basic`, form-urlencoded inside as RFC 6749 section 2.3.1 requires. */
+    private fun basicCredentials(ex: HttpExchange): Pair<String, String>? = runCatching {
+        val header = ex.requestHeaders.getFirst("Authorization").orEmpty()
+        val (id, secret) = Base64.getDecoder().decode(header.removePrefix("Basic ")).decodeToString().split(':', limit = 2)
+        URLDecoder.decode(id, Charsets.UTF_8) to URLDecoder.decode(secret, Charsets.UTF_8)
+    }.getOrNull()
 }

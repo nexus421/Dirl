@@ -25,7 +25,7 @@ class WebTest {
     private val config = AppConfig(
         publicUrl = "https://ssh.example.com",
         dataDir = Files.createTempDirectory("dirl-web").toString(),
-        oidc = OidcConfig(issuer = "https://id.example.com", clientId = "dirl", allowedSubjects = listOf("user-1")),
+        oidc = OidcConfig(issuer = "https://id.example.com", clientId = "dirl", clientSecret = "secret", allowedSubjects = listOf("user-1")),
     )
     private val dirl = createDirl(config, java.io.File(config.dataDir))
 
@@ -150,9 +150,9 @@ class WebTest {
 
     @Test
     fun `config validation reports every problem`() {
-        val broken = config.copy(port = 0, publicUrl = "http://ssh.example.com/", oidc = config.oidc.copy(issuer = "ftp://x", scopes = listOf("profile")))
+        val broken = config.copy(port = 0, publicUrl = "http://ssh.example.com/", oidc = config.oidc.copy(issuer = "ftp://x", clientSecret = " ", scopes = listOf("profile")))
         val issues = validateConfig(broken)
-        assertEquals(5, issues.size, issues.joinToString("\n"))
+        assertEquals(6, issues.size, issues.joinToString("\n"))
         assertTrue(validateConfig(config.copy(publicUrl = "http://localhost:8080")).isEmpty())
     }
 
