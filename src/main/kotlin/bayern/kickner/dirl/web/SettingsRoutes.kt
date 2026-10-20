@@ -95,6 +95,8 @@ fun Route.settingsRoutes(dirl: Dirl) {
             dirl.audit.record(call.session.actor, AuditAction.SESSION_REVOKED, detail = target.actor.name)
         }
         val own = target?.token == call.session.token
+        // Like a logout: the token is dead anyway, the browser should not keep sending it.
+        if (own) call.response.cookies.append(secureCookie(SESSION_COOKIE, "", 0, "Strict"))
         call.respondRedirect(if (own) "/login" else "/settings?done=session-revoked")
     }
 

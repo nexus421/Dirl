@@ -7,11 +7,13 @@ import bayern.kickner.dirl.config.validateConfig
 import bayern.kickner.dirl.createDirl
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.parameters
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import java.nio.file.Files
@@ -122,6 +124,28 @@ class WebTest {
             now += 60_000
             assertEquals(HttpStatusCode.OK, client.get("/") { header(HttpHeaders.Cookie, cookie) }.status)
         }
+    }
+
+    @Test
+    fun `ending your own session clears the cookie like a logout`(): Unit = testApplication {
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val own = dirl.sessions.create(Actor("user-1", "Ada"))
+        val other = dirl.sessions.create(Actor("user-1", "Ada"))
+        suspend fun end(id: String) = client.submitForm("/settings/sessions/revoke", parameters { append("id", id) }) {
+            header(HttpHeaders.Cookie, "$SESSION_COOKIE=${own.token}")
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+
+        val endedOther = end(other.id)
+        assertEquals("/settings?done=session-revoked", endedOther.headers[HttpHeaders.Location])
+        assertTrue(endedOther.headers.getAll(HttpHeaders.SetCookie).orEmpty().none { it.startsWith("$SESSION_COOKIE=") })
+
+        val endedOwn = end(own.id)
+        assertEquals("/login", endedOwn.headers[HttpHeaders.Location])
+        val cleared = endedOwn.headers.getAll(HttpHeaders.SetCookie).orEmpty().firstOrNull { it.startsWith("$SESSION_COOKIE=") }
+        assertTrue(cleared != null && cleared.startsWith("$SESSION_COOKIE=;") && cleared.contains("Max-Age=0"), "was: $cleared")
     }
 
     @Test
