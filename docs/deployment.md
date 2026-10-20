@@ -1,6 +1,7 @@
 # Deployment
 
-Inside an Incus LXC behind Zoraxy:
+Take `dirl.jar` from a [GitHub release](https://github.com/nexus421/Dirl/releases) (check it with
+`sha256sum -c dirl.jar.sha256`) or build it with `./gradlew build`. Inside an Incus LXC behind Zoraxy:
 
 ```bash
 useradd --system --home /var/lib/dirl --shell /usr/sbin/nologin dirl

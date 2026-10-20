@@ -10,7 +10,18 @@ Gradle wrapper.
 ```
 
 `build` compiles, runs all tests and builds the fat JAR `build/libs/dirl.jar` (`./gradlew shadowJar` alone skips the
-tests). GitHub Actions runs the same on every push and pull request.
+tests). GitHub Actions runs the same on every push and pull request, including the SSH integration tests.
+
+## Release
+
+1. Set `version` in `build.gradle.kts`, commit and push.
+2. Publish a release on GitHub with the tag `v<version>`, e.g. `v0.2.0` for `version = "0.2.0"`.
+
+[release.yml](../.github/workflows/release.yml) then checks that the tag matches the version, runs all tests, builds
+`dirl.jar` and attaches it to the release together with `dirl.jar.sha256`. A tag that does not match fails the run
+and attaches nothing.
+
+The actions in both workflows are pinned to commit hashes, the comment names the version.
 
 ## Run locally without Pocket ID
 
@@ -71,6 +82,11 @@ display, and every one of them failed verification, which made the IDE sync fail
 ```
 
 Review the diff of the lockfile before committing. Releases worth watching: sshj, Ktor, BouncyCastle, xterm.js.
+
+Pushes to `master` submit the resolved dependencies to GitHub's dependency graph. With Dependabot alerts enabled in
+the repository settings ("Dependabot alerts"), GitHub reports known vulnerabilities in any of them,
+transitive ones included. There are no automatic update pull requests: they would change `build.gradle.kts` without
+the lockfile and fail the build.
 
 ## Project layout
 
