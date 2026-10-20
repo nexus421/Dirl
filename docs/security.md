@@ -109,7 +109,8 @@ password manager and the provider's console.
   callback deletes the cookie and the provider accepts each code once, so a callback URL works once.
 - Calls to the provider are limited to four at a time, and a failed discovery fetch is not repeated for 15 seconds.
   Anonymous login requests against a slow or unreachable provider can therefore not tie up the threads that serve
-  terminals and file transfers.
+  terminals and file transfers. The discovery document is fetched once and kept until restart, so restart Dirl after
+  the provider moved its endpoints.
 - The ID token is not signature-checked. It comes straight from the token endpoint over TLS, which OIDC Core 1.0
   section 3.1.3.7 allows as replacement. `iss`, `aud`, `azp`, `exp`, `iat` and `nonce` are checked
   ([auth/IdToken.kt](../src/main/kotlin/bayern/kickner/dirl/auth/IdToken.kt)).
