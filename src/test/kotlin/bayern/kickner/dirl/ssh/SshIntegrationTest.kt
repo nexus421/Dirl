@@ -249,6 +249,17 @@ class SshIntegrationTest {
         assertEquals("new äöü\r\n", target.readText())
         assertEquals(listOf("config.txt"), dir.list()!!.toList(), "no temporary file may be left behind")
 
+        // A transfer that breaks off, e.g. a closed browser tab during an upload, leaves neither a changed target nor
+        // the partial temporary file behind.
+        val broken = object : java.io.InputStream() {
+            private var sent = 0
+            override fun read(): Int = if (sent++ < 100_000) 'x'.code else throw java.io.IOException("connection reset")
+        }
+        val failure = client.newSFTPClient().use { sftp -> runCatching { writeAtomically(sftp, target.absolutePath, broken) }.exceptionOrNull() }
+        assertTrue(failure?.message.orEmpty().contains("connection reset"), "the original error must reach the caller, was: $failure")
+        assertEquals("new äöü\r\n", target.readText())
+        assertEquals(listOf("config.txt"), dir.list()!!.toList(), "the partial temporary file must be removed")
+
         // Listings stop at the limit with a message for the user instead of growing without bound.
         repeat(9) { File(dir, "f$it").writeText("x") }
         client.newSFTPClient().use { sftp ->

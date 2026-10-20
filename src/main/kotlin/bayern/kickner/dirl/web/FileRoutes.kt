@@ -404,16 +404,27 @@ fun listDirectory(sftp: SFTPClient, dir: String, max: Int = MAX_LIST_ENTRIES): L
 /**
  * Writes [input] to `<dir>/.<name>.dirl-tmp` and renames it over [target]. OpenSSH only supports overwriting renames
  * through its `posix-rename` extension, if the server lacks it the target is removed first.
+ *
+ * A failed write removes the temporary file again, a broken upload would otherwise leave a large hidden file on a
+ * possibly full file system. Once the target was removed for the fallback rename, the temporary file holds the only
+ * copy of the new content and stays if that rename fails. Errors are rethrown.
  */
 fun writeAtomically(sftp: SFTPClient, target: String, input: InputStream) {
     val tmp = target.substringBeforeLast('/', ".") + "/." + target.substringAfterLast('/') + ".dirl-tmp"
-    sftp.open(tmp, EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)).use { file ->
-        file.RemoteFileOutputStream(0, 16).use { input.copyTo(it) }
-    }
-    runCatching { sftp.rename(tmp, target, setOf(RenameFlags.OVERWRITE)) }.getOrElse {
-        if (sftp.statExistence(target) != null) sftp.rm(target)
-        sftp.rename(tmp, target)
-    }
+    runCatching {
+        sftp.open(tmp, EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)).use { file ->
+            file.RemoteFileOutputStream(0, 16).use { input.copyTo(it) }
+        }
+    }.onFailure { error -> discardAndThrow(sftp, tmp, error) }
+
+    if (runCatching { sftp.rename(tmp, target, setOf(RenameFlags.OVERWRITE)) }.isSuccess) return
+    runCatching { if (sftp.statExistence(target) != null) sftp.rm(target) }.onFailure { error -> discardAndThrow(sftp, tmp, error) }
+    sftp.rename(tmp, target)
+}
+
+private fun discardAndThrow(sftp: SFTPClient, tmp: String, error: Throwable): Nothing {
+    runCatching { sftp.rm(tmp) }
+    throw error
 }
 
 /** The last path segment of an uploaded name, or `null` for names that are empty or would leave the directory. */
