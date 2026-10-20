@@ -30,7 +30,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotnexlib.ResultOf2
 import net.schmizz.sshj.connection.channel.direct.PTYMode
-import net.schmizz.sshj.connection.channel.direct.Session
 import kotlin.time.Duration.Companion.seconds
 
 private const val TAG = "Terminal"
@@ -129,9 +128,7 @@ fun Route.terminalRoutes(dirl: Dirl) {
             runCatching {
                 val session = client.startSession()
                 session.allocatePTY("xterm-256color", cols, rows, 0, 0, emptyMap<PTYMode, Int>())
-                // exec() returns the session channel itself, which also implements Shell and with it the resize request
-                val shell = if (host.useTmux) session.exec(tmuxCommand(host)) as Session.Shell else session.startShell()
-                session to shell
+                session to session.startShell()
             }
         }
         val (sshSession, shell) = opened.getOrElse {
@@ -208,9 +205,6 @@ suspend fun io.ktor.server.application.ApplicationCall.jumpOnlyPage(host: Host) 
 }
 
 private val controlJson = Json { ignoreUnknownKeys = true }
-
-/** `tmux new -A` attaches to the session if it exists and creates it otherwise. The name is reduced to safe characters. */
-fun tmuxCommand(host: Host): String = "tmux new -A -s dirl-" + host.name.replace(Regex("[^A-Za-z0-9_-]"), "_")
 
 private fun errorJson(message: String): String =
     controlJson.encodeToString(ErrorMessage.serializer(), ErrorMessage("error", message))

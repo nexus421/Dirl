@@ -158,6 +158,6 @@ Still open:
 - Pocket ID itself: PKCE, group restriction, `prompt=login` (the protocol is covered by the mock provider tests).
 - Ten minutes idle behind Zoraxy.
 - Incus: LXCFS values in `/proc/meminfo`, `memory.swap.max`, systemd sandboxing.
-- tmux and vim were not installed on the test machine, `tmux new -A` is untested.
+- vim was not installed on the test machine.
 
 [Back to the README](../README.md)

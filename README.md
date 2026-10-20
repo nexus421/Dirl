@@ -17,7 +17,7 @@ managed entirely in the UI.
 
 ## Features
 
-- Browser terminal (xterm.js) with resize, snippets and optional tmux
+- Browser terminal (xterm.js) with resize and snippets
 - SFTP file manager with upload, editor, rename and download
 - Up to two jump hosts, with restricted `authorized_keys` lines generated for every host
 - Host key pinning (trust on first use), hard block on changes

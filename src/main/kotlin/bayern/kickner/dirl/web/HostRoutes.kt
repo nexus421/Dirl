@@ -140,7 +140,6 @@ fun Route.hostRoutes(dirl: Dirl) {
                             "Jump host" to (host.jumpHostId?.let { content.host(it)?.name } ?: "none, direct"),
                             "Key" to (key?.name ?: "missing"),
                             "Role" to roleOf(host, content),
-                            "tmux" to if (host.useTmux) "yes" else "no",
                             "Tags" to host.tags.joinToString(" ") { "#$it" }.ifEmpty { "none" },
                         )
                         connectionHint(state)
@@ -321,7 +320,6 @@ fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): Res
         keyId = keyId,
         jumpHostId = jumpHostId,
         tags = tags,
-        useTmux = form["useTmux"] == "on",
         jumpOnly = form["jumpOnly"] == "on",
         pinnedHostKey = if (endpointChanged) null else existing?.pinnedHostKey,
     )
@@ -557,10 +555,6 @@ private suspend fun ApplicationCall.hostFormPage(content: VaultContent, host: Ho
                     }
                     span("hint") { +"At most two jump hosts in a row." }
                 }
-                checkField(
-                    "Run the terminal in tmux so it survives a page reload (tmux must be installed on the host)",
-                    "useTmux", (form?.get("useTmux") ?: if (host?.useTmux == true) "on" else "") == "on",
-                )
                 checkField(
                     "Jump host only: no terminal, no files, no metrics. Its authorized_keys line then allows nothing but forwarding to the hosts behind it",
                     "jumpOnly", (form?.get("jumpOnly") ?: if (host?.jumpOnly == true) "on" else "") == "on",

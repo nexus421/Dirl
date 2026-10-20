@@ -15,7 +15,7 @@ Kennzeichnung: **[geprüft]** = am Quellcode, an der Doku oder per Test in einer
 | Drin | Raus |
 |---|---|
 | Hosts (flache Tags), Jump-Host (max. 2 Hops) | Plugin-System, Desktop/Mobile-Apps, Sync |
-| Terminal (xterm.js), optional tmux | RDP/VNC, Docker, Tunnels, Automations, KI |
+| Terminal (xterm.js) | RDP/VNC, Docker, Tunnels, Automations, KI, tmux-Integration |
 | SFTP-Dateimanager | Rollen/Sharing, mehrere Accounts |
 | SSH-Keys erzeugen/importieren, Public Key anzeigen | LDAP/GitHub/Google, lokale Logins |
 | Snippets | Passkey/TOTP im Tool (macht Pocket ID) |
@@ -196,7 +196,7 @@ val pubLine = "ssh-ed25519 " + Base64.getEncoder().encodeToString(OpenSSHPublicK
 ```
 - **Host-Key-Pinning (TOFU)**: Beim ersten Verbinden Fingerprint anzeigen und bestätigen, dann im Vault speichern. Bei Änderung hart blockieren, nie stillschweigend akzeptieren.
 - **Jump-Host**: `jump.newDirectConnection(ziel, 22)` → `client.connectVia(tunnel)`. Eigener Host-Key-Check pro Hop, Zyklus-Erkennung, maximal 2 Hops, Referenzzählung auf die Jump-Verbindung. [`connectVia(DirectConnection)` im sshj-Code vorhanden]
-- **Terminal**: `allocatePTY("xterm-256color", …)`, Resize über `Shell.changeWindowDimensions(cols, rows, w, h)` [vorhanden]. Optional Start mit `tmux new -A -s termix-<host>`, damit die Sitzung Reloads überlebt (`-A` hängt an eine bestehende Sitzung an) [geprüft].
+- **Terminal**: `allocatePTY("xterm-256color", …)`, Resize über `Shell.changeWindowDimensions(cols, rows, w, h)` [vorhanden]. Keine tmux-Integration mehr (entfernt am 20.10.2026): Der Sitzungsname `dirl-<host>` hatte keine Nutzerkennung, zwei Nutzer landeten in derselben Shell. Wer tmux will, startet es selbst im Terminal.
 - **SFTP**: Up- und Download als gestreamte Bytes, ohne Encoding-Raten. Speichern über Temp-Datei und Rename. Texteditor nur bis 1 MiB.
 - **Kryptographie der Verbindung**: sshj kann **kein ML-KEM/sntrup** (nur curve25519 u. a.). OpenSSH 10.0 auf Debian 13 bietet curve25519 weiter an, das funktioniert also. Die Verbindungen sind aber nicht post-quanten-sicher. Für interne Hops akzeptiert. Wäre PQ Pflicht, müsste MINA SSHD statt sshj her.
 

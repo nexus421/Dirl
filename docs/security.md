@@ -56,7 +56,8 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   the jump connection, as the concept suggested, is not needed: connections are never closed for being idle, a dead
   jump connection takes its targets down and they reconnect through the backoff.
 - Keys: Ed25519 generated with BouncyCastle in OpenSSH format, imports of unencrypted OpenSSH or PEM keys.
-- Terminal: `xterm-256color` PTY, optionally inside `tmux new -A -s dirl-<name>` so it survives a page reload.
+- Terminal: `xterm-256color` PTY with a plain login shell. There is no tmux integration: a shared session name would
+  put several users into the same shell. Whoever wants tmux starts it in the terminal.
   Terminal input counts as session activity. A watchdog closes the terminal when the session ends or access is
   removed, sealing the vault closes all of them at once.
 - Metrics: one `exec` per host and minute ([ssh/Metrics.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Metrics.kt)),
