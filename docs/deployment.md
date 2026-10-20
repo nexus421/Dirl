@@ -19,6 +19,9 @@ Then open `publicUrl` right away and create the vault, see [Quick start](../READ
 core dumps and systemd sandboxing. In an unprivileged container the sandboxing options can fail with
 `status=226/NAMESPACE`. Then enable `security.nesting` for the container or drop the failing options.
 
+Each connected host costs about 0.3 MiB heap and two threads (measured with 100 hosts), so 256 MiB are enough for a
+few hundred hosts. Raise `-Xmx` beyond that.
+
 Keep the keys out of swap:
 
 ```bash
