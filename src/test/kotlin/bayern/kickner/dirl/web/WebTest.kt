@@ -11,6 +11,7 @@ import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.parameters
@@ -146,6 +147,36 @@ class WebTest {
         assertEquals("/login", endedOwn.headers[HttpHeaders.Location])
         val cleared = endedOwn.headers.getAll(HttpHeaders.SetCookie).orEmpty().firstOrNull { it.startsWith("$SESSION_COOKIE=") }
         assertTrue(cleared != null && cleared.startsWith("$SESSION_COOKIE=;") && cleared.contains("Max-Age=0"), "was: $cleared")
+    }
+
+    @Test
+    fun `too long snippets are refused with the input kept instead of cut silently`(): Unit = testApplication {
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        suspend fun post(url: String, name: String, command: String) = client.submitForm(url, parameters { append("name", name); append("command", command) }) {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        val long = "echo " + "x".repeat(4100) + " end"
+
+        val added = post("/snippets", "long one", long)
+        assertEquals(HttpStatusCode.BadRequest, added.status)
+        val page = added.bodyAsText()
+        assertTrue(page.contains("Command is longer than 4000 characters"), "the reason must be shown")
+        assertTrue(page.contains("x".repeat(4100) + " end") && page.contains("value=\"long one\""), "the input must stay in the form")
+        assertEquals(emptyList(), dirl.vault.content!!.snippets, "nothing may be stored")
+
+        assertTrue(post("/snippets", "n".repeat(65), "ls").bodyAsText().contains("Name is longer than 64 characters"))
+
+        // Editing keeps the edit form, so a second try saves the same snippet instead of adding a new one.
+        assertEquals(HttpStatusCode.Found, post("/snippets", "disk", "df -h").status)
+        val id = dirl.vault.content!!.snippets.single().id
+        val edited = post("/snippets/$id", "disk", long)
+        assertEquals(HttpStatusCode.BadRequest, edited.status)
+        assertTrue(edited.bodyAsText().contains("action=\"/snippets/$id\""), "the error must show the edit form")
+        assertEquals("df -h", dirl.vault.content!!.snippets.single().command)
     }
 
     @Test
