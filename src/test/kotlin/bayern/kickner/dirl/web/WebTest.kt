@@ -157,6 +157,15 @@ class WebTest {
     }
 
     @Test
+    fun `publicUrl must have the form browsers send as Origin`() {
+        listOf("https://ssh.example.com:443", "http://localhost:80", "https://SSH.example.com").forEach { url ->
+            assertEquals(1, validateConfig(config.copy(publicUrl = url)).size, url)
+        }
+        assertTrue(validateConfig(config.copy(publicUrl = "https://ssh.example.com:8443")).isEmpty())
+        assertEquals("https://ssh.example.com:8443", originOf("https://ssh.example.com:8443"))
+    }
+
+    @Test
     fun `uploaded names cannot leave the directory`() {
         assertEquals("a.txt", safeFileName("../../a.txt"))
         assertEquals("b.txt", safeFileName("C:\\x\\b.txt"))
