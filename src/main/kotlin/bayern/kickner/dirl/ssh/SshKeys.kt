@@ -83,7 +83,9 @@ fun fingerprint(key: PublicKey): String =
  */
 fun authorizedKeysLine(host: Host, key: SshKey, allHosts: List<Host>, sourceAddress: String?): String {
     val from = "from=\"${sourceAddress ?: "<DIRL-IP>"}\""
-    val permits = allHosts.filter { it.jumpHostId == host.id }.map { "permitopen=\"${it.address}:${it.port}\"" }.distinct().joinToString(",")
+    // OpenSSH needs IPv6 addresses in brackets here, without them it rejects the whole line.
+    val permits = allHosts.filter { it.jumpHostId == host.id }
+        .map { "permitopen=\"${if (':' in it.address) "[${it.address}]" else it.address}:${it.port}\"" }.distinct().joinToString(",")
     val options = when {
         host.jumpOnly && permits.isEmpty() -> "restrict,command=\"/bin/false\",$from"
         host.jumpOnly -> "restrict,port-forwarding,$permits,command=\"/bin/false\",$from"

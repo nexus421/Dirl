@@ -48,6 +48,21 @@ class SshTest {
         assertEquals(1, Regex("permitopen").findAll(authorizedKeysLine(jump, key, hosts + twin, null)).count())
         // Without targets a pure jump host must not get port-forwarding, it would allow every destination.
         assertEquals("restrict,command=\"/bin/false\",$from ${key.publicKey} dirl", authorizedKeysLine(jump, key, listOf(jump), "192.0.2.9"))
+        // OpenSSH only accepts IPv6 in permitopen inside brackets, without them it rejects the whole line.
+        val v6 = target.copy(id = "t6", address = "fd00::5")
+        assertTrue(authorizedKeysLine(jump, key, listOf(jump, v6), null).contains("permitopen=\"[fd00::5]:22\""))
+    }
+
+    @Test
+    fun `IPv6 addresses are stored without brackets`() {
+        val key = generateEd25519Key("k")
+        val content = VaultContent(keys = listOf(key))
+        fun form(address: String) = io.ktor.http.parametersOf(
+            "name" to listOf("v6"), "address" to listOf(address), "port" to listOf("22"), "username" to listOf("root"), "keyId" to listOf(key.id),
+        )
+        assertEquals("fd00::5", (bayern.kickner.dirl.web.parseHostForm(form("[fd00::5]"), null, content) as ResultOf2.Success).value.address)
+        assertEquals("fd00::5", (bayern.kickner.dirl.web.parseHostForm(form("fd00::5"), null, content) as ResultOf2.Success).value.address)
+        assertIs<ResultOf2.Failure<List<String>>>(bayern.kickner.dirl.web.parseHostForm(form("[fd00::5"), null, content))
     }
 
     @Test

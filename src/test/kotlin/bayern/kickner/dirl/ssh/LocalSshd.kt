@@ -50,8 +50,9 @@ class LocalSshd private constructor(
          *
          * @param penalties OpenSSH 9.8 and later block a source address for a while after failed logins
          *   (`PerSourcePenalties`). Off by default so tests can check Dirl's own logic in isolation.
+         * @param listen Loopback address to listen on, `::1` for IPv6 tests.
          */
-        fun start(root: File, penalties: Boolean = false): LocalSshd {
+        fun start(root: File, penalties: Boolean = false, listen: String = "127.0.0.1"): LocalSshd {
             val dir = Files.createTempDirectory("dirl-sshd").toFile()
             val port = ServerSocket(0).use { it.localPort }
             val hostKey = generateEd25519Key("host")
@@ -72,7 +73,7 @@ class LocalSshd private constructor(
             config.writeText(
                 buildString {
                     appendLine("Port $port")
-                    appendLine("ListenAddress 127.0.0.1")
+                    appendLine("ListenAddress $listen")
                     appendLine("HostKey ${keyFile.absolutePath}")
                     appendLine("PidFile ${File(dir, "sshd.pid").absolutePath}")
                     appendLine("AuthorizedKeysFile ${File(dir, "authorized_keys").absolutePath}")
@@ -94,7 +95,7 @@ class LocalSshd private constructor(
                 .start()
             val deadline = System.currentTimeMillis() + 10_000
             while (System.currentTimeMillis() < deadline) {
-                val up = runCatching { Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 200) } }.isSuccess
+                val up = runCatching { Socket().use { it.connect(InetSocketAddress(listen, port), 200) } }.isSuccess
                 if (up) return LocalSshd(port, dir, process, fingerprintOfLine(hostKey.publicKey))
                 check(process.isAlive) { "sshd exited: ${File(dir, "sshd.log").readText()}" }
                 Thread.sleep(50)

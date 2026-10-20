@@ -52,8 +52,8 @@ import kotlin.math.roundToInt
 /** Characters allowed in a user name: what `useradd` accepts, nothing a shell would interpret. */
 private val usernamePattern = Regex("^[a-zA-Z0-9._][a-zA-Z0-9._-]{0,31}$")
 
-/** Host names, IPv4 and IPv6 addresses. No spaces, no options for `ssh`. */
-private val addressPattern = Regex("^[a-zA-Z0-9.:\\[\\]-]{1,253}$")
+/** Host names, IPv4 and IPv6 addresses, IPv6 without brackets. No spaces, no options for `ssh`. */
+private val addressPattern = Regex("^[a-zA-Z0-9.:-]{1,253}$")
 
 /** Tags: letters, digits and a few separators, so they are safe in URLs and readable as chips. */
 private val tagPattern = Regex("^[\\p{L}\\p{N}._-]{1,32}$")
@@ -293,7 +293,8 @@ suspend fun RoutingContext.hostOr404(dirl: Dirl): Pair<VaultContent, Host>? {
 fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): ResultOf2<Host, List<String>> {
     val errors = mutableListOf<String>()
     val name = form["name"].orEmpty().trim()
-    val address = form["address"].orEmpty().trim()
+    // "[fd00::5]" as in URLs works for direct connections, but a jump host cannot resolve it. Stored without brackets.
+    val address = form["address"].orEmpty().trim().removeSurrounding("[", "]")
     val port = form["port"]?.trim()?.toIntOrNull()
     val username = form["username"].orEmpty().trim()
     val keyId = form["keyId"].orEmpty()

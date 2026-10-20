@@ -190,6 +190,25 @@ class SshIntegrationTest {
     }
 
     @Test
+    fun `an IPv6 target behind a restricted jump host is reachable with the generated lines`(): Unit = runBlocking {
+        val v6 = runCatching { java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("::1")).close() }.isSuccess
+        assumeTrue(v6, "No IPv6 loopback")
+        val jumpServer = sshd()
+        val targetServer = LocalSshd.start(root!!, listen = "::1").also { servers += it }
+        val key = newKey()
+        val jump = addHost("jump6", jumpServer.port, key.id, pin = PinnedHostKey("ssh-ed25519", jumpServer.hostKeyFingerprint, now), jumpOnly = true)
+        val target = Host(id = "target6", name = "target6", address = "::1", port = targetServer.port, username = user, keyId = key.id, jumpHostId = jump.id, pinnedHostKey = PinnedHostKey("ssh-ed25519", targetServer.hostKeyFingerprint, now))
+        dirl.vault.update { it.copy(hosts = it.hosts + target) }
+        val content = dirl.vault.content!!
+        jumpServer.authorize(authorizedKeysLine(jump, key, content.hosts, "127.0.0.1"))
+        targetServer.authorize(authorizedKeysLine(target, key, content.hosts, "::1"))
+
+        val result = dirl.connections.connection(target.id)
+        assertIs<ResultOf2.Success<SSHClient>>(result, "state: $result\njump sshd log:\n${jumpServer.log().lines().takeLast(10).joinToString("\n")}")
+        assertTrue(exec(result.value, "echo via-v6").contains("via-v6"))
+    }
+
+    @Test
     fun `a jump host that is also a terminal target runs commands and forwards only to its targets`(): Unit = runBlocking {
         val jumpServer = sshd()
         val targetServer = sshd()
