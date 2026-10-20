@@ -36,6 +36,9 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
 - `oidc.allowedSubjects` in the config is a break-glass list for the case that nobody in the UI list can log in.
 - Rejected logins appear under Settings as access requests (in memory, the latest 20).
 - You cannot remove yourself and the last user cannot be removed.
+- There are no roles. Every allowed user can do everything: use all hosts, change hosts, keys and snippets, export
+  keys (with the vault passphrase), allow and remove users, end sessions, seal the vault and change the passphrase
+  (with the old one). Only allow people you would give the same access to every host yourself.
 
 ## SSH
 
