@@ -83,10 +83,10 @@ display, and every one of them failed verification, which made the IDE sync fail
 
 Review the diff of the lockfile before committing. Releases worth watching: sshj, Ktor, BouncyCastle, xterm.js.
 
-Pushes to `master` submit the resolved dependencies to GitHub's dependency graph. With Dependabot alerts enabled in
-the repository settings ("Dependabot alerts"), GitHub reports known vulnerabilities in any of them,
-transitive ones included. There are no automatic update pull requests: they would change `build.gradle.kts` without
-the lockfile and fail the build.
+Pushes to `master` submit the resolved dependencies to GitHub's dependency graph. With "Dependency graph" and
+"Dependabot alerts" enabled in the repository settings (both are off by default), GitHub reports known vulnerabilities
+in any of them, transitive ones included. There are no automatic update pull requests: they would change
+`build.gradle.kts` without the lockfile and fail the build.
 
 ## Project layout
 
