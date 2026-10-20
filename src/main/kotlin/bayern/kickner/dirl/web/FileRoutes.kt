@@ -64,7 +64,11 @@ const val MAX_EDIT_BYTES = 1L * 1024 * 1024
 /** Directories with more entries are not listed, a compromised server could otherwise send an endless listing. */
 const val MAX_LIST_ENTRIES = 10_000
 
-/** Upload limit per request. */
+/**
+ * Largest multipart part accepted by the upload, so the largest file. Ktor applies it to every part: files are
+ * streamed, plain form fields are read into memory completely. Only allowed users can send a request here, and they
+ * can seal the vault anyway, so an oversized form field is no attack worth defending against.
+ */
 private const val MAX_UPLOAD_BYTES = 4L * 1024 * 1024 * 1024
 
 /**
