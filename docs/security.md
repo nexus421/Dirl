@@ -11,6 +11,10 @@ and in key file mode additionally with the key file. Changing the passphrase cre
 backups, so the old passphrase opens nothing on the server any more. Backups downloaded earlier still open with it. GCM
 also protects integrity, so nobody with write access can silently swap a pinned host key or add a user.
 
+The Argon2 parameters are not authenticated. Changing them only derives a wrong key, but huge values would exhaust the
+heap or hang the unlock, so unlock and restore refuse more than 128 MiB, 10 passes or 4 lanes with a message instead
+of running Argon2.
+
 Writes go to a temporary file, are `fsync`ed and renamed over the old file. The previous three versions are kept as
 `vault.json.1` to `vault.json.3`. Settings offers the current file as encrypted backup download, the setup page of a
 fresh installation restores it.

@@ -196,6 +196,53 @@ class VaultTest {
     }
 
     @Test
+    fun `KDF parameters outside the bounds are refused`() {
+        val good = KdfParams.generate()
+        assertNull(good.problem())
+        assertNull(good.copy(memKiB = 64, iterations = 1).problem(), "the cheap test parameters must stay usable")
+        listOf(
+            good.copy(alg = "scrypt"),
+            good.copy(memKiB = 4_000_000),
+            good.copy(memKiB = 4),
+            good.copy(iterations = 0),
+            good.copy(iterations = 1_000_000),
+            good.copy(parallelism = 0),
+            good.copy(parallelism = 64),
+            good.copy(salt = "not base64!"),
+            good.copy(salt = ""),
+        ).forEach { assertTrue(it.problem() != null, "should be refused: $it") }
+    }
+
+    @Test
+    fun `a vault file with unusable KDF parameters is refused before Argon2 runs`() {
+        vault().setup(passphrase.toCharArray(), actor)
+        val file = File(dir, "vault.json")
+
+        // Without the check this would allocate about 4 GB and kill the process.
+        file.writeText(file.readText().replace(Regex("\"memKiB\": *\\d+"), "\"memKiB\": 4000000"))
+        val tooBig = vault().unlock(passphrase.toCharArray(), actor)
+        assertTrue(((tooBig as ResultOf2.Failure).value as UnlockError.Unusable).reason.contains("KDF"), "was: $tooBig")
+
+        // Without the check BouncyCastle throws, which ended as an internal error instead of a message.
+        file.writeText(file.readText().replace(Regex("\"memKiB\": *\\d+"), "\"memKiB\": 64").replace(Regex("\"parallelism\": *\\d+"), "\"parallelism\": 0"))
+        val broken = vault().unlock(passphrase.toCharArray(), actor)
+        assertIs<UnlockError.Unusable>((broken as ResultOf2.Failure).value)
+    }
+
+    @Test
+    fun `a backup with unusable KDF parameters is not restored`() {
+        val v = vault()
+        v.setup(passphrase.toCharArray(), actor)
+        val backup = v.exportEncrypted()!!.decodeToString().replace(Regex("\"memKiB\": *\\d+"), "\"memKiB\": 4000000").toByteArray()
+
+        val freshDir = Files.createTempDirectory("dirl-restore").toFile()
+        val fresh = Vault(VaultStore(freshDir), AuditLog(File(freshDir, "audit.jsonl")))
+        assertTrue(fresh.restore(backup, actor).orEmpty().contains("KDF"))
+        assertIs<VaultState.Uninitialized>(fresh.state)
+        assertTrue(File(freshDir, "vault.json").exists().not())
+    }
+
+    @Test
     fun `the audit page reads only the end of a large log`() {
         val log = File(dir, "big-audit.jsonl")
         // About 2.5 MiB of entries, more than the tail window, so the read starts in the middle of a line.

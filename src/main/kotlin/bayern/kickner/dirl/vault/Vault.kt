@@ -243,6 +243,7 @@ class Vault(
             if (state != VaultState.Uninitialized || store.exists()) return@synchronized "A vault already exists"
             val parsed = runCatching { json.decodeFromString(VaultEnvelope.serializer(), bytes.decodeToString()) }
                 .getOrElse { return@synchronized "This is not a Dirl vault file" }
+            parsed.kdf.problem()?.let { return@synchronized "This backup has unusable KDF parameters: $it" }
             store.write(parsed)
             envelope = null
             state = VaultState.Sealed
@@ -362,7 +363,10 @@ class Vault(
         return ResultOf2.Failure(UnlockError.LockedOut(lockedUntil))
     }
 
-    private fun readEnvelope(): Result<VaultEnvelope> = runCatching { store.read() }
+    /** Reads the file and refuses KDF parameters that would exhaust the heap or hang the unlock. */
+    private fun readEnvelope(): Result<VaultEnvelope> = runCatching {
+        store.read().also { read -> read.kdf.problem()?.let { error("The vault file has unusable KDF parameters: $it") } }
+    }
 
     private fun wrapDek(dek: SecretKey, passphrase: CharArray, params: KdfParams): SealedBox {
         val kek = deriveKek(passphrase, params)
