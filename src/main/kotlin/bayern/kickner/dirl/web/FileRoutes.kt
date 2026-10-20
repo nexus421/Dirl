@@ -93,7 +93,7 @@ fun Route.fileRoutes(dirl: Dirl) {
         val requested = call.request.queryParameters["path"]
         val listing = withSftp(dirl, host) { sftp ->
             val dir = sftp.canonicalize(requested?.trim()?.ifBlank { null } ?: ".")
-            dir to listDirectory(sftp, dir).sortedWith(compareBy({ it.isDirectory.not() }, { it.name.lowercase() }))
+            dir to listEntries(sftp, dir).sortedWith(compareBy({ it.isDirectory.not() }, { it.name.lowercase() }))
         } ?: return@get
         val (dir, entries) = listing
 
@@ -131,11 +131,12 @@ fun Route.fileRoutes(dirl: Dirl) {
                                         td("mono") {
                                             if (isDir) a(href = filesUrl(host, entry.path)) { +"${entry.name}/" }
                                             else a(href = "/hosts/${host.id}/files/download?path=${enc(entry.path)}") { +entry.name }
+                                            if (entry.isLink) span("muted") { attributes["title"] = "Symbolic link"; +" →" }
                                         }
-                                        td("num") { if (isDir.not()) +humanSize(entry.attributes.size) }
-                                        td("nowrap hide-sm muted") { +formatTimestamp(entry.attributes.mtime * 1000) }
+                                        td("num") { if (isDir.not()) +humanSize(entry.size) }
+                                        td("nowrap hide-sm muted") { +formatTimestamp(entry.mtime * 1000) }
                                         td("actions") {
-                                            val editable = isDir.not() && entry.attributes.mode.type == FileMode.Type.REGULAR && entry.attributes.size <= MAX_EDIT_BYTES
+                                            val editable = entry.type == FileMode.Type.REGULAR && entry.size <= MAX_EDIT_BYTES
                                             if (editable) linkButton("/hosts/${host.id}/files/edit?path=${enc(entry.path)}", "Edit", "sm ghost")
                                             linkButton("/hosts/${host.id}/files/rename?path=${enc(entry.path)}", "Rename", "sm ghost")
                                             postButton(
@@ -259,11 +260,7 @@ fun Route.fileRoutes(dirl: Dirl) {
         val (_, host) = hostOr404(dirl) ?: return@post
         val form = call.receiveParameters()
         val path = form["path"].orEmpty()
-        withSftp(dirl, host) { sftp ->
-            val isDir = sftp.stat(path).type == FileMode.Type.DIRECTORY
-            if (isDir) runCatching { sftp.rmdir(path) }.getOrElse { error("Only empty directories can be deleted. ${it.message}") }
-            else sftp.rm(path)
-        } ?: return@post
+        withSftp(dirl, host) { sftp -> deleteEntry(sftp, path) } ?: return@post
         dirl.audit.record(call.session.actor, AuditAction.SFTP_DELETE, host.name, path)
         call.respondRedirect(filesUrl(host, form["dir"].orEmpty()) + "&done=deleted")
     }
@@ -402,14 +399,54 @@ fun listDirectory(sftp: SFTPClient, dir: String, max: Int = MAX_LIST_ENTRIES): L
 }
 
 /**
- * Writes [input] to `<dir>/.<name>.dirl-tmp` and renames it over [target]. OpenSSH only supports overwriting renames
+ * One row of the file listing.
+ *
+ * @property name File name.
+ * @property path Absolute path.
+ * @property type Type of the entry, for a symlink the type of its target. A broken link stays [FileMode.Type.SYMLINK].
+ * @property size Size in bytes, for a symlink the size of its target.
+ * @property mtime Modification time in Unix seconds.
+ * @property isLink True if the entry is a symlink.
+ */
+data class ListedEntry(val name: String, val path: String, val type: FileMode.Type, val size: Long, val mtime: Long, val isLink: Boolean) {
+    /** True for directories and links to directories. */
+    val isDirectory: Boolean get() = type == FileMode.Type.DIRECTORY
+}
+
+/**
+ * Lists [dir] like [listDirectory] as rows for the file manager. The server reports symlinks as such, so links to
+ * directories would show up as files. Each link costs one more request to learn the type of its target.
+ */
+fun listEntries(sftp: SFTPClient, dir: String, max: Int = MAX_LIST_ENTRIES): List<ListedEntry> = listDirectory(sftp, dir, max).map { info ->
+    val own = info.attributes
+    val isLink = own.type == FileMode.Type.SYMLINK
+    val target = if (isLink) runCatching { sftp.stat(info.path) }.getOrNull() else null
+    ListedEntry(info.name, info.path, target?.type ?: own.type, target?.size ?: own.size, own.mtime, isLink)
+}
+
+/**
+ * Deletes a file, a symlink or an empty directory. Looks at the entry itself and not at a link target, so a link is
+ * always removed as link and its target is never touched.
+ */
+fun deleteEntry(sftp: SFTPClient, path: String) {
+    val isDir = sftp.lstat(path).type == FileMode.Type.DIRECTORY
+    if (isDir) runCatching { sftp.rmdir(path) }.getOrElse { error("Only empty directories can be deleted. ${it.message}") }
+    else sftp.rm(path)
+}
+
+/**
+ * Writes [input] to `<dir>/.<name>.dirl-tmp` and renames it over [path]. OpenSSH only supports overwriting renames
  * through its `posix-rename` extension, if the server lacks it the target is removed first.
+ *
+ * A symlink as [path] is resolved first, so the file it points to is written and the link stays. Writing to the
+ * link path itself would replace the link with a plain file and leave the real file unchanged.
  *
  * A failed write removes the temporary file again, a broken upload would otherwise leave a large hidden file on a
  * possibly full file system. Once the target was removed for the fallback rename, the temporary file holds the only
  * copy of the new content and stays if that rename fails. Errors are rethrown.
  */
-fun writeAtomically(sftp: SFTPClient, target: String, input: InputStream) {
+fun writeAtomically(sftp: SFTPClient, path: String, input: InputStream) {
+    val target = resolveLink(sftp, path)
     val tmp = target.substringBeforeLast('/', ".") + "/." + target.substringAfterLast('/') + ".dirl-tmp"
     runCatching {
         sftp.open(tmp, EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)).use { file ->
@@ -420,6 +457,12 @@ fun writeAtomically(sftp: SFTPClient, target: String, input: InputStream) {
     if (runCatching { sftp.rename(tmp, target, setOf(RenameFlags.OVERWRITE)) }.isSuccess) return
     runCatching { if (sftp.statExistence(target) != null) sftp.rm(target) }.onFailure { error -> discardAndThrow(sftp, tmp, error) }
     sftp.rename(tmp, target)
+}
+
+/** The real path behind a symlink, or [path] itself for everything else, including paths that do not exist yet. */
+private fun resolveLink(sftp: SFTPClient, path: String): String {
+    val isLink = runCatching { sftp.lstat(path).type == FileMode.Type.SYMLINK }.getOrDefault(false)
+    return if (isLink) runCatching { sftp.canonicalize(path) }.getOrDefault(path) else path
 }
 
 private fun discardAndThrow(sftp: SFTPClient, tmp: String, error: Throwable): Nothing {

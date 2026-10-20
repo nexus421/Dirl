@@ -10,12 +10,15 @@ import bayern.kickner.dirl.vault.PinnedHostKey
 import bayern.kickner.dirl.web.Dirl
 import bayern.kickner.dirl.web.SESSION_COOKIE
 import bayern.kickner.dirl.web.dirlModule
+import bayern.kickner.dirl.web.deleteEntry
 import bayern.kickner.dirl.web.listDirectory
+import bayern.kickner.dirl.web.listEntries
 import bayern.kickner.dirl.web.writeAtomically
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
@@ -30,6 +33,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotnexlib.ResultOf2
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.sftp.FileMode
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeEach
@@ -267,6 +271,67 @@ class SshIntegrationTest {
             val tooMany = runCatching { listDirectory(sftp, dir.absolutePath, max = 5) }.exceptionOrNull()
             assertTrue(tooMany?.message.orEmpty().contains("more than 5 entries"), "was: $tooMany")
         }
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun `symlinks list, delete and save like their targets without touching them`(): Unit = runBlocking {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict ${key.publicKey} dirl")
+        val host = addHost("links", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val dir = Files.createTempDirectory("dirl-links").toFile()
+        val sub = File(dir, "sub").apply { mkdir(); File(this, "inside.txt").writeText("keep") }
+        val real = File(dir, "real.txt").apply { writeText("old") }
+        Files.createSymbolicLink(File(dir, "linkdir").toPath(), sub.toPath())
+        Files.createSymbolicLink(File(dir, "link.txt").toPath(), real.toPath())
+        Files.createSymbolicLink(File(dir, "broken").toPath(), File(dir, "missing").toPath())
+
+        val client = (dirl.connections.connection(host.id) as ResultOf2.Success).value
+        client.newSFTPClient().use { sftp ->
+            val entries = listEntries(sftp, dir.absolutePath).associateBy { it.name }
+            assertTrue(entries.getValue("linkdir").isDirectory, "a link to a directory must be navigable")
+            assertTrue(entries.getValue("linkdir").isLink)
+            assertEquals(FileMode.Type.REGULAR, entries.getValue("link.txt").type, "a link to a text file must be editable")
+            assertEquals(3, entries.getValue("link.txt").size, "size of the target, not of the link")
+            assertTrue(entries.getValue("broken").isDirectory.not() && entries.getValue("broken").isLink)
+            assertTrue(entries.getValue("real.txt").isLink.not())
+
+            // Saving through the link writes the target and keeps the link.
+            writeAtomically(sftp, File(dir, "link.txt").absolutePath, "new".byteInputStream())
+            assertTrue(Files.isSymbolicLink(File(dir, "link.txt").toPath()), "the link must survive a save")
+            assertEquals("new", real.readText())
+
+            // Deleting a link removes the link, never the target.
+            deleteEntry(sftp, File(dir, "linkdir").absolutePath)
+            deleteEntry(sftp, File(dir, "broken").absolutePath)
+            deleteEntry(sftp, File(dir, "link.txt").absolutePath)
+        }
+        assertEquals(listOf("real.txt", "sub"), dir.list()!!.sorted())
+        assertEquals("keep", File(sub, "inside.txt").readText())
+        assertEquals("new", real.readText())
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun `the file list opens links to directories and marks links`(): Unit = testApplication {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict ${key.publicKey} dirl")
+        val host = addHost("linkpage", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val dir = Files.createTempDirectory("dirl-linkpage").toFile()
+        val sub = File(dir, "sub").apply { mkdir() }
+        Files.createSymbolicLink(File(dir, "linkdir").toPath(), sub.toPath())
+        val session = dirl.sessions.create(actor)
+        application { dirlModule(dirl) }
+
+        val page = client.get("/hosts/${host.id}/files?path=${java.net.URLEncoder.encode(dir.absolutePath, Charsets.UTF_8)}") {
+            header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}")
+        }.bodyAsText()
+        val linkHref = "/hosts/${host.id}/files?path=" + java.net.URLEncoder.encode(File(dir, "linkdir").absolutePath, Charsets.UTF_8)
+        assertTrue(page.contains("href=\"$linkHref\""), "the link to a directory must open the listing")
+        assertTrue(page.contains("linkdir/</a><span class=\"muted\" title=\"Symbolic link\"> →</span>"), "the link must be marked")
+        assertTrue(page.contains("sub/</a><span").not(), "plain directories carry no mark")
         dir.deleteRecursively()
     }
 

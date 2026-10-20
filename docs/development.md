@@ -54,8 +54,9 @@ DIRL_SSHD_ROOT="$HOME/sshd-root" ./gradlew test
 ```
 
 The tests cover trust on first use, a changed host key, the stop after three rejected logins, both jump host
-variants, atomic SFTP writes, upload overwrite protection, the terminal WebSocket including resize and closing all
-connections while a connect is still running (a held back handshake through `GatedProxy`).
+variants, atomic SFTP writes including broken transfers, symlinks in listing, editor and delete, upload overwrite
+protection, the terminal WebSocket including resize and closing all connections while a connect is still running (a
+held back handshake through `GatedProxy`).
 [LoginFlowTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/LoginFlowTest.kt) runs the complete OIDC login against
 the mock provider.
 
