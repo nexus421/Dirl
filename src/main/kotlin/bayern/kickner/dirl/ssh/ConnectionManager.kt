@@ -222,6 +222,14 @@ class ConnectionManager(
         val error = outcome.exceptionOrNull()
         if (error == null) {
             entry.client = client
+            // reset() does not wait for a running connect, it only drops the entry from the map. A client finished
+            // after that would belong to nobody and stay open, even after sealing. Setting the client first and
+            // checking second means either reset() sees the client and closes it, or this check sees the drop.
+            if (entries[host.id] !== entry) {
+                closeQuietly(client)
+                infoLog { "Connection to ${host.name} was reset while connecting, closed" }
+                return ResultOf2.Failure(ConnectionState.Idle)
+            }
             entry.failures = 0
             entry.authFailures = 0
             entry.state = ConnectionState.Connected(clock())

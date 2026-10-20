@@ -24,6 +24,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readBytes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotnexlib.ResultOf2
@@ -140,6 +142,26 @@ class SshIntegrationTest {
         dirl.connections.reset(host.id)
         val afterReset = dirl.connections.connection(host.id)
         assertIs<ResultOf2.Success<SSHClient>>(afterReset, "state: $afterReset\nsshd log:\n${server.log().lines().takeLast(15).joinToString("\n")}")
+    }
+
+    @Test
+    fun `closing all connections during a connect does not leave the new connection open`(): Unit = runBlocking {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("${key.publicKey} dirl")
+        GatedProxy(server.port).use { proxy ->
+            val host = addHost("slow", proxy.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+
+            val attempt = async(Dispatchers.IO) { dirl.connections.connection(host.id) }
+            assertTrue(proxy.awaitAccepted(), "the connect attempt never reached the proxy")
+            // What sealing the vault does, while the handshake is held back.
+            dirl.connections.disconnectAll()
+            proxy.open()
+
+            assertIs<ResultOf2.Failure<ConnectionState>>(attempt.await(), "a connect that outlived disconnectAll must not be handed out")
+            assertTrue(proxy.awaitIdle(), "the connection outlived disconnectAll")
+            assertIs<ResultOf2.Success<SSHClient>>(dirl.connections.connection(host.id), "the next attempt must connect normally")
+        }
     }
 
     @Test
