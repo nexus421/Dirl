@@ -81,6 +81,6 @@ data class OidcConfig(
  */
 @Serializable
 data class SessionConfig(
-    val idleTimeoutMinutes: Int = 30,
+    val idleTimeoutMinutes: Int = 60,
     val maxAgeHours: Int = 12,
 )

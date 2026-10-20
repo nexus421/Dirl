@@ -50,7 +50,7 @@ except the OIDC client secret, so `0400` and owned by the service user.
 
 | Field                | Type | Default | Description                               |
 |----------------------|------|---------|-------------------------------------------|
-| `idleTimeoutMinutes` | int  | `30`    | Session expires after this much idle time |
+| `idleTimeoutMinutes` | int  | `60`    | Session expires after this much idle time |
 | `maxAgeHours`        | int  | `12`    | Session expires this long after the login |
 
 Pocket ID client setup: callback URL `<publicUrl>/auth/callback`, PKCE enabled, **not** a public client (Dirl

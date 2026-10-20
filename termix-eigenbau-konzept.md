@@ -168,7 +168,7 @@ Weitere Regeln:
 - HTTP-Aufrufe mit `java.net.http.HttpClient` (JDK).
 - **Zugriff in Pocket ID steuern**: im Client unter Access „Selected user groups“ eine Gruppe `termix` wählen. Nicht-Mitglieder bekommen „You are not allowed to access this service“. Zusätzlich im Tool eine `sub`-Allowlist in `config.json` (doppelt hält besser).
 - **Optional Re-Auth erzwingen**: Client-Option „Requires Re-Authentication“ oder `prompt=login`. Dann ist bei jedem Login in das Tool ein frischer Passkey nötig, auch bei bestehender Pocket-ID-Sitzung. Empfehlung: an.
-- Session: `__Host-session`-Cookie (`Secure; HttpOnly; SameSite=Strict; Path=/`), 256-Bit-Zufallstoken, Map im RAM, Idle-Timeout 30 min, maximal 12 h.
+- Session: `__Host-session`-Cookie (`Secure; HttpOnly; SameSite=Strict; Path=/`), 256-Bit-Zufallstoken, Map im RAM, Idle-Timeout 60 min (am 20.10.2026 von 30 min erhöht, ein offenes Terminal neben anderer Arbeit lief sonst zu oft ab), maximal 12 h.
 - Login-Button als normaler Link, kein Formular (sonst blockt `form-action` den Redirect).
 
 ### Web-Härtung

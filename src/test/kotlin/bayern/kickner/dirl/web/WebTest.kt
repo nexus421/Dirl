@@ -103,11 +103,12 @@ class WebTest {
         val client = noRedirects()
         val cookie = "$SESSION_COOKIE=${clocked.sessions.create(Actor("user-1", "Ada")).token}"
 
-        // Every minute for 40 minutes the overview reloads itself, nobody touches the browser.
-        repeat(40) {
+        // Every minute, ten minutes past the idle timeout, the overview reloads itself, nobody touches the browser.
+        val idle = config.session.idleTimeoutMinutes
+        repeat(idle + 10) {
             now += 60_000
             val reload = client.get("/?$AUTO_REFRESH_PARAM=1") { header(HttpHeaders.Cookie, cookie) }
-            if (it < 29) assertEquals(HttpStatusCode.OK, reload.status, "minute ${it + 1}")
+            if (it < idle - 1) assertEquals(HttpStatusCode.OK, reload.status, "minute ${it + 1}")
         }
         assertEquals("/login", client.get("/") { header(HttpHeaders.Cookie, cookie) }.headers[HttpHeaders.Location])
     }
@@ -121,7 +122,7 @@ class WebTest {
         application { dirlModule(clocked) }
         val client = noRedirects()
         val cookie = "$SESSION_COOKIE=${clocked.sessions.create(Actor("user-1", "Ada")).token}"
-        repeat(40) {
+        repeat(config.session.idleTimeoutMinutes + 10) {
             now += 60_000
             assertEquals(HttpStatusCode.OK, client.get("/") { header(HttpHeaders.Cookie, cookie) }.status)
         }
