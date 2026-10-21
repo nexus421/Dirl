@@ -62,3 +62,15 @@ Try it locally without an identity provider:
 - [Security](docs/security.md): vault, access control, SSH restrictions, web hardening
 - [Development](docs/development.md): tests, dev server, dependencies, project layout, endpoints
 - [Concept](termix-eigenbau-konzept.md) (German): design decisions and reasoning
+
+## Why Dirl
+
+Dirl does one thing: SSH access to your servers from the browser, for one person or a small team. It is reduced to
+what that needs and aims to be simple, stable, secure and reliable. A feature has to earn its place, and the code
+stays small enough to review alone.
+
+It exists because tools like Termix grew too fast for my taste. Many features, many small bugs, a lot to trust.
+Dirl follows KISS instead.
+
+Dirl is written with AI. Code, tests and documentation were created with Claude by Anthropic, directed, tested and
+spot-checked by me.
