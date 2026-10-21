@@ -5,8 +5,6 @@ import bayern.kickner.dirl.audit.AuditLog
 import bayern.kickner.dirl.crypto.KdfParams
 import bayern.kickner.dirl.crypto.deriveKek
 import bayern.kickner.dirl.crypto.Aead
-import bayern.kickner.dirl.web.parseHostForm
-import io.ktor.http.parametersOf
 import kotlinx.serialization.json.Json
 import kotnexlib.ResultOf2
 import java.io.File
@@ -195,26 +193,6 @@ class VaultTest {
         assertIs<ResultOf2.Success<Unit>>(fresh.unlock(passphrase.toCharArray(), actor))
         assertEquals(listOf(host), fresh.content?.hosts)
         assertTrue(fresh.restore(backup, actor) != null, "restore must never overwrite an existing vault")
-    }
-
-    @Test
-    @Suppress("DEPRECATION")
-    fun `vaults from versions with tmux still unlock, saving the host form drops the flag`() {
-        val oldHost = host.copy(useTmux = true)
-        vault().apply {
-            setup(passphrase.toCharArray(), actor)
-            update { it.copy(keys = listOf(SshKey("k1", "key", "pem", "ssh-ed25519 AAAA", now)), hosts = listOf(oldHost)) }
-        }
-        val reopened = vault()
-        assertIs<ResultOf2.Success<Unit>>(reopened.unlock(passphrase.toCharArray(), actor))
-        assertEquals(listOf(oldHost), reopened.content?.hosts)
-
-        val form = parametersOf(
-            "name" to listOf("web"), "address" to listOf("10.0.0.1"), "port" to listOf("22"),
-            "username" to listOf("root"), "keyId" to listOf("k1"), "useTmux" to listOf("on"),
-        )
-        val saved = assertIs<ResultOf2.Success<Host>>(parseHostForm(form, oldHost, reopened.content!!)).value
-        assertEquals(false, saved.useTmux)
     }
 
     @Test

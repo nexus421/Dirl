@@ -66,8 +66,6 @@ data class VaultContent(
  * @property keyId The [SshKey] to log in with.
  * @property jumpHostId Optional host to tunnel through. At most two hops in total, see `ssh/Route.kt`.
  * @property tags Flat tags for grouping in the overview.
- * @property useTmux No longer used. Older versions could start the terminal in tmux. The field stays so their vaults
- *   still load, because the vault JSON rejects unknown fields. Saving the host form drops it.
  * @property jumpOnly Only used as jump host: no terminal, no files, no metrics, and its `authorized_keys` line runs
  *   `command="/bin/false"`. A jump host that is also a terminal target leaves this off.
  * @property pinnedHostKey The host key accepted on first contact (TOFU). `null` until confirmed in the UI.
@@ -82,8 +80,6 @@ data class Host(
     val keyId: String,
     val jumpHostId: String? = null,
     val tags: List<String> = emptyList(),
-    @Deprecated("tmux support was removed, the field only keeps older vaults loadable")
-    val useTmux: Boolean = false,
     val jumpOnly: Boolean = false,
     val pinnedHostKey: PinnedHostKey? = null,
 )
