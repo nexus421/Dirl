@@ -27,9 +27,12 @@ import io.ktor.http.HttpHeaders
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readBytes
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotnexlib.ResultOf2
 import net.schmizz.sshj.SSHClient
@@ -107,7 +110,8 @@ class SshIntegrationTest {
         assertTrue(dirl.connections.pinHostKey(host.id, unknown.fingerprint, actor))
         val client = (dirl.connections.connection(host.id) as ResultOf2.Success).value
         assertTrue(exec(client, "echo dirl-ok").contains("dirl-ok"))
-        assertIs<ResultOf2.Success<RawMetrics>>(parseMetrics(exec(client, METRICS_COMMAND)), "metrics output did not parse")
+        val metrics = assertIs<ResultOf2.Success<RawMetrics>>(parseMetrics(exec(client, METRICS_COMMAND)), "metrics output did not parse")
+        assertTrue(metrics.value.cpuPercent != null, "one poll must yield the CPU usage on its own")
     }
 
     @Test
@@ -146,6 +150,67 @@ class SshIntegrationTest {
         dirl.connections.reset(host.id)
         val afterReset = dirl.connections.connection(host.id)
         assertIs<ResultOf2.Success<SSHClient>>(afterReset, "state: $afterReset\nsshd log:\n${server.log().lines().takeLast(15).joinToString("\n")}")
+    }
+
+    @Test
+    fun `closing for absence keeps a stopped host stopped and the next access connects again`(): Unit = runBlocking {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("${key.publicKey} dirl")
+        val pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now)
+        val good = addHost("good", server.port, key.id, pin = pin)
+        val bad = addHost("bad", server.port, newKey().id, pin = pin)
+
+        val first = (dirl.connections.connection(good.id) as ResultOf2.Success).value
+        repeat(MAX_AUTH_FAILURES) { attempt ->
+            dirl.connections.connection(bad.id)
+            now += backoffDelayMillis(attempt + 1) + 1
+        }
+        assertIs<ConnectionState.Stopped>(dirl.connections.state(bad.id))
+
+        dirl.connections.closeAll()
+        assertEquals(ConnectionState.Idle, dirl.connections.state(good.id))
+        assertTrue(first.isConnected.not(), "the connection must be closed")
+        assertIs<ConnectionState.Stopped>(dirl.connections.state(bad.id), "a stop survives, otherwise every arrival brings new failed logins")
+        assertIs<ConnectionState.Stopped>((dirl.connections.connection(bad.id) as ResultOf2.Failure).value)
+
+        val second = (dirl.connections.connection(good.id) as ResultOf2.Success).value
+        assertTrue(second !== first && second.isConnected)
+    }
+
+    @Test
+    fun `the status poll runs only while somebody is present and never twice at once for a host`(): Unit = runBlocking {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("${key.publicKey} dirl")
+        GatedProxy(server.port).use { proxy ->
+            // The rounds run on IO: the test thread blocks on the proxy, the polls must not wait for it.
+            val host = addHost("polled", proxy.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+            withContext(Dispatchers.IO) { assertEquals(0, dirl.metrics.round(this), "nobody is present, nothing is polled") }
+            assertEquals(ConnectionState.Idle, dirl.connections.state(host.id))
+
+            val leave = CompletableDeferred<Unit>()
+            val arrived = CompletableDeferred<Unit>()
+            val visitor = launch(Dispatchers.IO) { dirl.presence.hold { arrived.complete(Unit); leave.await() } }
+            arrived.await()
+            withContext(Dispatchers.IO) {
+                assertEquals(1, dirl.metrics.round(this))
+                assertTrue(proxy.awaitAccepted(), "the poll connects")
+                assertEquals(0, dirl.metrics.round(this), "the first poll still hangs, a second one must not pile up")
+                proxy.open()
+            }
+            assertIs<ConnectionState.Connected>(dirl.connections.state(host.id))
+            assertTrue(dirl.metrics.polled(host.id))
+            assertTrue(dirl.metrics.latest(host.id)?.cpuPercent != null, "the first sample already has the CPU usage")
+
+            leave.complete(Unit)
+            visitor.join()
+            now += 31_000
+            withContext(Dispatchers.IO) { dirl.metrics.round(this) }
+            assertEquals(ConnectionState.Idle, dirl.connections.state(host.id))
+            assertTrue(dirl.metrics.latest(host.id) == null && dirl.metrics.polled(host.id).not(), "stale values are forgotten")
+            assertTrue(proxy.awaitIdle(), "nobody is present, the connection must be closed")
+        }
     }
 
     @Test

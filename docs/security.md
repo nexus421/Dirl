@@ -42,30 +42,43 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
 
 ## SSH
 
-- One long-lived connection per host. Terminals, SFTP and metrics are channels on it.
+- Connections only exist while somebody uses Dirl. Every request of a logged-in user counts while it runs (a
+  download until it is done, a WebSocket until it is closed), and every Dirl page keeps a presence WebSocket open
+  ([ssh/Presence.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Presence.kt)). 30 seconds after the last one ended,
+  the next status round closes all connections, so they stay at most about 90 seconds after the last tab was
+  closed, about two minutes after a laptop went to sleep. The next visit connects again. Closing keeps the backoff
+  and the stop after rejected logins. The presence WebSocket carries no data, never extends the session and is
+  closed when the session ends, so a forgotten tab does not keep the connections open.
+- One connection per host while somebody is there. Terminals, SFTP and metrics are channels on it, a second
+  terminal on the same host is a new channel with its own shell.
 - Failed connects back off from 30 seconds to 15 minutes. Three rejected logins in a row stop the host until
   "Connect now" is clicked. OpenSSH 9.8 and later (Debian 13 ships 10.0) do something similar on their own:
   `PerSourcePenalties` blocks a source address for a while after failed logins, which was confirmed in the tests.
   Dirl then shows "the server dropped the connection before the handshake" instead of a cryptic error.
 - No TCP pings. A bare TCP connect shows up as `kex_exchange_identification` in the sshd log, which aggressive
   fail2ban filters count. Liveness comes from SSH keepalives (`KEEP_ALIVE`, which detects dead peers, unlike the
-  default `HEARTBEAT`) and the metrics poll.
+  default `HEARTBEAT`) and the status poll.
 - Host keys: trust on first use. The first connection shows the `SHA256:` fingerprint for confirmation, the pin is
   stored per host in the vault. A different key blocks the host hard and is audited. Changing address, port or jump
   host removes the pin.
 - Jump hosts: up to two, through direct-tcpip channels on the jump host's own managed connection. Every hop checks
   its own pinned key. Cycles and longer chains are rejected when the host is saved. A host marked "jump host only"
-  offers no terminal, no files and no metrics, its connection is still kept alive and shown. Reference counting on
-  the jump connection, as the concept suggested, is not needed: connections are never closed for being idle, a dead
-  jump connection takes its targets down and they reconnect through the backoff.
+  offers no terminal, no files and no metrics, its connection is still kept and shown while somebody uses Dirl.
+  Reference counting on the jump connection, as the concept suggested, is not needed: all connections are closed
+  together when nobody uses Dirl, a dead jump connection takes its targets down and they reconnect through the
+  backoff.
 - Keys: Ed25519 generated with BouncyCastle in OpenSSH format, imports of unencrypted OpenSSH or PEM keys.
 - Terminal: `xterm-256color` PTY with a plain login shell. There is no tmux integration: a shared session name would
   put several users into the same shell. Whoever wants tmux starts it in the terminal.
   Terminal input counts as session activity. A watchdog closes the terminal when the session ends or access is
-  removed, sealing the vault closes all of them at once.
-- Metrics: one `exec` per host and minute ([ssh/Metrics.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Metrics.kt)),
-  plus one right after unlock or "Connect now". 24 hours kept in memory, nothing persisted. Bind mounts and btrfs
-  subvolumes of one device are shown once. Pure jump hosts with `command="/bin/false"` have no metrics.
+  removed, sealing the vault closes all of them at once. After a disconnect, Enter reloads the page, which leads to
+  the login when the session ended.
+- Metrics: one `exec` per host and minute while somebody uses Dirl
+  ([ssh/Metrics.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Metrics.kt)), plus one right after an arrival, unlock
+  or "Connect now". It reads `/proc/stat` twice one second apart, so each poll has the CPU usage on its own. Only the
+  latest sample per host is kept, in memory, and forgotten when nobody uses Dirl. A host whose previous poll still
+  runs is skipped. Bind mounts and btrfs subvolumes of one device are shown once. Pure jump hosts with
+  `command="/bin/false"` have no metrics.
 - SFTP: bytes only, no encoding guessing. An upload never replaces an existing file unless "Overwrite existing
   files" is ticked, the skipped names are shown at the form. Uploads and edits go to a temporary file and are renamed over the target
   (`posix-rename`, with a fallback for servers without it). The editor only opens valid UTF-8 up to 1 MiB and keeps
@@ -132,9 +145,9 @@ password manager and the provider's console.
 - Further headers: `nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy` and `-Resource-Policy`,
   `Permissions-Policy`, `Cache-Control: no-store`, HSTS when `publicUrl` is https.
 - WebSocket frames are capped at 1 MiB (Ktor's default is unlimited), pings every 20 seconds keep the proxy from
-  closing idle terminals.
+  closing idle terminals and the presence WebSocket, and let Dirl notice a vanished browser.
 - Terminal output is untrusted input. It only ever goes into xterm.js, never into the DOM, and the links addon is
-  not loaded. All HTML is built with kotlinx.html, which escapes every value. Charts are SVG built from numbers only.
+  not loaded. All HTML is built with kotlinx.html, which escapes every value.
   Remote file names are cleaned before they go into a `Content-Disposition` header.
 - Destructive actions ask for confirmation, a private key export asks for the vault passphrase again.
 

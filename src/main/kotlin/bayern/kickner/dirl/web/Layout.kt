@@ -71,7 +71,6 @@ private val flashMessages = mapOf(
     "host-deleted" to "Host deleted.",
     "pinned" to "Host key pinned.",
     "pin-removed" to "Pinned host key removed.",
-    "disconnected" to "Disconnected.",
     "key-generated" to "Key generated.",
     "key-imported" to "Key imported.",
     "key-renamed" to "Key renamed.",
@@ -133,6 +132,9 @@ suspend fun ApplicationCall.page(
             assets.filter { it.endsWith(".css") }.forEach { link(rel = "stylesheet", href = it) }
         }
         body(if (frame == PageFrame.WIDE) "fill" else null) {
+            // App pages keep the presence WebSocket open (app.js), so the SSH connections stay while they are open.
+            // Login, unlock and setup do not: there is nothing to keep connected.
+            if (session != null && frame != PageFrame.CENTER) attributes["data-presence"] = "/ws/presence"
             if (frame != PageFrame.CENTER) header("appbar") {
                 a(href = "/", classes = "brand") {
                     span("logo") { +">_" }

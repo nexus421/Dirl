@@ -4,6 +4,8 @@ import bayern.kickner.dirl.readAtMost
 import bayern.kickner.dirl.vault.Vault
 import bayern.kickner.dirl.vault.VaultState
 import bayern.kickner.klogger.debugLog
+import bayern.kickner.klogger.warnLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,11 +21,12 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The one command run every minute on each host. `LC_ALL=C` keeps the output parseable, `df -l` skips network and
- * FUSE mounts and `timeout 5` keeps a dead mount from hanging the channel.
+ * The one command run every minute on each host while somebody uses Dirl. `LC_ALL=C` keeps the output parseable,
+ * `df -l` skips network and FUSE mounts and `timeout 5` keeps a dead mount from hanging the channel. `/proc/stat` is
+ * read twice, one second apart, so every poll yields the CPU usage on its own, also the first one after an arrival.
  */
 const val METRICS_COMMAND =
-    "LC_ALL=C sh -c 'cat /proc/uptime /proc/loadavg; head -n1 /proc/stat; " +
+    "LC_ALL=C sh -c 'cat /proc/uptime /proc/loadavg; head -n1 /proc/stat; sleep 1; head -n1 /proc/stat; " +
         "grep -E \"^(MemTotal|MemAvailable|SwapTotal|SwapFree):\" /proc/meminfo; " +
         "timeout 5 df -PlkT -x tmpfs -x devtmpfs -x squashfs -x overlay -x efivarfs'"
 
@@ -49,13 +52,17 @@ data class CpuTimes(val total: Long, val busy: Long)
  */
 data class DiskUsage(val device: String, val mount: String, val fsType: String, val totalKiB: Long, val usedKiB: Long)
 
-/** The parsed output of [METRICS_COMMAND], before the CPU delta is computed. */
+/**
+ * The parsed output of [METRICS_COMMAND].
+ *
+ * @property cpuPercent CPU usage during the second between the two readings, `null` if it could not be computed.
+ */
 data class RawMetrics(
     val uptimeSeconds: Double,
     val load1: Double,
     val load5: Double,
     val load15: Double,
-    val cpu: CpuTimes,
+    val cpuPercent: Double?,
     val memTotalKiB: Long,
     val memAvailableKiB: Long,
     val swapTotalKiB: Long,
@@ -64,10 +71,10 @@ data class RawMetrics(
 )
 
 /**
- * One point of a host's history.
+ * The latest status of a host.
  *
  * @property time Unix milliseconds.
- * @property cpuPercent CPU usage since the previous sample, `null` for the first sample after a (re)connect.
+ * @property cpuPercent CPU usage during one second of the poll, `null` if it could not be computed.
  * @property memUsedKiB `MemTotal - MemAvailable`.
  */
 data class MetricsSample(
@@ -94,10 +101,10 @@ fun parseMetrics(output: String): ResultOf2<RawMetrics, String> = runCatching {
 
     val uptime = lines[0].trim().split(Regex("\\s+"))[0].toDouble()
     val load = lines[1].trim().split(Regex("\\s+"))
-    val cpuLine = lines.first { it.startsWith("cpu ") }
-    val cpuFields = cpuLine.trim().split(Regex("\\s+")).drop(1).map { it.toLong() }
-    val total = cpuFields.take(8).sum()
-    val idle = cpuFields[3] + cpuFields.getOrElse(4) { 0 }
+    val cpuLines = lines.filter { it.startsWith("cpu ") }
+    require(cpuLines.isNotEmpty()) { "no cpu line from /proc/stat" }
+    val cpuBefore = cpuTimesOf(cpuLines.first())
+    val cpuAfter = cpuTimesOf(cpuLines.last())
 
     val mem = lines.mapNotNull { line ->
         val match = Regex("^(\\w+):\\s+(\\d+) kB").find(line) ?: return@mapNotNull null
@@ -114,7 +121,7 @@ fun parseMetrics(output: String): ResultOf2<RawMetrics, String> = runCatching {
     RawMetrics(
         uptimeSeconds = uptime,
         load1 = load[0].toDouble(), load5 = load[1].toDouble(), load15 = load[2].toDouble(),
-        cpu = CpuTimes(total, total - idle),
+        cpuPercent = if (cpuLines.size < 2) null else cpuPercent(cpuBefore, cpuAfter),
         memTotalKiB = mem.getValue("MemTotal"),
         memAvailableKiB = mem.getValue("MemAvailable"),
         swapTotalKiB = mem["SwapTotal"] ?: 0,
@@ -125,6 +132,14 @@ fun parseMetrics(output: String): ResultOf2<RawMetrics, String> = runCatching {
     onSuccess = { ResultOf2.Success(it) },
     onFailure = { ResultOf2.Failure("Cannot parse metrics: ${it.message}") },
 )
+
+/** The counters of a `cpu ` line from `/proc/stat`. */
+private fun cpuTimesOf(line: String): CpuTimes {
+    val fields = line.trim().split(Regex("\\s+")).drop(1).map { it.toLong() }
+    val total = fields.take(8).sum()
+    val idle = fields[3] + fields.getOrElse(4) { 0 }
+    return CpuTimes(total, total - idle)
+}
 
 /**
  * Keeps one entry per device and size, the one with the shortest mount point. Bind mounts, LXC host mounts and btrfs
@@ -142,58 +157,104 @@ fun cpuPercent(previous: CpuTimes, current: CpuTimes): Double? {
 }
 
 /**
- * Polls every host once per [interval] and keeps the last [capacity] samples per host in memory (24 h at one per
- * minute). Nothing is persisted, a restart starts with empty history.
+ * Polls every host once per [interval] while somebody uses Dirl ([Presence]) and keeps the latest sample per host in
+ * memory. There is no history and nothing is persisted.
  *
- * The poll goes through [ConnectionManager.connection], so it also keeps connections alive and triggers the
- * reconnects with backoff. While the vault is sealed it does nothing.
+ * The poll goes through [ConnectionManager.connection], so it also connects every host when somebody arrives and
+ * triggers the reconnects with backoff. Once nobody uses Dirl any more, the next round closes all connections with
+ * [ConnectionManager.closeAll] and forgets the samples, so stale values are never shown as current. While the vault
+ * is sealed it does nothing.
+ *
+ * A host whose previous poll still runs (a hanging host: connect, login and command can take a minute together) is
+ * skipped instead of piling up waiting polls.
  *
  * @property vault Source of the host list.
  * @property connections Connection per host.
- * @property interval Time between polls.
- * @property capacity Samples kept per host.
+ * @property presence Whether anybody uses Dirl.
+ * @property interval Time between rounds.
  * @property clock Unix milliseconds.
  */
 class MetricsPoller(
     private val vault: Vault,
     private val connections: ConnectionManager,
+    private val presence: Presence,
     private val interval: Duration = 1.minutes,
-    private val capacity: Int = 1440,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
-    private val history = ConcurrentHashMap<String, ArrayDeque<MetricsSample>>()
-    private val lastCpu = ConcurrentHashMap<String, CpuTimes>()
+    private val latest = ConcurrentHashMap<String, MetricsSample>()
+    private val polled = ConcurrentHashMap.newKeySet<String>()
+    private val running = ConcurrentHashMap.newKeySet<String>()
     private val trigger = Channel<Unit>(Channel.CONFLATED)
 
     init {
-        // Poll right after an unlock instead of waiting up to a full interval with an empty overview.
+        // Poll right after an unlock or an arrival instead of waiting up to a full interval with an empty overview.
         vault.listeners += { state -> if (state is VaultState.Unlocked) pollNow() }
+        presence.arrivals += ::pollNow
     }
 
     /** Starts the poll loop in [scope]. */
     fun start(scope: CoroutineScope): Job = scope.launch(Dispatchers.IO) {
         while (isActive) {
-            // Pure jump hosts run no commands, the poll only keeps their connection alive.
-            vault.content?.hosts?.forEach { host -> launch { if (host.jumpOnly) connections.connection(host.id) else pollHost(host.id) } }
+            runCatching { round(this) }.onFailure { warnLog { "Status round failed: ${it.message}" } }
             withTimeoutOrNull(interval) { trigger.receive() }
         }
     }
 
-    /** Runs the next poll right away, e.g. after an unlock. */
+    /**
+     * One round: with somebody present, starts a poll in [scope] for every host whose previous poll is done.
+     * Otherwise closes all connections and forgets the samples. Tests run it directly.
+     *
+     * @return the number of polls started.
+     */
+    fun round(scope: CoroutineScope): Int {
+        val hosts = vault.content?.hosts ?: return 0
+        if (presence.present.not()) {
+            connections.closeAll()
+            forgetAll()
+            return 0
+        }
+        var started = 0
+        hosts.forEach { host ->
+            if (running.add(host.id).not()) return@forEach
+            started++
+            scope.launch {
+                try {
+                    // An unexpected error of one host must not end the loop: no more polls and no more closing.
+                    runCatching {
+                        // Pure jump hosts run no commands, the poll only keeps their connection alive.
+                        if (host.jumpOnly) connections.connection(host.id) else pollHost(host.id)
+                    }.onFailure { if (it !is CancellationException) warnLog { "Status poll of ${host.name} failed: ${it.message}" } }
+                } finally {
+                    running.remove(host.id)
+                }
+            }
+        }
+        return started
+    }
+
+    /** Runs the next round right away, e.g. after an unlock or when somebody arrives. */
     fun pollNow() {
         trigger.trySend(Unit)
     }
 
     /** The most recent sample of [hostId], if any. */
-    fun latest(hostId: String): MetricsSample? = history[hostId]?.let { synchronized(it) { it.lastOrNull() } }
+    fun latest(hostId: String): MetricsSample? = latest[hostId]
 
-    /** A copy of the history of [hostId], oldest first. */
-    fun history(hostId: String): List<MetricsSample> = history[hostId]?.let { synchronized(it) { it.toList() } } ?: emptyList()
+    /**
+     * True once a poll of [hostId] finished since the host was last forgotten, with or without a usable sample. A host
+     * whose output never parses (no `/proc`, `command="/bin/false"`) must not look like it is still loading forever.
+     */
+    fun polled(hostId: String): Boolean = hostId in polled
 
     /** Forgets everything about [hostId], e.g. after it was deleted. */
     fun forget(hostId: String) {
-        history.remove(hostId)
-        lastCpu.remove(hostId)
+        latest.remove(hostId)
+        polled.remove(hostId)
+    }
+
+    private fun forgetAll() {
+        latest.clear()
+        polled.clear()
     }
 
     private suspend fun pollHost(hostId: String) {
@@ -206,7 +267,11 @@ class MetricsPoller(
                     runInterruptible { command.inputStream.readAtMost(MAX_METRICS_OUTPUT)?.decodeToString() }
                 }
             }.getOrNull()
-        } ?: return
+        }
+        // Nobody is there any more: a late result would show up as current value on the next arrival.
+        if (presence.present.not()) return
+        polled += hostId
+        if (output == null) return
 
         when (val parsed = parseMetrics(output)) {
             is ResultOf2.Failure -> debugLog { "No metrics for host $hostId: ${parsed.value}" }
@@ -215,10 +280,9 @@ class MetricsPoller(
     }
 
     private fun record(hostId: String, raw: RawMetrics) {
-        val previous = lastCpu.put(hostId, raw.cpu)
-        val sample = MetricsSample(
+        latest[hostId] = MetricsSample(
             time = clock(),
-            cpuPercent = previous?.let { cpuPercent(it, raw.cpu) },
+            cpuPercent = raw.cpuPercent,
             memUsedKiB = raw.memTotalKiB - raw.memAvailableKiB,
             memTotalKiB = raw.memTotalKiB,
             swapUsedKiB = raw.swapTotalKiB - raw.swapFreeKiB,
@@ -227,10 +291,5 @@ class MetricsPoller(
             uptimeSeconds = raw.uptimeSeconds,
             disks = raw.disks,
         )
-        val buffer = history.computeIfAbsent(hostId) { ArrayDeque(capacity) }
-        synchronized(buffer) {
-            if (buffer.size >= capacity) buffer.removeFirst()
-            buffer.addLast(sample)
-        }
     }
 }

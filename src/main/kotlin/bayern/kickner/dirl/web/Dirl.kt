@@ -7,6 +7,7 @@ import bayern.kickner.dirl.auth.SessionStore
 import bayern.kickner.dirl.config.AppConfig
 import bayern.kickner.dirl.ssh.ConnectionManager
 import bayern.kickner.dirl.ssh.MetricsPoller
+import bayern.kickner.dirl.ssh.Presence
 import bayern.kickner.dirl.vault.Vault
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -28,7 +29,8 @@ import kotlin.time.Duration.Companion.seconds
  * @property sessions Browser sessions.
  * @property oidc Login.
  * @property connections SSH connections.
- * @property metrics Metrics history.
+ * @property presence Whether anybody uses Dirl, connections only exist while somebody does.
+ * @property metrics Latest status per host.
  */
 class Dirl(
     val config: AppConfig,
@@ -38,6 +40,7 @@ class Dirl(
     val sessions: SessionStore,
     val oidc: OidcClient,
     val connections: ConnectionManager,
+    val presence: Presence,
     val metrics: MetricsPoller,
 ) {
     /** The only `Origin` accepted for form posts and WebSockets. */
@@ -70,6 +73,7 @@ fun Application.dirlModule(dirl: Dirl) {
         keyRoutes(dirl)
         snippetRoutes(dirl)
         terminalRoutes(dirl)
+        presenceRoutes(dirl)
         fileRoutes(dirl)
     }
 }

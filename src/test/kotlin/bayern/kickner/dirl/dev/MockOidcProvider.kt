@@ -87,7 +87,7 @@ class MockOidcProvider(
         val valid = pending != null && pending.clientId == form["client_id"] && pending.redirectUri == form["redirect_uri"] &&
             pkceChallenge(form["code_verifier"].orEmpty()) == pending.challenge &&
             basicCredentials(ex) == (pending.clientId to clientSecret)
-        if (valid.not() || pending == null) return respond(ex, 400, "application/json", """{"error":"invalid_grant"}""")
+        if (valid.not()) return respond(ex, 400, "application/json", """{"error":"invalid_grant"}""")
 
         val now = System.currentTimeMillis() / 1000
         val payload = buildJsonObject {

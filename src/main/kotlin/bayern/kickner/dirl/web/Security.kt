@@ -60,6 +60,8 @@ val ApplicationCall.session: Session get() = attributes[SessionKey]
  * 3. Login check: no valid session, or a user no longer allowed by [bayern.kickner.dirl.auth.AccessControl], leads to
  *    `/login` (pages) or 401 (everything else).
  * 4. Vault check: while the vault is not unlocked only the unlock and setup pages work.
+ * 5. Presence: every request that passed the checks counts as somebody using Dirl until it is done, a WebSocket until
+ *    it is closed, see [bayern.kickner.dirl.ssh.Presence]. Public paths and rejected requests do not count.
  */
 fun Application.installGuards(dirl: Dirl) {
     intercept(ApplicationCallPipeline.Plugins) {
@@ -105,6 +107,8 @@ fun Application.installGuards(dirl: Dirl) {
             else call.respond(HttpStatusCode.Locked, "Vault is sealed")
             return@intercept finish()
         }
+
+        dirl.presence.hold { proceed() }
     }
 }
 

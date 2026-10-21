@@ -20,6 +20,7 @@ import io.ktor.server.testing.testApplication
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class WebTest {
@@ -178,6 +179,30 @@ class WebTest {
         assertEquals(HttpStatusCode.BadRequest, edited.status)
         assertTrue(edited.bodyAsText().contains("action=\"/snippets/$id\""), "the error must show the edit form")
         assertEquals("df -h", dirl.vault.content!!.snippets.single().command)
+    }
+
+    @Test
+    fun `the overview reloads fast only while hosts are on their way to a status, and not forever`(): Unit = testApplication {
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        val key = bayern.kickner.dirl.ssh.generateEd25519Key("k")
+        // Port 1 on loopback refuses at once, so the host fails without waiting for a timeout.
+        val host = bayern.kickner.dirl.vault.Host(id = "w", name = "waiting", address = "127.0.0.1", port = 1, username = "u", keyId = key.id)
+        dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(host)) }
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        suspend fun refresh(url: String): String {
+            val page = client.get(url) { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+            return Regex("http-equiv=\"refresh\" content=\"([^\"]+)\"").find(page)!!.groupValues[1].replace("&amp;", "&")
+        }
+
+        assertEquals("3; url=/?autorefresh=1&wait=1", refresh("/"), "a host not tried yet is on its way")
+        assertEquals("3; url=/?autorefresh=1&wait=10", refresh("/?autorefresh=1&wait=9"))
+        assertEquals("60; url=/?autorefresh=1", refresh("/?autorefresh=1&wait=10"), "after ten fast reloads back to once a minute")
+
+        dirl.connections.connection(host.id)
+        assertIs<bayern.kickner.dirl.ssh.ConnectionState.Failed>(dirl.connections.state(host.id))
+        assertEquals("60; url=/?autorefresh=1", refresh("/"), "a failed host waits for nobody")
     }
 
     @Test

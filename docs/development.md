@@ -56,8 +56,11 @@ DIRL_SSHD_ROOT="$HOME/sshd-root" ./gradlew test
 The tests cover trust on first use, a changed host key, the stop after three rejected logins, both jump host
 variants, an IPv6 target behind a restricted jump host (skipped without IPv6 loopback), atomic SFTP writes including
 broken transfers, symlinks in listing, editor and delete, upload overwrite protection, the terminal WebSocket
-including resize and closing all connections while a connect is still running (a held back handshake through
-`GatedProxy`).
+including resize, closing all connections while a connect is still running (a held back handshake through
+`GatedProxy`), closing for absence without losing a stop, and the status poll only while somebody is present and
+never twice at once for a host. [PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt)
+starts Dirl on a real CIO server and checks that an open presence WebSocket holds the presence, the engine detail
+the connection model rests on.
 [LoginFlowTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/LoginFlowTest.kt) runs the complete OIDC login against
 the mock provider.
 
@@ -103,7 +106,7 @@ One package per concern under `bayern.kickner.dirl`:
 | `audit`            | Append-only JSON lines audit log                                                          |
 | `auth`             | OIDC client with PKCE, ID token validation, sessions, access control                      |
 | `ssh`              | Keys, routes through jump hosts, connection manager, metrics                              |
-| `web`              | Security guards, layout, error pages, charts, the routes of every page, terminal, SFTP    |
+| `web`              | Security guards, layout, error pages, the routes of every page, terminal, presence, SFTP  |
 | `resources/static` | `app.css`, `app.js`, `terminal.js`, vendored xterm.js 6.0.0 and addon-fit 0.11.0          |
 | test `dev`         | Mock OIDC provider and the `devRun` entry point                                           |
 
@@ -131,11 +134,11 @@ vault is sealed only `/unlock`, `/setup`, `/setup/restore` and `/logout` work.
 | POST   | `/setup`, `/setup/restore`, `/unlock`                        | Create, restore or unlock the vault             |
 | GET    | `/`                                                          | Host overview, `?tag=` filters                  |
 | GET    | `/hosts/new`, `/hosts/{id}`, `/hosts/{id}/edit`              | Host pages                                      |
-| GET    | `/hosts/{id}/chart.svg?m=cpu\|mem\|swap`                     | 24 hour chart                                   |
 | POST   | `/hosts`, `/hosts/{id}`                                      | Add, save                                       |
-| POST   | `/hosts/{id}/delete`, `/connect`, `/disconnect`, `/pin`, `/forget-key` | Host actions                          |
+| POST   | `/hosts/{id}/delete`, `/connect`, `/pin`, `/forget-key`      | Host actions                                    |
 | GET    | `/hosts/{id}/terminal`                                       | Terminal page                                   |
 | WS     | `/ws/terminal/{id}?cols=&rows=`                              | Terminal stream                                 |
+| WS     | `/ws/presence`                                               | Open while a Dirl page is open, no data         |
 | GET    | `/hosts/{id}/files?path=`, `/files/download`, `/files/edit`, `/files/rename` | File manager                    |
 | POST   | `/hosts/{id}/files/upload`, `/mkdir`, `/delete`, `/rename`, `/save` | File operations                          |
 | GET    | `/keys`, `/keys/{id}/export`                                 | Keys                                            |

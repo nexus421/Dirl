@@ -31,7 +31,7 @@ incus config set <container> limits.memory.swap false
 ```
 
 Zoraxy: proxy `publicUrl` to Dirl's port with WebSocket support. The 20 second WebSocket ping keeps idle terminals
-open.
+and the presence WebSocket of every open page open.
 
 ## Network between Zoraxy and Dirl
 

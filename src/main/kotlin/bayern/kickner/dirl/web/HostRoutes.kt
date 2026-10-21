@@ -10,13 +10,11 @@ import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.ssh.resolveRoute
 import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.VaultContent
-import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.respondRedirect
-import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
@@ -26,11 +24,8 @@ import kotlinx.html.FormMethod
 import kotlinx.html.a
 import kotlinx.html.code
 import kotlinx.html.div
-import kotlinx.html.figcaption
-import kotlinx.html.figure
 import kotlinx.html.form
 import kotlinx.html.h2
-import kotlinx.html.img
 import kotlinx.html.label
 import kotlinx.html.li
 import kotlinx.html.ol
@@ -58,15 +53,24 @@ private val addressPattern = Regex("^[a-zA-Z0-9.:-]{1,253}$")
 /** Tags: letters, digits and a few separators, so they are safe in URLs and readable as chips. */
 private val tagPattern = Regex("^[\\p{L}\\p{N}._-]{1,32}$")
 
+/** Reload interval of the overview in seconds while hosts are still connecting. */
+const val FAST_REFRESH_SECONDS = 3
+
+/** Fast reloads in a row at most, then the overview falls back to once a minute. */
+const val MAX_FAST_REFRESHES = 10
+
+/** Query parameter counting the fast reloads in a row. */
+private const val FAST_PARAM = "wait"
+
 /**
  * Host overview, detail page and editing.
  *
- * - `GET /?tag=` overview as cards with connection state and the latest metrics, reloaded every minute.
+ * - `GET /?tag=` overview as cards with connection state and the latest metrics, reloaded every minute, every
+ *   [FAST_REFRESH_SECONDS] while hosts are still connecting (see [waitingForStatus]).
  * - `GET /hosts/new`, `POST /hosts` add a host.
- * - `GET /hosts/{id}` details: connection, host key, `authorized_keys` line, metrics with 24 hour charts, disks.
- * - `GET /hosts/{id}/chart.svg?m=cpu|mem|swap` one chart.
+ * - `GET /hosts/{id}` details: connection, host key, `authorized_keys` line, latest metrics, disks.
  * - `GET /hosts/{id}/edit`, `POST /hosts/{id}` edit, `POST /hosts/{id}/delete` delete.
- * - `POST /hosts/{id}/connect` resets the backoff and connects now, `POST /hosts/{id}/disconnect` closes.
+ * - `POST /hosts/{id}/connect` resets the backoff and connects now.
  * - `POST /hosts/{id}/pin` confirms the offered host key, `POST /hosts/{id}/forget-key` removes the pin.
  */
 fun Route.hostRoutes(dirl: Dirl) {
@@ -77,8 +81,17 @@ fun Route.hostRoutes(dirl: Dirl) {
         val hosts = content.hosts.filter { tag == null || tag in it.tags }.sortedBy { it.name.lowercase() }
 
         // The automatic reload carries AUTO_REFRESH_PARAM, so it does not count as activity for the idle timeout.
-        val reloadUrl = "/?" + listOfNotNull(tag?.let { "tag=" + URLEncoder.encode(it, Charsets.UTF_8) }, "$AUTO_REFRESH_PARAM=1").joinToString("&")
-        call.page("Hosts", call.session, Nav.HOSTS, refresh = "60; url=$reloadUrl") {
+        // While hosts are still connecting it comes faster, at most MAX_FAST_REFRESHES times in a row: a host that
+        // stays Idle for a reason nobody foresaw must not reload the page every few seconds forever.
+        val fastSoFar = call.request.queryParameters[FAST_PARAM]?.toIntOrNull() ?: 0
+        val fast = fastSoFar < MAX_FAST_REFRESHES && content.hosts.any { waitingForStatus(dirl, it) }
+        val reloadUrl = "/?" + listOfNotNull(
+            tag?.let { "tag=" + URLEncoder.encode(it, Charsets.UTF_8) },
+            "$AUTO_REFRESH_PARAM=1",
+            if (fast) "$FAST_PARAM=${fastSoFar + 1}" else null,
+        ).joinToString("&")
+        val seconds = if (fast) FAST_REFRESH_SECONDS else 60
+        call.page("Hosts", call.session, Nav.HOSTS, refresh = "$seconds; url=$reloadUrl") {
             pageHeader("Hosts", if (content.hosts.isEmpty()) null else "${content.hosts.size} host(s), status refreshes every minute") {
                 linkButton("/hosts/new", "Add host", "primary")
             }
@@ -146,7 +159,6 @@ fun Route.hostRoutes(dirl: Dirl) {
                         div("btn-row") {
                             style = "margin-top:14px"
                             postButton("/hosts/${host.id}/connect", "Connect now", "sm")
-                            if (state is ConnectionState.Connected) postButton("/hosts/${host.id}/disconnect", "Disconnect", "sm ghost")
                         }
                     }
                     hostKeyCard(host, state)
@@ -169,8 +181,8 @@ fun Route.hostRoutes(dirl: Dirl) {
                         if (sample != null) span("muted small") { +"updated ${formatTimestamp(sample.time)}" }
                     }
                     if (host.jumpOnly) p("muted") { +"Pure jump host: no commands run there, so there are no metrics. The connection state above shows whether it is reachable." }
-                    else if (sample == null) p("muted") { +"No metrics yet. They arrive within a minute once the host is connected." }
-                    else metricsSection(host, sample, dirl.metrics.history(host.id))
+                    else if (sample == null) p("muted") { +"No metrics yet. They arrive a few seconds after the host is connected." }
+                    else metricsSection(sample)
                 }
 
                 card("Delete host", "danger") {
@@ -179,16 +191,6 @@ fun Route.hostRoutes(dirl: Dirl) {
                 }
             }
         }
-    }
-
-    get("/hosts/{id}/chart.svg") {
-        val (_, host) = hostOr404(dirl) ?: return@get
-        val metric = when (call.request.queryParameters["m"]) {
-            "mem" -> ChartMetric.MEM
-            "swap" -> ChartMetric.SWAP
-            else -> ChartMetric.CPU
-        }
-        call.respondText(renderChart(dirl.metrics.history(host.id), metric, System.currentTimeMillis()), ContentType.Image.SVG)
     }
 
     get("/hosts/{id}/edit") {
@@ -232,12 +234,6 @@ fun Route.hostRoutes(dirl: Dirl) {
         dirl.connections.connection(host.id)
         dirl.metrics.pollNow()
         call.respondRedirect("/hosts/${host.id}")
-    }
-
-    post("/hosts/{id}/disconnect") {
-        val (_, host) = hostOr404(dirl) ?: return@post
-        dirl.connections.drop(host.id)
-        call.respondRedirect("/hosts/${host.id}?done=disconnected")
     }
 
     post("/hosts/{id}/pin") {
@@ -464,29 +460,14 @@ private fun FlowContent.hostKeyCard(host: Host, state: ConnectionState) = card {
     }
 }
 
-private fun FlowContent.metricsSection(host: Host, sample: MetricsSample, history: List<MetricsSample>) {
+private fun FlowContent.metricsSection(sample: MetricsSample) {
     keyValues(
-        "CPU" to (sample.cpuPercent?.let { "${it.roundToInt()}%" } ?: "after the next poll"),
+        "CPU" to (sample.cpuPercent?.let { "${it.roundToInt()}%" } ?: "unknown"),
         "Load (1 min)" to "%.2f".format(sample.load1),
         "RAM" to "${pct(sample.memUsedKiB, sample.memTotalKiB)} of ${gib(sample.memTotalKiB)}",
         "Swap" to if (sample.swapTotalKiB == 0L) "none" else "${pct(sample.swapUsedKiB, sample.swapTotalKiB)} of ${gib(sample.swapTotalKiB)}",
         "Uptime" to uptime(sample.uptimeSeconds),
     )
-    val start = chartStart(history, System.currentTimeMillis())
-    val span = if (System.currentTimeMillis() - start >= CHART_WINDOW_MILLIS - 60_000) "last 24 h" else "since ${formatTimestamp(start)}"
-    if (history.size < 2) p("muted small") {
-        style = "margin-top:16px"
-        +"Charts appear after the second measurement, about a minute from now."
-    } else div("charts") {
-        style = "margin-top:16px"
-        listOf("cpu" to "CPU, $span", "mem" to "RAM, $span", "swap" to "Swap, $span").forEach { (m, label) ->
-            if (m == "swap" && sample.swapTotalKiB == 0L) return@forEach
-            figure {
-                figcaption { +label }
-                img(src = "/hosts/${host.id}/chart.svg?m=$m", alt = label)
-            }
-        }
-    }
     if (sample.disks.isNotEmpty()) div("table-wrap") {
         style = "margin-top:16px"
         table {
@@ -568,6 +549,16 @@ private suspend fun ApplicationCall.hostFormPage(content: VaultContent, host: Ho
             }
         }
     }
+}
+
+/**
+ * True while [host] is on its way to a status: not tried yet, connecting, or connected but not polled yet. Hosts that
+ * failed, were stopped or wait for a host key confirmation are not waiting, they stay like that until somebody acts.
+ */
+fun waitingForStatus(dirl: Dirl, host: Host): Boolean = when (dirl.connections.state(host.id)) {
+    ConnectionState.Idle, ConnectionState.Connecting -> true
+    is ConnectionState.Connected -> host.jumpOnly.not() && dirl.metrics.polled(host.id).not()
+    else -> false
 }
 
 /** Human readable role of [host] in the jump host chain. */

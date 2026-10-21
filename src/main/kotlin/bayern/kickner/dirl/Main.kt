@@ -9,6 +9,7 @@ import bayern.kickner.dirl.config.UnlockMode
 import bayern.kickner.dirl.config.loadConfig
 import bayern.kickner.dirl.ssh.ConnectionManager
 import bayern.kickner.dirl.ssh.MetricsPoller
+import bayern.kickner.dirl.ssh.Presence
 import bayern.kickner.dirl.vault.Vault
 import bayern.kickner.dirl.vault.VaultState
 import bayern.kickner.dirl.vault.VaultStore
@@ -100,6 +101,7 @@ fun createDirl(config: AppConfig, dataDir: File, clock: () -> Long = System::cur
     val keyFile = if (config.unlockMode == UnlockMode.KEYFILE) File(config.keyFile) else null
     val vault = Vault(VaultStore(dataDir), audit, keyFile, clock)
     val connections = ConnectionManager(vault, audit, clock)
+    val presence = Presence(clock)
     return Dirl(
         config = config,
         vault = vault,
@@ -108,7 +110,8 @@ fun createDirl(config: AppConfig, dataDir: File, clock: () -> Long = System::cur
         sessions = SessionStore(config.session.idleTimeoutMinutes.minutes, config.session.maxAgeHours.hours, clock),
         oidc = OidcClient(config.oidc, "${config.publicUrl}/auth/callback", clock = clock),
         connections = connections,
-        metrics = MetricsPoller(vault, connections, clock = clock),
+        presence = presence,
+        metrics = MetricsPoller(vault, connections, presence, clock = clock),
     )
 }
 

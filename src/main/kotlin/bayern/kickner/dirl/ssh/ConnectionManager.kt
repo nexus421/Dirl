@@ -103,7 +103,8 @@ fun backoffDelayMillis(failures: Int): Long {
  * is a direct-tcpip channel on the jump host's connection. When the jump connection dies, the targets behind it
  * die as well and reconnect through the backoff.
  *
- * Sealing the vault closes every connection.
+ * Connections only exist while somebody uses Dirl: [closeAll] closes them once nobody does (see [Presence]), the
+ * next access connects again. Sealing the vault closes every connection and forgets every state.
  *
  * @property vault Source of hosts and keys, also notifies about sealing.
  * @property audit Receives host key events and stopped connections.
@@ -200,7 +201,28 @@ class ConnectionManager(
         vault.content?.hosts?.filter { it.jumpHostId == hostId }?.forEach { drop(it.id) }
     }
 
-    /** Closes every connection, called when the vault is sealed and at shutdown. */
+    /**
+     * Closes every open connection but keeps what Dirl learned about each host, called while nobody uses Dirl (see
+     * [Presence]). Connected hosts become [ConnectionState.Idle]. Failure counters, the backoff, a stop after rejected
+     * logins and host key states stay, so a stopped host stays stopped instead of getting fresh login attempts every
+     * time somebody comes back.
+     *
+     * A connect that is still running keeps its entry and is closed by the next call. Unlike [disconnectAll] nothing
+     * is removed, so nothing can be orphaned.
+     */
+    fun closeAll() {
+        var closed = 0
+        entries.values.forEach { entry ->
+            val client = entry.client ?: return@forEach
+            entry.client = null
+            if (entry.state is ConnectionState.Connected) entry.state = ConnectionState.Idle
+            closeQuietly(client)
+            closed++
+        }
+        if (closed > 0) infoLog { "Closed $closed SSH connection(s), nobody uses Dirl" }
+    }
+
+    /** Closes every connection and forgets every state, called when the vault is sealed and at shutdown. */
     fun disconnectAll() {
         entries.keys.toList().forEach(::reset)
         infoLog { "All SSH connections closed" }

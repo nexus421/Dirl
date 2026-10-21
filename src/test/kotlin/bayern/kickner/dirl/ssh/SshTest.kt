@@ -93,6 +93,7 @@ class SshTest {
             12345.67 23456.78
             0.15 0.10 0.05 1/123 4567
             cpu  100 0 50 800 50 0 0 0 0 0
+            cpu  150 0 100 900 50 0 0 0 0 0
             MemTotal:        2048000 kB
             MemAvailable:    1024000 kB
             SwapTotal:        512000 kB
@@ -102,8 +103,8 @@ class SshTest {
             /dev/sdb1      xfs     20000000 1000000  19000000       5% /srv/my data
         """.trimIndent()
         val raw = (parseMetrics(output) as ResultOf2.Success).value
-        assertEquals(1000, raw.cpu.total)
-        assertEquals(150, raw.cpu.busy)
+        // Between the two readings: 200 jiffies in total, 100 of them busy.
+        assertEquals(50.0, raw.cpuPercent)
         assertEquals(1024000, raw.memAvailableKiB)
         assertEquals(listOf("/", "/srv/my data"), raw.disks.map { it.mount })
         assertEquals(0.15, raw.load1)
@@ -130,17 +131,5 @@ class SshTest {
             DiskUsage("/dev/nvme0n1p1", "/boot", "vfat", 10, 1),
         )
         assertEquals(listOf("/", "/boot"), dedupeDisks(disks).map { it.mount })
-    }
-
-    @Test
-    fun `charts contain only numbers and fixed text`() {
-        val samples = listOf(10.0, 55.5, 99.0).mapIndexed { i, cpu ->
-            MetricsSample(1_000_000L + i * 60_000, cpu, 1, 2, 0, 0, 0.1, 1.0, emptyList())
-        }
-        val svg = bayern.kickner.dirl.web.renderChart(samples, bayern.kickner.dirl.web.ChartMetric.CPU, 1_000_000L + 180_000)
-        assertTrue(svg.contains("<polyline"))
-        // A short history spans the whole width: the first point sits at the left edge.
-        assertTrue(svg.contains("points=\"0.0,"), svg)
-        assertTrue(bayern.kickner.dirl.web.renderChart(emptyList(), bayern.kickner.dirl.web.ChartMetric.CPU, 0).contains("<polyline").not())
     }
 }

@@ -2,6 +2,27 @@
 // Loaded as a file because the CSP forbids inline scripts.
 'use strict';
 (function () {
+  // Presence: while a Dirl page is open, Dirl keeps the SSH connections to the hosts, once no page is open it closes
+  // them. Nothing is sent over this socket. It is not reopened when it closes: a page whose session ended would
+  // otherwise retry forever. The next page load opens a new one, also when the browser shows a page from its
+  // back/forward cache, where the old socket was closed.
+  const presencePath = document.body.dataset.presence;
+  function openPresence() {
+    const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // The reference and the listener keep the browser from collecting and closing the socket.
+    const socket = new WebSocket(scheme + '//' + location.host + presencePath);
+    socket.addEventListener('close', function () {
+      if (window.dirlPresence === socket) window.dirlPresence = null;
+    });
+    window.dirlPresence = socket;
+  }
+  if (presencePath) {
+    openPresence();
+    window.addEventListener('pageshow', function (event) {
+      if (event.persisted && !window.dirlPresence) openPresence();
+    });
+  }
+
   // Confirmation before destructive actions: <form data-confirm="Delete this host?">
   document.querySelectorAll('form[data-confirm]').forEach(function (form) {
     form.addEventListener('submit', function (event) {

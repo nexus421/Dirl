@@ -42,7 +42,8 @@ Gezielt nicht genutzt: JWT-Bibliothek (nicht nötig, siehe OIDC), Datenbank, Fro
 
 ## Architektur
 - Ein Prozess, Ktor CIO auf `127.0.0.1:<port>` bzw. intern im LXC. Zoraxy terminiert TLS.
-- **Verbindungs-Manager:** pro Host genau eine langlebige SSH-Verbindung. Terminal, SFTP und Metriken laufen als Channels darauf.
+- **Verbindungs-Manager:** pro Host genau eine SSH-Verbindung. Terminal, SFTP und Metriken laufen als Channels darauf.
+  - **Nur bei Anwesenheit (entschieden am 21.10.2026):** Verbindungen und Status-Abfragen gibt es nur, solange jemand Dirl im Browser offen hat. Jede App-Seite hält einen Presence-WebSocket offen, jeder laufende Request zählt. 30 s nach dem letzten werden alle Verbindungen geschlossen (Backoff und Stopp bleiben erhalten), beim nächsten Besuch neu aufgebaut. Grund: Dirl ist ein SSH-Client, kein Monitoring-Agent mit Dauerverbindungen zu allen Servern. Damit entfallen die 24-h-Charts und der Disconnect-Button.
   - Zustände: verbunden, verbindet, Auth fehlgeschlagen, gestoppt.
   - Reconnect mit Backoff von 30 s bis 15 min. **Stopp nach 3 Auth-Fehlern**, damit fail2ban/K4Ban die Termix-IP nicht bannt.
   - Keepalive: `KeepAliveProvider.KEEP_ALIVE` (erkennt tote Verbindungen). Der sshj-Default `HEARTBEAT` sendet nur Pakete und erkennt nichts. [geprüft im sshj-Code]
@@ -65,7 +66,7 @@ install(WebSockets) {
 ```
 - **JSON statt SQLite**: Für ~20 Hosts gibt es keine Abfragen und nur einen Schreiber. Der ganze Store wird ohnehin als ein Blob verschlüsselt. Damit entfällt die native JNI-Bibliothek von sqlite-jdbc, die beim Start nach `/tmp` entpackt wird. SQLite erst, wenn Metrik-Verläufe dauerhaft gespeichert werden sollen.
 - Schreiben atomar: Temp-Datei, `fsync`, `rename`. Die letzten 3 Versionen behalten.
-- Metrik-Verläufe nur im RAM (Ringpuffer, 24 h × 1/min ≈ 1440 Punkte pro Host).
+- Metriken nur im RAM, nur der letzte Wert pro Host (seit 21.10.2026, vorher 24-h-Verlauf als Ringpuffer).
 
 ## Verschlüsselung und Entsperren
 

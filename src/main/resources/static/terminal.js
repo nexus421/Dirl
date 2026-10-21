@@ -41,7 +41,7 @@
     };
     ws.onclose = function () {
       closed = true;
-      term.write('\r\n\x1b[33m[connection closed, press Enter to reconnect]\x1b[0m\r\n');
+      term.write('\r\n\x1b[33m[connection closed, press Enter to reload]\x1b[0m\r\n');
     };
   }
 
@@ -55,10 +55,9 @@
 
   function send(text) {
     if (closed) {
-      if (text === '\r') {
-        term.reset();
-        connect();
-      }
+      // Enter reloads the page instead of opening only a new terminal socket. That also reopens the presence socket
+      // (app.js) after a sleep or a restart, and leads to the login when the session ended. The shell is new anyway.
+      if (text === '\r') location.reload();
       return;
     }
     if (ws.readyState !== WebSocket.OPEN) return;
