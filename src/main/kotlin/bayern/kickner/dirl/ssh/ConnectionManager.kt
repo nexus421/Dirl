@@ -174,7 +174,9 @@ class ConnectionManager(
 
     /**
      * Pins the host key the user confirmed. [fingerprint] is what the user saw, it must still match the key the
-     * server offered, otherwise nothing is pinned. Resets the connection so the next access connects with the pin.
+     * server offered, otherwise nothing is pinned. Resets the connection so the next access connects with the pin,
+     * and the hosts behind it: they failed while the jump host was unconfirmed and would otherwise wait for their
+     * backoff. None of them can have a live connection through an unconfirmed jump host.
      *
      * @return true if the key was pinned.
      */
@@ -186,7 +188,7 @@ class ConnectionManager(
             content.copy(hosts = content.hosts.map { if (it.id == hostId) it.copy(pinnedHostKey = pin) else it })
         } ?: return false
         audit.record(actor, AuditAction.HOST_KEY_PINNED, updated.host(hostId)?.name, fingerprint)
-        reset(hostId)
+        drop(hostId)
         return true
     }
 

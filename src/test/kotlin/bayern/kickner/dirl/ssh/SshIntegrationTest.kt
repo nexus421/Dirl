@@ -274,6 +274,26 @@ class SshIntegrationTest {
     }
 
     @Test
+    fun `confirming the host key of a jump host lets the hosts behind it connect at once`(): Unit = runBlocking {
+        val jumpServer = sshd()
+        val targetServer = sshd()
+        val key = newKey()
+        val jump = addHost("jumpfirst", jumpServer.port, key.id)
+        val target = addHost("behind", targetServer.port, key.id, jumpHostId = jump.id, pin = PinnedHostKey("ssh-ed25519", targetServer.hostKeyFingerprint, now))
+        val content = dirl.vault.content!!
+        jumpServer.authorize(authorizedKeysLine(jump, key, content.hosts, "127.0.0.1"))
+        targetServer.authorize(authorizedKeysLine(target, key, content.hosts, "127.0.0.1"))
+
+        // First setup: the jump host key is not confirmed yet, so the target fails and backs off.
+        assertIs<ConnectionState.Failed>((dirl.connections.connection(target.id) as ResultOf2.Failure).value)
+        val offered = assertIs<ConnectionState.HostKeyUnknown>(dirl.connections.state(jump.id))
+        assertTrue(dirl.connections.pinHostKey(jump.id, offered.fingerprint, actor))
+
+        // Without waiting for the backoff.
+        assertIs<ResultOf2.Success<SSHClient>>(dirl.connections.connection(target.id), "the target must not wait for its backoff")
+    }
+
+    @Test
     fun `a jump host that is also a terminal target runs commands and forwards only to its targets`(): Unit = runBlocking {
         val jumpServer = sshd()
         val targetServer = sshd()
