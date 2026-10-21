@@ -26,7 +26,7 @@ import kotlin.math.min
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-/** State of the one long-lived connection per host, shown in the overview. */
+/** State of the one connection per host, shown in the overview. */
 sealed interface ConnectionState {
     /** Never tried, or reset by the user. */
     data object Idle : ConnectionState
@@ -99,7 +99,7 @@ fun backoffDelayMillis(failures: Int): Long {
  * TCP connect without SSH handshake shows up as `kex_exchange_identification` error in the target's log, which
  * aggressive fail2ban filters count as an attack. Liveness comes from SSH keepalives and the metrics poll instead.
  *
- * Jump host connections are managed connections of their own, kept alive like every other. The tunnel for a target
+ * Jump host connections are managed connections of their own, kept like every other. The tunnel for a target
  * is a direct-tcpip channel on the jump host's connection. When the jump connection dies, the targets behind it
  * die as well and reconnect through the backoff.
  *

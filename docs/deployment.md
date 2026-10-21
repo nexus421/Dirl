@@ -1,14 +1,15 @@
 # Deployment
 
 Take `dirl.jar` from a [GitHub release](https://github.com/nexus421/Dirl/releases) (check it with
-`sha256sum -c dirl.jar.sha256`) or build it with `./gradlew build`. Inside an Incus LXC behind Zoraxy:
+`sha256sum -c dirl.jar.sha256`) or build it with `./gradlew build` (then it is `build/libs/dirl.jar`). Write
+`config.json` from [config.example.json](../config.example.json). Inside an Incus LXC behind Zoraxy:
 
 ```bash
 useradd --system --home /var/lib/dirl --shell /usr/sbin/nologin dirl
 install -d -o dirl -g dirl -m 0700 /var/lib/dirl
 install -d -m 0755 /etc/dirl /opt/dirl
 install -o dirl -g dirl -m 0400 config.json /etc/dirl/config.json
-install -m 0644 build/libs/dirl.jar /opt/dirl/dirl.jar
+install -m 0644 dirl.jar /opt/dirl/dirl.jar
 install -m 0644 deploy/dirl.service /etc/systemd/system/dirl.service
 systemctl daemon-reload
 systemctl enable --now dirl
@@ -56,6 +57,7 @@ belong to its passphrase), stop the service and delete `vault.json`, `vault.json
 directory. The next login creates a new vault. Without the passphrase the old data is lost, that is the point.
 
 Logs go to the console (journald) and to `dataDir/logs/app.log` (5 MiB, rotated). Libraries log through Klogger's
-SLF4J provider, sshj only from WARN on.
+SLF4J provider, sshj only from WARN on. Three sshj loggers are off, they report every normal disconnect and every new
+host key as ERROR with a stack trace. Dirl logs the cases that matter itself.
 
 [Back to the README](../README.md)
