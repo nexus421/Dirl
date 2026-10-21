@@ -118,6 +118,10 @@ fun createDirl(config: AppConfig, dataDir: File, clock: () -> Long = System::cur
 /**
  * Console plus a rotating file in [logDir]. Libraries log through SLF4J into Klogger: sshj and Ktor only from WARN
  * and INFO on, because sshj logs every packet type at DEBUG. Terminal data, passphrases and keys are never logged.
+ *
+ * Three sshj loggers are off: they report a closed connection and an unconfirmed host key as ERROR with a stack
+ * trace. Both are normal here, Dirl closes the connections whenever nobody uses it and asks for every new host key.
+ * The cases that matter (changed host key, rejected login, failed connect) are logged by Dirl itself.
  */
 private fun configureLogging(logDir: File) {
     KLogger.configure {
@@ -126,6 +130,9 @@ private fun configureLogging(logDir: File) {
         slf4jBridge {
             minLevel = KLogger.Level.INFO
             level("net.schmizz", KLogger.Level.WARN)
+            off("net.schmizz.sshj.transport.TransportImpl")
+            off("net.schmizz.sshj.transport.KeyExchanger")
+            off("net.schmizz.concurrent.Promise")
             level("com.hierynomus", KLogger.Level.WARN)
         }
     }
