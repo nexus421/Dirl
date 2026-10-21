@@ -281,7 +281,9 @@ td.actions > * + * { margin-left: 6px; }
 .code .btn { position: absolute; top: 7px; right: 7px; }
 code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
 
-/* Breadcrumbs, empty states */
+/* Breadcrumbs, empty states, group headings */
+.group-title { margin: 10px 2px 0; font-size: 14px; color: var(--muted); }
+.group-title .muted { font-weight: 400; }
 .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-family: var(--mono); font-size: 13.5px; }
 .crumbs a { padding: 2px 4px; border-radius: 6px; }
 .crumbs .sep { color: var(--muted); }
@@ -296,6 +298,18 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
 .term-bar .name { font-weight: 650; margin-right: 6px; }
 .term-bar .spacer { flex: 1; }
 .snippets { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; max-width: 100%; }
+/* Snippet folder: a <details> menu that opens over the terminal. It must not sit inside .snippets, which clips. */
+.menu { position: relative; }
+.menu > summary { list-style: none; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu[open] > summary { background: var(--accent-soft); border-color: var(--accent); }
+.menu-items {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
+  display: flex; flex-direction: column; gap: 4px; min-width: 200px; max-width: min(360px, 90vw); max-height: 60vh;
+  overflow-y: auto; padding: 6px; background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+}
+.menu-items .btn { justify-content: flex-start; text-align: left; }
 .terminal { flex: 1; min-height: 200px; background: #0b0d10; border-radius: 10px; padding: 6px; overflow: hidden; }
 .keybar { display: none; gap: 6px; margin-top: 8px; overflow-x: auto; }
 .keybar .btn { min-width: 46px; }

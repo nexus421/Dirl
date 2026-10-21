@@ -4,6 +4,7 @@ import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.ssh.ConnectionState
 import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.vault.Host
+import bayern.kickner.dirl.vault.Snippet
 import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.staticLog
 import io.ktor.server.routing.Route
@@ -20,12 +21,15 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.html.ButtonType
+import kotlinx.html.FlowContent
 import kotlinx.html.a
 import kotlinx.html.button
+import kotlinx.html.details
 import kotlinx.html.div
 import kotlinx.html.id
 import kotlinx.html.p
 import kotlinx.html.span
+import kotlinx.html.summary
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotnexlib.ResultOf2
@@ -56,8 +60,8 @@ private val keyBar = listOf(
 /**
  * Terminal page and its WebSocket.
  *
- * - `GET /hosts/{id}/terminal` renders the page: xterm.js, the snippet buttons and, on touch devices, a key bar
- *   with Ctrl, Esc, Tab and arrows.
+ * - `GET /hosts/{id}/terminal` renders the page: xterm.js, a menu per snippet folder, the other snippet buttons and,
+ *   on touch devices, a key bar with Ctrl, Esc, Tab and arrows.
  * - `WS /ws/terminal/{id}` bridges the browser to a PTY shell on the host. Binary frames are terminal bytes in both
  *   directions, text frames are JSON control messages ([TerminalControl]).
  *
@@ -83,15 +87,15 @@ fun Route.terminalRoutes(dirl: Dirl) {
                     if (state is ConnectionState.HostKeyUnknown || state is ConnectionState.HostKeyMismatch) {
                         a(href = "/hosts/${host.id}", classes = "pill warn") { +"confirm host key first" }
                     }
-                    div("snippets") {
-                        content.snippets.sortedBy { it.name.lowercase() }.forEach { snippet ->
-                            button(type = ButtonType.button, classes = "btn sm") {
-                                attributes["data-send"] = snippet.command
-                                attributes["title"] = snippet.command.trimEnd('\n')
-                                +snippet.name
-                            }
+                    val groups = groupSnippets(content.snippets)
+                    // The folder menus sit outside the scrolling row: overflow-x would clip a menu opening inside it.
+                    groups.folders.forEach { (folder, inFolder) ->
+                        details("menu") {
+                            summary("btn sm") { +"$folder ▾" }
+                            div("menu-items") { inFolder.forEach { snippetButton(it) } }
                         }
                     }
+                    div("snippets") { groups.loose.forEach { snippetButton(it) } }
                     div("spacer") {}
                     linkButton("/hosts/${host.id}/files", "Files", "sm")
                     linkButton("/hosts/${host.id}", "Details", "sm ghost")
@@ -202,6 +206,13 @@ suspend fun io.ktor.server.application.ApplicationCall.jumpOnlyPage(host: Host) 
             linkButton("/hosts/${host.id}/edit", "Edit", "ghost")
         }
     }
+}
+
+/** A button that sends [snippet] to the terminal through `terminal.js`. */
+private fun FlowContent.snippetButton(snippet: Snippet) = button(type = ButtonType.button, classes = "btn sm") {
+    attributes["data-send"] = snippet.command
+    attributes["title"] = snippet.command.trimEnd('\n')
+    +snippet.name
 }
 
 private val controlJson = Json { ignoreUnknownKeys = true }

@@ -242,7 +242,7 @@ fun FlowContent.keyValues(vararg rows: Pair<String, String>) = dl("kv") {
     }
 }
 
-/** A labeled text input with an optional hint below. */
+/** A labeled text input with an optional hint below. [list] names a `<datalist>` with suggestions. */
 fun FlowContent.textField(
     label: String,
     name: String,
@@ -250,6 +250,7 @@ fun FlowContent.textField(
     hint: String? = null,
     required: Boolean = true,
     placeholder: String? = null,
+    list: String? = null,
 ) = label("field") {
     span { +label }
     input(type = InputType.text, name = name) {
@@ -257,6 +258,7 @@ fun FlowContent.textField(
         this.required = required
         attributes["aria-label"] = label
         if (placeholder != null) this.placeholder = placeholder
+        if (list != null) attributes["list"] = list
         attributes["autocomplete"] = "off"
         attributes["spellcheck"] = "false"
     }

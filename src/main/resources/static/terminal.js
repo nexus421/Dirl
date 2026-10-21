@@ -79,9 +79,23 @@
   });
   window.addEventListener('resize', function () { fit.fit(); });
 
+  // Snippet folders are <details class="menu">: close them after a snippet was sent, on a click elsewhere and on
+  // Escape. Opening one closes the others. Without JavaScript they still open and close by clicking the folder.
+  const menus = document.querySelectorAll('details.menu');
+  function closeMenus(except) {
+    menus.forEach(function (menu) { if (menu !== except) menu.open = false; });
+  }
+  document.addEventListener('click', function (event) {
+    closeMenus(event.target.closest('details.menu'));
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeMenus(null);
+  });
+
   document.querySelectorAll('[data-send]').forEach(function (button) {
     button.addEventListener('click', function () {
       send(button.dataset.send);
+      closeMenus(null);
       term.focus();
     });
   });

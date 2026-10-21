@@ -132,12 +132,15 @@ data class SshKey(
  * @property id Random ID.
  * @property name Display name.
  * @property command Text sent to the terminal. A trailing newline executes it right away.
+ * @property folder Optional folder, a menu of its own above the terminal. A folder exists as long as a snippet names
+ *   it, there is nothing to create or delete.
  */
 @Serializable
 data class Snippet(
     val id: String,
     val name: String,
     val command: String,
+    val folder: String? = null,
 )
 
 /**
