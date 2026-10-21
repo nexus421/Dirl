@@ -21,7 +21,10 @@ tests). GitHub Actions runs the same on every push and pull request, including t
 `dirl.jar` and attaches it to the release together with `dirl.jar.sha256`. A tag that does not match fails the run
 and attaches nothing.
 
-The actions in both workflows are pinned to commit hashes, the comment names the version.
+The actions in both workflows are pinned to commit hashes, the comment names the version. All of them run on
+Node.js 24. `gradle/actions/setup-gradle` v6 keeps its caching in a closed-source component under the Gradle Terms of
+Use (https://gradle.com/legal/terms-of-use/), using it means accepting them. `cache-provider: basic` would switch to an
+open-source cache instead.
 
 ## Run locally without Pocket ID
 
