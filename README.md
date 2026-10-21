@@ -55,6 +55,9 @@ Try it locally without an identity provider:
 ./gradlew devRun
 ```
 
+There is no official Docker image. Dirl runs as a plain JAR with Java 21, see [Deployment](docs/deployment.md). A
+maintained image is a welcome contribution.
+
 ## Documentation
 
 - [Usage](docs/usage.md): what each page does
