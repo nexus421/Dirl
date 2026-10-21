@@ -206,6 +206,12 @@ class WebTest {
     }
 
     @Test
+    fun `the example config from the quick start is valid`() {
+        val loaded = bayern.kickner.dirl.config.loadConfig(java.io.File("config.example.json"))
+        assertIs<kotnexlib.ResultOf2.Success<AppConfig>>(loaded, "config.example.json: $loaded")
+    }
+
+    @Test
     fun `config validation reports every problem`() {
         val broken = config.copy(port = 0, publicUrl = "http://ssh.example.com/", oidc = config.oidc.copy(issuer = "ftp://x", clientSecret = " ", scopes = listOf("profile")))
         val issues = validateConfig(broken)

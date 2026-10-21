@@ -8,12 +8,13 @@
   "oidc": {
     "issuer": "https://id.example.com",
     "clientId": "00000000-0000-0000-0000-000000000000",
+    "clientSecret": "client secret from Pocket ID",
     "allowedSubjects": [],
     "forceReauth": true,
     "scopes": ["openid", "profile"]
   },
   "session": {
-    "idleTimeoutMinutes": 30,
+    "idleTimeoutMinutes": 60,
     "maxAgeHours": 12
   }
 }
