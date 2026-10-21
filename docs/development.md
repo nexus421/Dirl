@@ -167,6 +167,7 @@ Verified:
   width, Ctrl+C from the key bar, snippets), files (upload with progress, CRLF preserving edit, rename, download,
   delete), metrics, audit log, settings, seal closing open terminals, key export, encrypted backup.
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines, jump host forwarding, `PerSourcePenalties`.
+- Login against a real Pocket ID instance as confidential client with PKCE.
 - 81 tests: vault (round trip, lockout, passphrase change including the old passphrase opening nothing, tampering,
   backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC (token checks, PKCE,
   client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous logins, a failing and
@@ -187,7 +188,6 @@ Verified:
 
 Still open:
 
-- Pocket ID itself: PKCE, group restriction, `prompt=login` (the protocol is covered by the mock provider tests).
 - Ten minutes idle behind Zoraxy.
 - Incus: LXCFS values in `/proc/meminfo`, `memory.swap.max`, systemd sandboxing.
 - vim was not installed on the test machine.
