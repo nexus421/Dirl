@@ -4,6 +4,7 @@
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
 ![JDK](https://img.shields.io/badge/JDK-21%2B-ED8B00?logo=openjdk&logoColor=white)
 ![Ktor](https://img.shields.io/badge/Ktor-3.6-087CFA?logo=ktor&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue)
 
 A lean, self-hosted web SSH client. Terminal, SFTP, jump hosts and server status in your browser, shipped as one
 Kotlin fat JAR with OIDC login (Pocket ID) and an encrypted vault for hosts and keys. Small enough to review alone,
@@ -74,3 +75,8 @@ Dirl follows KISS instead.
 
 Dirl is written with AI. Code, tests and documentation were created with Claude by Anthropic, directed, tested and
 spot-checked by me.
+
+## License
+
+[MIT](LICENSE), Copyright (c) 2026 Marvin Kickner. The vendored xterm.js under
+`src/main/resources/static/vendor/xterm` keeps its own MIT license.
