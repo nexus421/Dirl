@@ -299,8 +299,9 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
 .term-bar .spacer { flex: 1; }
 .snippets { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; max-width: 100%; }
 /* Snippet folder: a <details> menu that opens over the terminal. It must not sit inside .snippets, which clips. */
-.menu { position: relative; }
-.menu > summary { list-style: none; }
+/* Resets the general details style further down, which is meant for collapsible sections. */
+.menu { position: relative; margin: 0; border: 0; padding: 0; }
+.menu > summary { list-style: none; margin: 0; }
 .menu > summary::-webkit-details-marker { display: none; }
 .menu[open] > summary { background: var(--accent-soft); border-color: var(--accent); }
 .menu-items {
