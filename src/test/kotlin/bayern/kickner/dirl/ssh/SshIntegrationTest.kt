@@ -555,6 +555,72 @@ class SshIntegrationTest {
         dir.deleteRecursively()
     }
 
+    /** Opens a terminal WebSocket, returns its first message (error text or shell output) and keeps it open until [hold]. */
+    private suspend fun io.ktor.client.HttpClient.firstTerminalMessage(hostId: String, token: String, hold: CompletableDeferred<Unit>?, first: CompletableDeferred<String>) =
+        webSocket("/ws/terminal/$hostId?cols=80&rows=24", request = {
+            header(HttpHeaders.Cookie, "$SESSION_COOKIE=$token")
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }) {
+            val frame = withTimeout(15_000) { incoming.receiveCatching().getOrNull() }
+            first.complete(if (frame is Frame.Text) frame.readBytes().decodeToString() else "shell")
+            hold?.await()
+        }
+
+    @Test
+    fun `a refused terminal closes its session, so the host stays usable`(): Unit = testApplication {
+        val server = sshd()
+        val key = newKey()
+        // Without pty every terminal is refused. OpenSSH allows 10 sessions per connection, leftovers would use them up.
+        server.authorize("restrict,from=\"127.0.0.1\" ${key.publicKey} dirl")
+        val host = addHost("nopty", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val session = dirl.sessions.create(actor)
+        application { dirlModule(dirl) }
+        val client = createClient { install(WebSockets) }
+        repeat(11) {
+            val first = CompletableDeferred<String>()
+            client.firstTerminalMessage(host.id, session.token, null, first)
+            assertTrue(first.await().contains("needs pty"), first.await())
+        }
+        val ssh = (dirl.connections.connection(host.id) as ResultOf2.Success).value
+        assertEquals("ok", exec(ssh, "echo ok").trim())
+    }
+
+    @Test
+    fun `beyond the session limit of the server terminals and files explain why`(): Unit = testApplication {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict,pty,from=\"127.0.0.1\" ${key.publicKey} dirl")
+        val host = addHost("full", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val session = dirl.sessions.create(actor)
+        application { dirlModule(dirl) }
+        val client = createClient { install(WebSockets) }
+        val plain = createClient { followRedirects = false }
+        val hold = CompletableDeferred<Unit>()
+        kotlinx.coroutines.coroutineScope {
+            // The OpenSSH default MaxSessions is 10, all of them taken by terminals.
+            val terminals = (1..10).map {
+                val first = CompletableDeferred<String>()
+                launch { client.firstTerminalMessage(host.id, session.token, hold, first) }.also { assertEquals("shell", first.await()) }
+            }
+            val eleventh = CompletableDeferred<String>()
+            client.firstTerminalMessage(host.id, session.token, null, eleventh)
+            assertTrue(eleventh.await().contains("MaxSessions"), eleventh.await())
+
+            val files = plain.get("/hosts/${host.id}/files") { header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}") }
+            assertTrue(files.bodyAsText().contains("MaxSessions"))
+            val upload = plain.submitFormWithBinaryData(url = "/hosts/${host.id}/files/upload?path=/tmp", formData = formData {
+                append("file", "x".toByteArray(), Headers.build { append(HttpHeaders.ContentDisposition, "filename=\"dirl-full.txt\"") })
+            }) {
+                header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}")
+                header(HttpHeaders.Origin, "https://ssh.example.com")
+            }
+            assertEquals(HttpStatusCode.BadGateway, upload.status)
+            assertTrue(upload.bodyAsText().contains("MaxSessions"))
+            hold.complete(Unit)
+            terminals.forEach { it.join() }
+        }
+    }
+
     @Test
     fun `the terminal websocket runs a real shell`(): Unit = testApplication {
         val server = sshd()

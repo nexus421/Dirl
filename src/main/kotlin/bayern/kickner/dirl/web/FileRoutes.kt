@@ -4,6 +4,7 @@ import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.formatTimestamp
 import bayern.kickner.dirl.readAtMost
 import bayern.kickner.dirl.ssh.describe
+import bayern.kickner.dirl.ssh.describeChannelError
 import bayern.kickner.dirl.vault.Host
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
@@ -185,7 +186,7 @@ fun Route.fileRoutes(dirl: Dirl) {
         val path = call.request.queryParameters["path"].orEmpty()
         val client = connectedClient(dirl, host) ?: return@get
         val sftp = withContext(Dispatchers.IO) { runCatching { client.newSFTPClient() } }.getOrElse {
-            return@get call.fileError(host, it.message ?: "SFTP is not available on this host")
+            return@get call.fileError(host, describeChannelError(it))
         }
         val remote = withContext(Dispatchers.IO) { runCatching { sftp.open(path, EnumSet.of(OpenMode.READ)) } }.getOrElse {
             sftp.close()
@@ -217,7 +218,8 @@ fun Route.fileRoutes(dirl: Dirl) {
         // The checkbox is placed before the file input, so it arrives before the files in the multipart body.
         var overwrite = false
 
-        withContext(Dispatchers.IO) { client.newSFTPClient() }.use { sftp ->
+        val channel = withContext(Dispatchers.IO) { runCatching { client.newSFTPClient() } }
+        channel.getOrElse { return@post call.fileError(host, describeChannelError(it)) }.use { sftp ->
             call.receiveMultipart(formFieldLimit = MAX_UPLOAD_BYTES).forEachPart { part ->
                 if (part is PartData.FormItem && part.name == "overwrite") overwrite = part.value == "on"
                 if (part is PartData.FileItem) {
@@ -355,7 +357,7 @@ private suspend fun <T : Any> RoutingContext.withSftp(dirl: Dirl, host: Host, bl
     val client = connectedClient(dirl, host) ?: return null
     val result = withContext(Dispatchers.IO) { runCatching { client.newSFTPClient().use(block) } }
     val value = result.getOrNull()
-    if (value == null) call.fileError(host, result.exceptionOrNull()?.message ?: "The file is too large or not readable")
+    if (value == null) call.fileError(host, result.exceptionOrNull()?.let(::describeChannelError) ?: "The file is too large or not readable")
     return value
 }
 

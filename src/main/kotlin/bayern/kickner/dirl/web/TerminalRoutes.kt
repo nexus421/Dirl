@@ -3,6 +3,7 @@ package bayern.kickner.dirl.web
 import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.ssh.ConnectionState
 import bayern.kickner.dirl.ssh.describe
+import bayern.kickner.dirl.ssh.describeChannelError
 import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.Snippet
 import bayern.kickner.klogger.KLogger
@@ -131,12 +132,17 @@ fun Route.terminalRoutes(dirl: Dirl) {
         val opened = withContext(Dispatchers.IO) {
             runCatching {
                 val session = client.startSession()
-                session.allocatePTY("xterm-256color", cols, rows, 0, 0, emptyMap<PTYMode, Int>())
-                session to session.startShell()
+                // A refused PTY or shell must close the session, every leftover one counts towards MaxSessions.
+                val shell = runCatching {
+                    runCatching { session.allocatePTY("xterm-256color", cols, rows, 0, 0, emptyMap<PTYMode, Int>()) }
+                        .getOrElse { error("The server refused a terminal. The authorized_keys line needs pty, see the host page.") }
+                    session.startShell()
+                }.onFailure { runCatching { session.close() } }.getOrThrow()
+                session to shell
             }
         }
         val (sshSession, shell) = opened.getOrElse {
-            send(Frame.Text(errorJson("Cannot open a shell: ${it.message}")))
+            send(Frame.Text(errorJson("Cannot open a shell: ${describeChannelError(it)}")))
             return@webSocket close(CloseReason(CloseReason.Codes.INTERNAL_ERROR, "No shell"))
         }
 

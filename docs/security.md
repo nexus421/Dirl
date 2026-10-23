@@ -59,7 +59,9 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   and the stop after rejected logins. The presence WebSocket carries no data, never extends the session and is
   closed when the session ends, so a forgotten tab does not keep the connections open.
 - One connection per host while somebody is there. Terminals, SFTP and metrics are channels on it, a second
-  terminal on the same host is a new channel with its own shell.
+  terminal on the same host is a new channel with its own shell. OpenSSH allows 10 of them per connection
+  (`MaxSessions`), so the eleventh terminal on a host, or the file manager next to ten terminals, is refused with that
+  explanation. A refused terminal closes its channel again, so failed attempts never use up the limit.
 - Failed connects back off from 30 seconds to 15 minutes. Three rejected logins in a row stop the host until
   "Connect now" is clicked. OpenSSH 9.8 and later (Debian 13 ships 10.0) do something similar on their own:
   `PerSourcePenalties` blocks a source address for a while after failed logins, which was confirmed in the tests.
@@ -135,11 +137,12 @@ Without that address the line shows `<JUMP-HOST-IP>` and the host page says wher
 limited to the host right before it.
 
 A "jump host only" without any host behind it gets no forwarding at all, because `port-forwarding` without
-`permitopen` would allow every destination. All forms were verified against OpenSSH 10.2, the line behind a jump
-host against 9.2: the target accepts commands, PTY and SFTP, both jump variants forward only to the permitted target
-and refuse other destinations, the pure jump host runs no commands. Use a key that exists only for Dirl.
-`AllowTcpForwarding` must stay enabled on jump hosts (the default). Keep an emergency path that does not depend on Dirl: your own keys in the
-password manager and the provider's console.
+`permitopen` would allow every destination. All forms were verified against OpenSSH 10.2, the line behind a jump host
+against 9.2: the target accepts commands, PTY and SFTP, both jump variants forward only to the permitted target and
+refuse other destinations, the pure jump host runs no commands. Use a key that exists only for Dirl.
+`AllowTcpForwarding` must stay enabled on jump hosts (the default). Raise `MaxSessions` on a host where more than
+about eight terminals at once are normal, all users of Dirl share its one connection. Keep an emergency path that does
+not depend on Dirl: your own keys in the password manager and the provider's console.
 
 ## Login and web hardening
 

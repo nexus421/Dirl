@@ -18,6 +18,7 @@ import net.schmizz.keepalive.KeepAliveProvider
 import net.schmizz.keepalive.KeepAliveRunner
 import net.schmizz.sshj.DefaultConfig
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.connection.channel.OpenFailException
 import net.schmizz.sshj.transport.verification.HostKeyVerifier
 import net.schmizz.sshj.userauth.UserAuthException
 import java.security.PublicKey
@@ -332,6 +333,16 @@ fun failureReason(error: Throwable): String {
         else -> message
     }
 }
+
+/**
+ * Message for a terminal, SFTP channel or command that could not be opened. OpenSSH refuses a session beyond its
+ * `MaxSessions` (default 10 per connection) only with "open failed", and Dirl carries everything of a host on one
+ * connection, so a refused session channel gets an explanation.
+ */
+fun describeChannelError(error: Throwable): String =
+    if (error is OpenFailException && error.channelType == "session")
+        "The server refused another session on this connection, usually its MaxSessions limit (default 10). Close a terminal or raise MaxSessions on the server."
+    else error.message ?: error.javaClass.simpleName
 
 /** One line description of a state for messages and the UI. */
 fun describe(state: ConnectionState): String = when (state) {
