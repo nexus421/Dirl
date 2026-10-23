@@ -197,7 +197,8 @@ fun Route.fileRoutes(dirl: Dirl) {
         )
         call.respondOutputStream(ContentType.Application.OctetStream) {
             try {
-                remote.RemoteFileInputStream(0).use { it.copyTo(this) }
+                // 16 reads of 32 KiB in flight instead of one 8 KiB read per round trip, like the upload's 16 writes.
+                remote.ReadAheadRemoteFileInputStream(16).use { it.copyTo(this, 32 * 1024) }
             } finally {
                 runCatching { remote.close() }
                 runCatching { sftp.close() }

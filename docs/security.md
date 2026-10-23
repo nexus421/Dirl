@@ -79,12 +79,14 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   latest sample per host is kept, in memory, and forgotten when nobody uses Dirl. A host whose previous poll still
   runs is skipped. Bind mounts and btrfs subvolumes of one device are shown once. Pure jump hosts with
   `command="/bin/false"` have no metrics.
-- SFTP: bytes only, no encoding guessing. An upload never replaces an existing file unless "Overwrite existing
-  files" is ticked, the skipped names are shown at the form. Uploads and edits go to a temporary file and are renamed over the target
-  (`posix-rename`, with a fallback for servers without it). The new file keeps the permissions, owner and group of
-  the old one and is never readable by others in between. If the login may not keep the owner or group, the write
-  is refused and the file stays unchanged, a file of another user is changed by logging in as that user. The editor only opens valid UTF-8 up to 1 MiB and keeps
-  CRLF line endings and a leading empty line.
+- SFTP: bytes only, no encoding guessing. An upload never replaces an existing file unless "Overwrite existing files"
+  is ticked, the skipped names are shown at the form. Uploads and edits go to a temporary file and are renamed over
+  the target (`posix-rename`, with a fallback for servers without it). The new file keeps the permissions, owner and
+  group of the old one and is never readable by others in between. If the login may not keep the owner or group, the
+  write is refused and the file stays unchanged, a file of another user is changed by logging in as that user.
+  Downloads keep 16 reads of 32 KiB in flight and uploads 16 writes, so a long round trip does not throttle a transfer
+  to one block at a time. The editor only opens valid UTF-8 up to 1 MiB and keeps CRLF line endings and a leading
+  empty line.
 - A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust
   the heap (which would restart Dirl sealed): metrics output at 256 KiB, the editor at 1 MiB even if the server
   reports a smaller size, directory listings at 10000 entries. Terminal output and downloads are streamed.

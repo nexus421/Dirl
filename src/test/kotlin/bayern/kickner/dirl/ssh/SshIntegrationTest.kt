@@ -20,6 +20,7 @@ import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
 import io.ktor.http.HttpStatusCode
@@ -334,6 +335,26 @@ class SshIntegrationTest {
         val targetClient = (dirl.connections.connection(target.id) as ResultOf2.Success).value
         assertTrue(exec(targetClient, "echo behind-jump").contains("behind-jump"))
         assertTrue(runCatching { jumpClient.newDirectConnection("127.0.0.1", jumpServer.port).use { it.inputStream.read() } }.isFailure, "forwarding to other destinations must be refused")
+    }
+
+    @Test
+    fun `downloads arrive byte for byte around the read-ahead block size`(): Unit = testApplication {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict,pty ${key.publicKey} dirl")
+        val host = addHost("down", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val dir = Files.createTempDirectory("dirl-download").toFile()
+        val session = dirl.sessions.create(actor)
+        application { dirlModule(dirl) }
+        val random = java.util.Random(1)
+        // Empty, one byte, around the 32 KiB blocks and past the 16 reads in flight (512 KiB).
+        for (size in listOf(0, 1, 32 * 1024 - 1, 32 * 1024, 32 * 1024 + 1, 17 * 32 * 1024 + 7)) {
+            val file = File(dir, "f$size").apply { writeBytes(ByteArray(size).also(random::nextBytes)) }
+            val response = client.get("/hosts/${host.id}/files/download?path=${file.absolutePath}") { header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}") }
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertTrue(response.bodyAsBytes().contentEquals(file.readBytes()), "size $size")
+        }
+        dir.deleteRecursively()
     }
 
     @Test
