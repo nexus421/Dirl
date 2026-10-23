@@ -99,8 +99,10 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   at a time. There is no editor in the browser: a textarea cannot give every file back unchanged (browsers turn CR
   into LF and NUL into U+FFFD), files are changed in the terminal.
 - A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust the
-  heap (which would restart Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries. Terminal
-  output and downloads are streamed.
+  heap (which would restart Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries, SFTP packets
+  at 1 MiB. sshj alone accepts SFTP packets up to 1 GiB and allocates the buffer as soon as a server announces the
+  length, one forged header would end Dirl with an OutOfMemoryError, so Dirl checks the length before sshj reads it.
+  Terminal output and downloads are streamed.
 - sshj has no ML-KEM or sntrup key exchange, connections use curve25519. Fine for internal hops, MINA SSHD would be
   the replacement if post-quantum key exchange becomes a requirement.
 

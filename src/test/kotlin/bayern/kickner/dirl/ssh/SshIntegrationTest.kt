@@ -398,7 +398,7 @@ class SshIntegrationTest {
         val target = File(dir, "config.txt").apply { writeText("old") }
 
         val client = (dirl.connections.connection(host.id) as ResultOf2.Success).value
-        client.newSFTPClient().use { sftp -> writeAtomically(sftp, target.absolutePath, "new äöü\r\n".byteInputStream()) }
+        client.openSftp().use { sftp -> writeAtomically(sftp, target.absolutePath, "new äöü\r\n".byteInputStream()) }
 
         assertEquals("new äöü\r\n", target.readText())
         assertEquals(listOf("config.txt"), dir.list()!!.toList(), "no temporary file may be left behind")
@@ -409,14 +409,14 @@ class SshIntegrationTest {
             private var sent = 0
             override fun read(): Int = if (sent++ < 100_000) 'x'.code else throw java.io.IOException("connection reset")
         }
-        val failure = client.newSFTPClient().use { sftp -> runCatching { writeAtomically(sftp, target.absolutePath, broken) }.exceptionOrNull() }
+        val failure = client.openSftp().use { sftp -> runCatching { writeAtomically(sftp, target.absolutePath, broken) }.exceptionOrNull() }
         assertTrue(failure?.message.orEmpty().contains("connection reset"), "the original error must reach the caller, was: $failure")
         assertEquals("new äöü\r\n", target.readText())
         assertEquals(listOf("config.txt"), dir.list()!!.toList(), "the partial temporary file must be removed")
 
         // Listings stop at the limit with a message for the user instead of growing without bound.
         repeat(9) { File(dir, "f$it").writeText("x") }
-        client.newSFTPClient().use { sftp ->
+        client.openSftp().use { sftp ->
             assertEquals(10, listDirectory(sftp, dir.absolutePath, max = 10).size)
             val tooMany = runCatching { listDirectory(sftp, dir.absolutePath, max = 5) }.exceptionOrNull()
             assertTrue(tooMany?.message.orEmpty().contains("more than 5 entries"), "was: $tooMany")
@@ -438,7 +438,7 @@ class SshIntegrationTest {
         for ((name, mode) in listOf("id_ed25519" to "600", "backup.sh" to "755", "app.conf" to "640", "tool" to "4750")) {
             val file = File(dir, name).apply { writeText("old") }
             Files.setAttribute(file.toPath(), "unix:mode", mode.toInt(8))
-            client.newSFTPClient().use { sftp -> writeAtomically(sftp, file.absolutePath, "new".byteInputStream()) }
+            client.openSftp().use { sftp -> writeAtomically(sftp, file.absolutePath, "new".byteInputStream()) }
             assertEquals("new", file.readText())
             assertEquals(mode, mode(file), name)
         }
@@ -449,7 +449,7 @@ class SshIntegrationTest {
         if (other != null) {
             val shared = File(dir, "shared.conf").apply { writeText("old") }
             Files.setAttribute(shared.toPath(), "unix:gid", other)
-            client.newSFTPClient().use { sftp -> writeAtomically(sftp, shared.absolutePath, "new".byteInputStream()) }
+            client.openSftp().use { sftp -> writeAtomically(sftp, shared.absolutePath, "new".byteInputStream()) }
             assertEquals("new", shared.readText())
             assertEquals(other, Files.getAttribute(shared.toPath(), "unix:gid"))
         }
@@ -471,7 +471,7 @@ class SshIntegrationTest {
         Files.createSymbolicLink(File(dir, "broken").toPath(), File(dir, "missing").toPath())
 
         val client = (dirl.connections.connection(host.id) as ResultOf2.Success).value
-        client.newSFTPClient().use { sftp ->
+        client.openSftp().use { sftp ->
             val entries = listEntries(sftp, dir.absolutePath).associateBy { it.name }
             assertTrue(entries.getValue("linkdir").isDirectory, "a link to a directory must be navigable")
             assertTrue(entries.getValue("linkdir").isLink)
@@ -582,6 +582,29 @@ class SshIntegrationTest {
             hold.complete(Unit)
             terminals.forEach { it.join() }
         }
+    }
+
+    @Test
+    fun `an SFTP server announcing a huge packet is refused before the buffer exists`(): Unit = runBlocking {
+        // A compromised server answers the SFTP start with a header of almost 1 GiB and nothing else. sshj alone
+        // would allocate that much at once, with -Xmx256m Dirl would end with an OutOfMemoryError. cat keeps the
+        // channel open until Dirl closes it.
+        val script = File(Files.createTempDirectory("dirl-evil").toFile(), "evil-sftp.sh").apply {
+            writeText("#!/bin/sh\nprintf '\\077\\377\\377\\377'\nexec cat > /dev/null\n")
+            setExecutable(true)
+        }
+        val server = LocalSshd.start(root!!, sftpSubsystem = script).also { servers += it }
+        val key = newKey()
+        server.authorize("restrict ${key.publicKey} dirl")
+        val host = addHost("evil", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val client = (dirl.connections.connection(host.id) as ResultOf2.Success).value
+        // More attempts than OpenSSH's 10 sessions per connection: every refused start must close its channel.
+        repeat(11) {
+            val error = runCatching { client.openSftp() }.exceptionOrNull()
+            assertTrue(error?.message.orEmpty().contains("more than the $MAX_SFTP_PACKET Dirl accepts"), "was: $error")
+        }
+        assertEquals("ok", exec(client, "echo ok").trim())
+        script.parentFile.deleteRecursively()
     }
 
     @Test

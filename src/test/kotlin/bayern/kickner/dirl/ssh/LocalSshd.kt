@@ -51,8 +51,10 @@ class LocalSshd private constructor(
          * @param penalties OpenSSH 9.8 and later block a source address for a while after failed logins
          *   (`PerSourcePenalties`). Off by default so tests can check Dirl's own logic in isolation.
          * @param listen Loopback address to listen on, `::1` for IPv6 tests.
+         * @param sftpSubsystem Command serving the `sftp` subsystem instead of OpenSSH's `sftp-server`, e.g. a script
+         *   that plays a hostile server.
          */
-        fun start(root: File, penalties: Boolean = false, listen: String = "127.0.0.1"): LocalSshd {
+        fun start(root: File, penalties: Boolean = false, listen: String = "127.0.0.1", sftpSubsystem: File? = null): LocalSshd {
             val dir = Files.createTempDirectory("dirl-sshd").toFile()
             val port = ServerSocket(0).use { it.localPort }
             val hostKey = generateEd25519Key("host")
@@ -82,7 +84,7 @@ class LocalSshd private constructor(
                     appendLine("UsePAM no")
                     appendLine("StrictModes no")
                     appendLine("LogLevel VERBOSE")
-                    if (sftp != null) appendLine("Subsystem sftp ${sftp.absolutePath}")
+                    (sftpSubsystem ?: sftp)?.let { appendLine("Subsystem sftp ${it.absolutePath}") }
                     if (session != null) appendLine("SshdSessionPath ${session.absolutePath}")
                     if (auth != null) appendLine("SshdAuthPath ${auth.absolutePath}")
                     if (version >= 908 && penalties.not()) appendLine("PerSourcePenalties no")

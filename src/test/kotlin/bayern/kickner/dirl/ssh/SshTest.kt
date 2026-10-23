@@ -177,4 +177,33 @@ class SshTest {
         )
         assertEquals(listOf("/", "/boot"), dedupeDisks(disks).map { it.mount })
     }
+
+    @Test
+    fun `the SFTP packet limit passes packets unchanged and refuses an oversized length before its content`() {
+        fun packet(content: ByteArray) = java.nio.ByteBuffer.allocate(4 + content.size).putInt(content.size).put(content).array()
+        val stream = packet(ByteArray(300) { it.toByte() }) + packet(ByteArray(0)) + packet("tail".toByteArray())
+        // Read in odd chunks, so headers and contents are split across reads.
+        for (chunk in listOf(1, 3, 7, 4096)) {
+            val limited = SftpPacketLimit(stream.inputStream(), 300)
+            val out = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(chunk)
+            while (true) {
+                val n = limited.read(buffer, 0, chunk)
+                if (n < 0) break
+                out.write(buffer, 0, n)
+            }
+            assertTrue(out.toByteArray().contentEquals(stream), "chunk $chunk")
+        }
+        assertEquals(stream[0].toInt() and 0xff, SftpPacketLimit(stream.inputStream(), 300).read())
+
+        // One byte over the limit fails as soon as the fourth length byte is read, the content is never touched.
+        val tooLarge = packet(ByteArray(301))
+        val limited = SftpPacketLimit(tooLarge.inputStream(), 300)
+        assertEquals(3, limited.read(ByteArray(3), 0, 3))
+        val error = runCatching { limited.read(ByteArray(1), 0, 1) }.exceptionOrNull()
+        assertTrue(error is java.io.IOException && error.message.orEmpty().contains("301 bytes"), "was: $error")
+        // The largest length a header can carry, 4 GiB, is refused as well and not read as a negative number.
+        val maxHeader = byteArrayOf(-1, -1, -1, -1)
+        assertTrue(runCatching { SftpPacketLimit(maxHeader.inputStream(), 300).read(ByteArray(4), 0, 4) }.isFailure)
+    }
 }

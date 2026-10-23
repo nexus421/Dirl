@@ -4,6 +4,7 @@ import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.formatTimestamp
 import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.ssh.describeChannelError
+import bayern.kickner.dirl.ssh.openSftp
 import bayern.kickner.dirl.vault.Host
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
@@ -172,7 +173,7 @@ fun Route.fileRoutes(dirl: Dirl) {
         val (_, host) = hostOr404(dirl) ?: return@get
         val path = call.request.queryParameters["path"].orEmpty()
         val client = connectedClient(dirl, host) ?: return@get
-        val sftp = withContext(Dispatchers.IO) { runCatching { client.newSFTPClient() } }.getOrElse {
+        val sftp = withContext(Dispatchers.IO) { runCatching { client.openSftp() } }.getOrElse {
             return@get call.fileError(host, describeChannelError(it))
         }
         val remote = withContext(Dispatchers.IO) { runCatching { sftp.open(path, EnumSet.of(OpenMode.READ)) } }.getOrElse {
@@ -205,7 +206,7 @@ fun Route.fileRoutes(dirl: Dirl) {
         // The checkbox is placed before the file input, so it arrives before the files in the multipart body.
         var overwrite = false
 
-        val channel = withContext(Dispatchers.IO) { runCatching { client.newSFTPClient() } }
+        val channel = withContext(Dispatchers.IO) { runCatching { client.openSftp() } }
         channel.getOrElse { return@post call.fileError(host, describeChannelError(it)) }.use { sftp ->
             call.receiveMultipart(formFieldLimit = MAX_UPLOAD_BYTES).forEachPart { part ->
                 if (part is PartData.FormItem && part.name == "overwrite") overwrite = part.value == "on"
@@ -294,7 +295,7 @@ fun Route.fileRoutes(dirl: Dirl) {
  */
 private suspend fun <T : Any> RoutingContext.withSftp(dirl: Dirl, host: Host, block: (SFTPClient) -> T): T? {
     val client = connectedClient(dirl, host) ?: return null
-    return withContext(Dispatchers.IO) { runCatching { client.newSFTPClient().use(block) } }
+    return withContext(Dispatchers.IO) { runCatching { client.openSftp().use(block) } }
         .getOrElse { error -> call.fileError(host, describeChannelError(error)); null }
 }
 
