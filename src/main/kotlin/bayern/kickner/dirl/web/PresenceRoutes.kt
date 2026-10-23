@@ -16,12 +16,13 @@ import kotlin.time.Duration.Companion.seconds
  * goes over it. Like every request it counts as presence for as long as it runs (see `installGuards`), so the SSH
  * connections stay open while a Dirl tab is open, also on quiet pages such as the editor.
  *
- * It never extends the session: incoming frames are ignored and the session is only peeked at. A watchdog closes it
- * every [checkEvery] once the session expired, was ended or the user lost access. A forgotten tab would otherwise
- * keep the connections to every host open without anybody being able to use them.
+ * It never extends the session: opening it does not count as activity (see [installGuards]), incoming frames are
+ * ignored and the session is only peeked at. A watchdog closes it every [checkEvery] once the session expired, was
+ * ended or the user lost access. A forgotten tab would otherwise keep the connections to every host open without
+ * anybody being able to use them.
  */
 fun Route.presenceRoutes(dirl: Dirl, checkEvery: Duration = 30.seconds) {
-    webSocket("/ws/presence") {
+    webSocket(PRESENCE_PATH) {
         val token = call.session.token
         val sub = call.session.actor.sub
         val watchdog = launch {

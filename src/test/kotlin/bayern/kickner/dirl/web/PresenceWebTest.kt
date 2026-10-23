@@ -103,12 +103,16 @@ class PresenceWebTest {
             routing { presenceRoutes(dirl, checkEvery = 100.milliseconds) }
         }
         val session = dirl.sessions.create(actor)
+        val seen = session.lastSeen
         val client = createClient { install(WebSockets) }
+        // The overview reloads itself every minute and every reload opens a new presence socket. If opening one
+        // counted, an unattended browser would never reach the idle timeout.
+        now += 60_000
         client.webSocket("/ws/presence", request = {
             header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}")
             header(HttpHeaders.Origin, "https://ssh.example.com")
         }) {
-            val seen = session.lastSeen
+            assertEquals(seen, session.lastSeen, "opening the presence socket must not count as activity")
             now += 60_000
             send(Frame.Text("anything"))
             send(Frame.Binary(true, byteArrayOf(1, 2, 3)))

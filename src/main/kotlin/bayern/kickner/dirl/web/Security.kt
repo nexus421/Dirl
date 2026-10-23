@@ -44,6 +44,12 @@ private val sealedAllowed = setOf("/unlock", "/setup", "/setup/restore", "/logou
  */
 const val AUTO_REFRESH_PARAM = "autorefresh"
 
+/**
+ * Path of the presence WebSocket that every page opens (see [presenceRoutes]). Opening it does not count as activity
+ * either, every automatic reload of the overview opens a new one.
+ */
+const val PRESENCE_PATH = "/ws/presence"
+
 /** Key of the [Session] in the call attributes, set by [installGuards] for every protected path. */
 val SessionKey = AttributeKey<Session>("dirl.session")
 
@@ -58,7 +64,8 @@ val ApplicationCall.session: Session get() = attributes[SessionKey]
  * 2. Origin check: state-changing requests and WebSocket upgrades must come from [Dirl.publicOrigin]. Ktor does not
  *    check the `Origin` of WebSockets itself, and together with `SameSite=Strict` this is the CSRF protection.
  * 3. Login check: no valid session, or a user no longer allowed by [bayern.kickner.dirl.auth.AccessControl], leads to
- *    `/login` (pages) or 401 (everything else).
+ *    `/login` (pages) or 401 (everything else). Automatic reloads ([AUTO_REFRESH_PARAM]) and the presence WebSocket
+ *    ([PRESENCE_PATH]) only check the session, every other request also counts as activity for the idle timeout.
  * 4. Vault check: while the vault is not unlocked only the unlock and setup pages work.
  * 5. Presence: every request that passed the checks counts as somebody using Dirl until it is done, a WebSocket until
  *    it is closed, see [bayern.kickner.dirl.ssh.Presence]. Public paths and rejected requests do not count.
@@ -89,7 +96,7 @@ fun Application.installGuards(dirl: Dirl) {
         if (publicPrefixes.any { path == it || path.startsWith(it) }) return@intercept
 
         val token = call.request.cookies[SESSION_COOKIE]
-        val automatic = call.request.queryParameters[AUTO_REFRESH_PARAM] != null
+        val automatic = call.request.queryParameters[AUTO_REFRESH_PARAM] != null || path == PRESENCE_PATH
         val valid = if (automatic) dirl.sessions.peek(token) else dirl.sessions.get(token)
         val session = valid?.takeIf { dirl.access.isAllowed(it.actor.sub) }
         if (session == null) {

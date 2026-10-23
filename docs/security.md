@@ -135,10 +135,10 @@ password manager and the provider's console.
   section 3.1.3.7 allows as replacement. `iss`, `aud`, `azp`, `exp`, `iat` and `nonce` are checked
   ([auth/IdToken.kt](../src/main/kotlin/bayern/kickner/dirl/auth/IdToken.kt)).
 - Session: `__Host-session` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`), 256 bit random token, in memory, 60
-  minutes idle, 12 hours at most (both configurable). The automatic reload of the host overview does not count as
-  activity, so an unattended browser still reaches the idle timeout. The callback answers with a page that refreshes
-  to `/`, because a redirect would belong to the cross-site navigation and the browser would not send the Strict
-  cookie.
+  minutes idle, 12 hours at most (both configurable). The automatic reload of the host overview and the presence
+  WebSocket it opens do not count as activity, so an unattended browser still reaches the idle timeout. The callback
+  answers with a page that refreshes to `/`, because a redirect would belong to the cross-site navigation and the
+  browser would not send the Strict cookie.
 - CSP `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; ...`. `unsafe-inline` for styles is
   required by xterm.js 6, which creates `<style>` elements without nonce support. Scripts stay strict.
 - Every POST and every WebSocket upgrade must carry `Origin: <publicUrl>`, Ktor does not check that for WebSockets.

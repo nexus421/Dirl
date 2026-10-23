@@ -134,7 +134,7 @@ suspend fun ApplicationCall.page(
         body(if (frame == PageFrame.WIDE) "fill" else null) {
             // App pages keep the presence WebSocket open (app.js), so the SSH connections stay while they are open.
             // Login, unlock and setup do not: there is nothing to keep connected.
-            if (session != null && frame != PageFrame.CENTER) attributes["data-presence"] = "/ws/presence"
+            if (session != null && frame != PageFrame.CENTER) attributes["data-presence"] = PRESENCE_PATH
             if (frame != PageFrame.CENTER) header("appbar") {
                 a(href = "/", classes = "brand") {
                     span("logo") { +">_" }
