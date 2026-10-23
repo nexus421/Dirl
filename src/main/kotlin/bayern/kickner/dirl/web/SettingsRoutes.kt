@@ -122,7 +122,7 @@ fun Route.settingsRoutes(dirl: Dirl) {
                 dirl,
                 when (val e = result.value) {
                     ChangePassphraseError.NotUnlocked -> "The vault is not unlocked."
-                    ChangePassphraseError.WrongPassphrase -> "The current passphrase is wrong."
+                    is ChangePassphraseError.Refused -> unlockErrorText(e.reason)
                     is ChangePassphraseError.TooWeak -> e.reason
                     is ChangePassphraseError.KeyFileUnavailable -> e.reason
                 },

@@ -66,8 +66,8 @@ sealed interface ChangePassphraseError {
     /** Only possible while unlocked. */
     data object NotUnlocked : ChangePassphraseError
 
-    /** The current passphrase did not match. */
-    data object WrongPassphrase : ChangePassphraseError
+    /** The current passphrase did not match or the lockout is active. @property reason The same as for an unlock. */
+    data class Refused(val reason: UnlockError) : ChangePassphraseError
 
     /** @property reason Shown to the user. */
     data class TooWeak(val reason: String) : ChangePassphraseError
@@ -84,8 +84,9 @@ sealed interface ChangePassphraseError {
  * with Argon2id, and in key file mode additionally with the key file. Changing the passphrase creates a new DEK and
  * deletes the local backups, see [changePassphrase].
  *
- * After [MAX_ATTEMPTS] wrong passphrases further attempts are refused for [lockoutDuration] without even running
- * Argon2. The counter is kept in memory only, a restart resets it, which costs an attacker a restart per five tries.
+ * After [MAX_ATTEMPTS] wrong passphrases, whether at unlock, key export or passphrase change, further attempts are
+ * refused for [lockoutDuration] without even running Argon2. The counter is kept in memory only, a restart resets
+ * it, which costs an attacker a restart per five tries.
  *
  * All methods are blocking (Argon2 takes up to a second) and thread-safe. Call them off the request thread.
  *
@@ -214,16 +215,8 @@ class Vault(
     fun verifyPassphrase(passphrase: CharArray, actor: Actor): ResultOf2<Unit, UnlockError> {
         val result = synchronized(lock) {
             if (state !is VaultState.Unlocked) return@synchronized ResultOf2.Failure(UnlockError.NotSealed)
-            val now = clock()
-            if (now < lockedUntil) return@synchronized ResultOf2.Failure(UnlockError.LockedOut(lockedUntil))
             val current = envelope ?: return@synchronized ResultOf2.Failure(UnlockError.Unusable("No vault loaded"))
-            val kek = deriveKek(passphrase, current.kdf)
-            val ok = Aead.open(current.wrappedDek.passphrase, Aead.keyOf(kek)).onSuccess { it.wipe() }.isSuccess
-            kek.wipe()
-            if (ok) {
-                failedAttempts = 0
-                ResultOf2.Success(Unit)
-            } else registerFailure(now, actor)
+            matchPassphrase(passphrase, current, actor)
         }
         passphrase.wipe()
         return result
@@ -294,8 +287,8 @@ class Vault(
      * - The local backups `vault.json.1` to `.N` are deleted, they hold the old wrap and the old data.
      * - In key file mode the new DEK is wrapped with the key file as well, otherwise any key file wrap is dropped.
      *
-     * Encrypted backups downloaded earlier still open with the old passphrase and contain the data of that time. Both
-     * arrays are wiped before returning.
+     * A wrong [old] counts towards the lockout like a failed unlock. Encrypted backups downloaded earlier still open
+     * with the old passphrase and contain the data of that time. Both arrays are wiped before returning.
      */
     fun changePassphrase(old: CharArray, new: CharArray, actor: Actor): ResultOf2<Unit, ChangePassphraseError> {
         val result = synchronized(lock) {
@@ -304,9 +297,8 @@ class Vault(
             val weak = checkPassphrase(new)
             if (weak != null) return@synchronized ResultOf2.Failure(ChangePassphraseError.TooWeak(weak))
 
-            val oldKek = deriveKek(old, current.kdf)
-            val matches = Aead.open(current.wrappedDek.passphrase, Aead.keyOf(oldKek)).isSuccess.also { oldKek.wipe() }
-            if (matches.not()) return@synchronized ResultOf2.Failure(ChangePassphraseError.WrongPassphrase)
+            val matches = matchPassphrase(old, current, actor)
+            if (matches is ResultOf2.Failure) return@synchronized ResultOf2.Failure(ChangePassphraseError.Refused(matches.value))
 
             val keyFileKek = keyFile?.let { file ->
                 readKeyFile(file).getOrElse { return@synchronized ResultOf2.Failure(ChangePassphraseError.KeyFileUnavailable(it.message ?: "unreadable")) }
@@ -346,6 +338,21 @@ class Vault(
         failedAttempts = 0
         state = VaultState.Unlocked(dek, content)
         infoLog { "Vault unlocked with ${content.hosts.size} host(s) and ${content.keys.size} key(s)" }
+        return ResultOf2.Success(Unit)
+    }
+
+    /**
+     * Checks [passphrase] against the passphrase wrap of [current] while unlocked. Refused without Argon2 during the
+     * lockout, a wrong one counts towards it like a failed unlock. Must run under [lock].
+     */
+    private fun matchPassphrase(passphrase: CharArray, current: VaultEnvelope, actor: Actor): ResultOf2<Unit, UnlockError> {
+        val now = clock()
+        if (now < lockedUntil) return ResultOf2.Failure(UnlockError.LockedOut(lockedUntil))
+        val kek = deriveKek(passphrase, current.kdf)
+        val ok = Aead.open(current.wrappedDek.passphrase, Aead.keyOf(kek)).onSuccess { it.wipe() }.isSuccess
+        kek.wipe()
+        if (ok.not()) return registerFailure(now, actor)
+        failedAttempts = 0
         return ResultOf2.Success(Unit)
     }
 

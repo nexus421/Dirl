@@ -169,13 +169,13 @@ Verified:
   delete), metrics, audit log, settings, seal closing open terminals, key export, encrypted backup.
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines, jump host forwarding, `PerSourcePenalties`.
 - Login against a real Pocket ID instance as confidential client with PKCE.
-- 81 tests: vault (round trip, lockout, passphrase change including the old passphrase opening nothing, tampering,
-  backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC (token checks, PKCE,
-  client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous logins, a failing and
-  a slow provider), backup restore through the UI up to the unlock, access control, idle timeout with automatic
-  reloads, security headers, origin checks and path tricks, config validation including `config.example.json`,
-  presence (on a real CIO server), snippet folders, SSH integration as listed above and the limits on data read
-  from servers. Without an `sshd` the 14 SSH integration tests are skipped.
+- 85 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
+  opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file,
+  OIDC (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of
+  anonymous logins, a failing and a slow provider), backup restore through the UI up to the unlock, access control,
+  idle timeout with automatic reloads, security headers, origin checks and path tricks, config validation including
+  `config.example.json`, presence (on a real CIO server), snippet folders, SSH integration as listed above and the
+  limits on data read from servers. Without an `sshd` the 14 SSH integration tests are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
   provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
   target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all

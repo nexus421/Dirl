@@ -67,8 +67,8 @@ Optionally "Requires Re-Authentication".
 | Unplanned restart                             | unlock once            | automatic                                |
 
 In passphrase mode the process starts sealed: no SSH connections, no metrics, only login and unlock. Five wrong
-passphrases lock unlocking for 15 minutes (counter in memory) and are written to the audit log. The passphrase check
-before a key export counts towards the same lockout.
+passphrases lock unlocking for 15 minutes (counter in memory) and are written to the audit log. The passphrase checks
+before a key export and a passphrase change count towards the same lockout.
 
 Key file mode: create the key with `head -c 32 /dev/urandom > /etc/dirl/kek`, `chmod 0400`, owner `dirl`, before
 the vault is set up. The passphrase keeps working as fallback. Never put `/etc/dirl/kek` into the same backup as

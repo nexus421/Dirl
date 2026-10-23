@@ -179,6 +179,28 @@ class VaultTest {
     }
 
     @Test
+    fun `wrong current passphrases on a passphrase change share the lockout and are audited`() {
+        val v = vault()
+        v.setup(passphrase.toCharArray(), actor)
+        val newPassphrase = "another very long passphrase 42"
+        fun change(old: String) = v.changePassphrase(old.toCharArray(), newPassphrase.toCharArray(), actor)
+        repeat(4) { i ->
+            assertEquals(ChangePassphraseError.Refused(UnlockError.WrongPassphrase(4 - i)), (change("wrong current passphrase!!") as ResultOf2.Failure).value)
+        }
+        val locked = assertIs<ChangePassphraseError.Refused>((change("wrong current passphrase!!") as ResultOf2.Failure).value)
+        assertIs<UnlockError.LockedOut>(locked.reason)
+        // Locked: neither the right passphrase changes it nor does the key export check accept it.
+        assertIs<UnlockError.LockedOut>(assertIs<ChangePassphraseError.Refused>((change(passphrase) as ResultOf2.Failure).value).reason)
+        assertIs<UnlockError.LockedOut>((v.verifyPassphrase(passphrase.toCharArray(), actor) as ResultOf2.Failure).value)
+        val audited = AuditLog(File(dir, "audit.jsonl")).tail(100).map { it.action.name }
+        assertEquals(4, audited.count { it == "VAULT_UNLOCK_FAILED" })
+        assertEquals(1, audited.count { it == "VAULT_LOCKED_OUT" })
+
+        now += 16 * 60 * 1000
+        assertIs<ResultOf2.Success<Unit>>(change(passphrase))
+    }
+
+    @Test
     fun `an exported backup restores into a fresh installation`() {
         val v = vault()
         v.setup(passphrase.toCharArray(), actor)
