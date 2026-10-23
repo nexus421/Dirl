@@ -46,6 +46,7 @@ import kotlinx.html.th
 import kotlinx.html.thead
 import kotlinx.html.tr
 import kotnexlib.ResultOf2
+import net.schmizz.sshj.sftp.FileAttributes
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
 import net.schmizz.sshj.sftp.RemoteResourceFilter
@@ -441,6 +442,11 @@ fun deleteEntry(sftp: SFTPClient, path: String) {
  * A symlink as [path] is resolved first, so the file it points to is written and the link stays. Writing to the
  * link path itself would replace the link with a plain file and leave the real file unchanged.
  *
+ * An existing target keeps its permissions, owner and group. The temporary file is created with the target's
+ * permissions, so a private key is never readable by others in between. If the SSH user may not give the file the
+ * target's owner or group, the write is refused and the target stays unchanged. Changing a file of another user
+ * needs a login as that user.
+ *
  * A failed write removes the temporary file again, a broken upload would otherwise leave a large hidden file on a
  * possibly full file system. Once the target was removed for the fallback rename, the temporary file holds the only
  * copy of the new content and stays if that rename fails. Errors are rethrown.
@@ -448,15 +454,34 @@ fun deleteEntry(sftp: SFTPClient, path: String) {
 fun writeAtomically(sftp: SFTPClient, path: String, input: InputStream) {
     val target = resolveLink(sftp, path)
     val tmp = target.substringBeforeLast('/', ".") + "/." + target.substringAfterLast('/') + ".dirl-tmp"
+    val existing = sftp.statExistence(target)
+    val permissions = existing?.let { FileAttributes.Builder().withPermissions(it.mode.permissionsMask).build() }
     runCatching {
-        sftp.open(tmp, EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)).use { file ->
+        sftp.open(tmp, EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC), permissions ?: FileAttributes.EMPTY).use { file ->
             file.RemoteFileOutputStream(0, 16).use { input.copyTo(it) }
         }
+        if (existing != null) keepAttributes(sftp, tmp, target, existing)
     }.onFailure { error -> discardAndThrow(sftp, tmp, error) }
 
     if (runCatching { sftp.rename(tmp, target, setOf(RenameFlags.OVERWRITE)) }.isSuccess) return
     runCatching { if (sftp.statExistence(target) != null) sftp.rm(target) }.onFailure { error -> discardAndThrow(sftp, tmp, error) }
     sftp.rename(tmp, target)
+}
+
+/**
+ * Gives [tmp] the owner, group and permissions of [original]. The owner comes first because changing it clears the
+ * setuid and setgid bits, and the permissions are set again because the server's umask applies when creating.
+ *
+ * @throws IllegalStateException with a message for the user if the owner or group cannot be kept.
+ */
+private fun keepAttributes(sftp: SFTPClient, tmp: String, target: String, original: FileAttributes) {
+    val created = sftp.stat(tmp)
+    if (created.uid != original.uid || created.gid != original.gid) runCatching {
+        sftp.setattr(tmp, FileAttributes.Builder().withUIDGID(original.uid, original.gid).build())
+    }.onFailure { error ->
+        throw IllegalStateException("$target belongs to another user or group (${original.uid}:${original.gid}) that this login cannot keep. Log in as its owner to change it.", error)
+    }
+    sftp.setattr(tmp, FileAttributes.Builder().withPermissions(original.mode.permissionsMask).build())
 }
 
 /** The real path behind a symlink, or [path] itself for everything else, including paths that do not exist yet. */

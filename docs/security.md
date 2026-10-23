@@ -81,7 +81,9 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   `command="/bin/false"` have no metrics.
 - SFTP: bytes only, no encoding guessing. An upload never replaces an existing file unless "Overwrite existing
   files" is ticked, the skipped names are shown at the form. Uploads and edits go to a temporary file and are renamed over the target
-  (`posix-rename`, with a fallback for servers without it). The editor only opens valid UTF-8 up to 1 MiB and keeps
+  (`posix-rename`, with a fallback for servers without it). The new file keeps the permissions, owner and group of
+  the old one and is never readable by others in between. If the login may not keep the owner or group, the write
+  is refused and the file stays unchanged, a file of another user is changed by logging in as that user. The editor only opens valid UTF-8 up to 1 MiB and keeps
   CRLF line endings and a leading empty line.
 - A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust
   the heap (which would restart Dirl sealed): metrics output at 256 KiB, the editor at 1 MiB even if the server

@@ -379,6 +379,39 @@ class SshIntegrationTest {
     }
 
     @Test
+    fun `sftp writes keep the permissions and the group of the file they replace`(): Unit = runBlocking {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict,pty ${key.publicKey} dirl")
+        val host = addHost("files", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val dir = Files.createTempDirectory("dirl-modes").toFile()
+        val client = (dirl.connections.connection(host.id) as ResultOf2.Success).value
+        fun mode(f: File) = (Files.getAttribute(f.toPath(), "unix:mode") as Int).and("7777".toInt(8)).toString(8)
+
+        // A private key must not become readable by others, a script must stay executable.
+        for ((name, mode) in listOf("id_ed25519" to "600", "backup.sh" to "755", "app.conf" to "640", "tool" to "4750")) {
+            val file = File(dir, name).apply { writeText("old") }
+            Files.setAttribute(file.toPath(), "unix:mode", mode.toInt(8))
+            client.newSFTPClient().use { sftp -> writeAtomically(sftp, file.absolutePath, "new".byteInputStream()) }
+            assertEquals("new", file.readText())
+            assertEquals(mode, mode(file), name)
+        }
+
+        // A file shared through a group keeps that group, the new file would otherwise get the login's primary group.
+        val primary = Files.getAttribute(dir.toPath(), "unix:gid") as Int
+        val other = ProcessBuilder("id", "-G").start().inputStream.readBytes().decodeToString().trim().split(' ').map { it.toInt() }.firstOrNull { it != primary }
+        if (other != null) {
+            val shared = File(dir, "shared.conf").apply { writeText("old") }
+            Files.setAttribute(shared.toPath(), "unix:gid", other)
+            client.newSFTPClient().use { sftp -> writeAtomically(sftp, shared.absolutePath, "new".byteInputStream()) }
+            assertEquals("new", shared.readText())
+            assertEquals(other, Files.getAttribute(shared.toPath(), "unix:gid"))
+        }
+        assertTrue(dir.list()!!.none { it.endsWith(".dirl-tmp") }, "no temporary file may be left behind")
+        dir.deleteRecursively()
+    }
+
+    @Test
     fun `symlinks list, delete and save like their targets without touching them`(): Unit = runBlocking {
         val server = sshd()
         val key = newKey()

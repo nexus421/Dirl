@@ -58,7 +58,7 @@ DIRL_SSHD_ROOT="$HOME/sshd-root" ./gradlew test
 
 The tests cover trust on first use, a changed host key, the stop after three rejected logins, both jump host
 variants, an IPv6 target behind a restricted jump host (skipped without IPv6 loopback), atomic SFTP writes including
-broken transfers, symlinks in listing, editor and delete, upload overwrite protection, the terminal WebSocket
+broken transfers and kept permissions and group, symlinks in listing, editor and delete, upload overwrite protection, the terminal WebSocket
 including resize, closing all connections while a connect is still running (a held back handshake through
 `GatedProxy`), closing for absence without losing a stop, and the status poll only while somebody is present and
 never twice at once for a host. [PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt)
