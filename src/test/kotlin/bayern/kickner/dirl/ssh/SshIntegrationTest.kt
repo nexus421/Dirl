@@ -17,6 +17,7 @@ import bayern.kickner.dirl.web.writeAtomically
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.forms.formData
+import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -353,6 +354,40 @@ class SshIntegrationTest {
             val response = client.get("/hosts/${host.id}/files/download?path=${file.absolutePath}") { header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}") }
             assertEquals(HttpStatusCode.OK, response.status)
             assertTrue(response.bodyAsBytes().contentEquals(file.readBytes()), "size $size")
+        }
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun `the editor saves files unchanged and refuses the ones a browser would change`(): Unit = testApplication {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict,pty ${key.publicKey} dirl")
+        val host = addHost("edit", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val dir = Files.createTempDirectory("dirl-edit").toFile()
+        val session = dirl.sessions.create(actor)
+        application { dirlModule(dirl) }
+        val client = createClient { followRedirects = false }
+
+        for (content in listOf("a=1\nb=2\n", "a=1\r\nb=2\r\n", "\r\nleading empty line\r\n")) {
+            val file = File(dir, "ok.conf").apply { writeText(content) }
+            val page = client.get("/hosts/${host.id}/files/edit?path=${file.absolutePath}") { header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}") }
+            assertEquals(HttpStatusCode.OK, page.status)
+            val crlf = Regex("name=\"crlf\" value=\"(\\w+)\"").find(page.bodyAsText())!!.groupValues[1]
+            // What a browser submits: the parser turned every CR into LF, the form data turns every LF into CRLF.
+            val submitted = content.replace("\r\n", "\n").replace("\n", "\r\n")
+            val saved = client.submitForm("/hosts/${host.id}/files/save", io.ktor.http.parameters { append("path", file.absolutePath); append("crlf", crlf); append("content", submitted) }) {
+                header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}")
+                header(HttpHeaders.Origin, "https://ssh.example.com")
+            }
+            assertEquals(HttpStatusCode.Found, saved.status)
+            assertEquals(content, file.readText())
+        }
+        for (content in listOf("key\u0000value\n", "progress 10%\rprogress 100%\n", "windows\r\nlinux\n")) {
+            val file = File(dir, "bad.conf").apply { writeText(content) }
+            val page = client.get("/hosts/${host.id}/files/edit?path=${file.absolutePath}") { header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}") }
+            assertEquals(HttpStatusCode.BadGateway, page.status)
+            assertTrue(page.bodyAsText().contains("Saving in the browser would change this file"))
         }
         dir.deleteRecursively()
     }

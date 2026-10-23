@@ -83,7 +83,8 @@ private const val MAX_UPLOAD_BYTES = 4L * 1024 * 1024 * 1024
  * - `GET /hosts/{id}/files/rename?path=`, `POST /hosts/{id}/files/rename` rename or move an entry.
  * - `GET /hosts/{id}/files/edit?path=`, `POST /hosts/{id}/files/save` edit UTF-8 text files up to 1 MiB.
  *
- * Contents are moved as bytes, nothing guesses encodings. The editor refuses files that are not valid UTF-8.
+ * Contents are moved as bytes, nothing guesses encodings. The editor refuses files that are not valid UTF-8 or that
+ * a browser would change on the way back, see [editorProblem].
  * Uploads and saves write to a temporary file next to the target and rename it, so a broken transfer never leaves
  * a half-written file behind.
  */
@@ -305,6 +306,7 @@ fun Route.fileRoutes(dirl: Dirl) {
             else sftp.open(path, EnumSet.of(OpenMode.READ)).use { f -> f.RemoteFileInputStream(0).use { it.readAtMost(MAX_EDIT_BYTES.toInt()) } }
         } ?: return@get
         val text = decodeUtf8Strict(bytes) ?: return@get call.fileError(host, "This file is not valid UTF-8 text. Download it instead.")
+        editorProblem(text)?.let { return@get call.fileError(host, "Saving in the browser would change this file: it $it. Download it instead.") }
         call.page("Edit ${path.substringAfterLast('/')}", call.session, Nav.HOSTS, frame = PageFrame.WIDE) {
             form(action = "/hosts/${host.id}/files/save", method = FormMethod.post, classes = "form") {
                 div("page-header") {
@@ -517,6 +519,20 @@ fun decodeUtf8Strict(bytes: ByteArray): String? = runCatching {
         .onUnmappableCharacter(CodingErrorAction.REPORT)
         .decode(ByteBuffer.wrap(bytes)).toString()
 }.getOrNull()
+
+/**
+ * Why the editor cannot give [text] back unchanged, `null` if it can. Browsers turn every CR of a textarea into LF
+ * and NUL into U+FFFD, the save restores only one line ending for the whole file.
+ */
+fun editorProblem(text: String): String? {
+    val crlf = text.contains("\r\n")
+    return when {
+        text.contains('\u0000') -> "contains NUL characters"
+        Regex("\r(?!\n)").containsMatchIn(text) -> "contains carriage returns without a line feed"
+        crlf && Regex("(?<!\r)\n").containsMatchIn(text) -> "mixes CRLF and LF line endings"
+        else -> null
+    }
+}
 
 /** Parent directory of an absolute path, `/` for top level entries. */
 fun parentOf(path: String): String = path.trimEnd('/').substringBeforeLast('/', "").ifEmpty { "/" }

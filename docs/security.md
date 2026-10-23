@@ -85,8 +85,9 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   group of the old one and is never readable by others in between. If the login may not keep the owner or group, the
   write is refused and the file stays unchanged, a file of another user is changed by logging in as that user.
   Downloads keep 16 reads of 32 KiB in flight and uploads 16 writes, so a long round trip does not throttle a transfer
-  to one block at a time. The editor only opens valid UTF-8 up to 1 MiB and keeps CRLF line endings and a leading
-  empty line.
+  to one block at a time. The editor only opens valid UTF-8 up to 1 MiB that a browser gives back unchanged: files
+  with NUL characters, a carriage return without a line feed or mixed CRLF and LF line endings are refused, they can
+  be downloaded instead. It keeps CRLF line endings and a leading empty line.
 - A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust
   the heap (which would restart Dirl sealed): metrics output at 256 KiB, the editor at 1 MiB even if the server
   reports a smaller size, directory listings at 10000 entries. Terminal output and downloads are streamed.
