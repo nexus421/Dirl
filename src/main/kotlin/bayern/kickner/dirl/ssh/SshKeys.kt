@@ -74,15 +74,19 @@ fun fingerprint(key: PublicKey): String =
  *   only forward to the hosts that use it, nothing else. Without any host behind it, it gets no forwarding at all,
  *   because `port-forwarding` without `permitopen` would allow every destination.
  *
- * All lines are limited to [sourceAddress] with `from=`.
+ * Every line is limited with `from=` to the address the host sees the connection coming from: [sourceAddress] for
+ * hosts Dirl reaches directly, [Host.sourceAddressForTargets] of the jump host for hosts behind one. A missing
+ * address is written as placeholder.
  *
  * @param host The host the line is for.
  * @param key The key [host] logs in with.
- * @param allHosts All hosts, to find the ones tunneling through [host].
- * @param sourceAddress The address the target sees Dirl coming from, `null` writes a placeholder.
+ * @param allHosts All hosts, to find the ones tunneling through [host] and the jump host of [host].
+ * @param sourceAddress The address hosts reached directly see Dirl coming from, `null` writes a placeholder.
  */
 fun authorizedKeysLine(host: Host, key: SshKey, allHosts: List<Host>, sourceAddress: String?): String {
-    val from = "from=\"${sourceAddress ?: "<DIRL-IP>"}\""
+    val origin = if (host.jumpHostId == null) sourceAddress ?: "<DIRL-IP>"
+    else allHosts.firstOrNull { it.id == host.jumpHostId }?.sourceAddressForTargets ?: "<JUMP-HOST-IP>"
+    val from = "from=\"$origin\""
     // OpenSSH needs IPv6 addresses in brackets here, without them it rejects the whole line.
     val permits = allHosts.filter { it.jumpHostId == host.id }
         .map { "permitopen=\"${if (':' in it.address) "[${it.address}]" else it.address}:${it.port}\"" }.distinct().joinToString(",")
@@ -94,6 +98,9 @@ fun authorizedKeysLine(host: Host, key: SshKey, allHosts: List<Host>, sourceAddr
     }
     return "$options ${key.publicKey} $KEY_COMMENT"
 }
+
+/** What `from="..."` in `authorized_keys` accepts: addresses, CIDR, host names, wildcards, negation, lists. */
+val SOURCE_ADDRESS_PATTERN = Regex("^[A-Za-z0-9.:/*?,!\\[\\]-]{1,200}$")
 
 /** Fingerprint of a public key line (`ssh-ed25519 AAAA...`), or `unknown` if the line cannot be parsed. */
 fun fingerprintOfLine(publicKeyLine: String): String = runCatching {

@@ -112,11 +112,21 @@ A jump host that is also a terminal target keeps its PTY and gets the same narro
 restrict,pty,port-forwarding,permitopen="10.0.0.5:22",from="<Dirl IP>" ssh-ed25519 AAAA... dirl
 ```
 
+A host behind a jump host sees the connection coming from the jump host, not from Dirl. Its line therefore gets the
+"Address seen by hosts behind it" set on the jump host, often the jump host's address in the internal network:
+
+```
+restrict,pty,from="10.0.0.1" ssh-ed25519 AAAA... dirl
+```
+
+Without that address the line shows `<JUMP-HOST-IP>` and the host page says where to set it. In a chain every host is
+limited to the host right before it.
+
 A "jump host only" without any host behind it gets no forwarding at all, because `port-forwarding` without
-`permitopen` would allow every destination. All three forms were verified against OpenSSH 10.2: the target accepts
-commands, PTY and SFTP, both jump variants forward only to the permitted target and refuse other destinations, the
-pure jump host runs no commands. Use a key that exists only for Dirl. `AllowTcpForwarding` must
-stay enabled on jump hosts (the default). Keep an emergency path that does not depend on Dirl: your own keys in the
+`permitopen` would allow every destination. All forms were verified against OpenSSH 10.2, the line behind a jump
+host against 9.2: the target accepts commands, PTY and SFTP, both jump variants forward only to the permitted target
+and refuse other destinations, the pure jump host runs no commands. Use a key that exists only for Dirl.
+`AllowTcpForwarding` must stay enabled on jump hosts (the default). Keep an emergency path that does not depend on Dirl: your own keys in the
 password manager and the provider's console.
 
 ## Login and web hardening

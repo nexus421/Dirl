@@ -28,12 +28,19 @@ class SshTest {
     @Test
     fun `authorized_keys lines restrict targets and jump hosts`() {
         val key = generateEd25519Key("k")
-        val jump = Host(id = "j", name = "jump", address = "203.0.113.1", username = "u", keyId = key.id, jumpOnly = true)
+        val jump = Host(id = "j", name = "jump", address = "203.0.113.1", username = "u", keyId = key.id, jumpOnly = true, sourceAddressForTargets = "10.0.0.1")
         val target = Host(id = "t", name = "db", address = "10.0.0.5", username = "u", keyId = key.id, jumpHostId = "j")
         val hosts = listOf(jump, target)
         val from = "from=\"192.0.2.9\""
 
-        assertEquals("restrict,pty,$from ${key.publicKey} dirl", authorizedKeysLine(target, key, hosts, "192.0.2.9"))
+        // The target sees the connection coming from the jump host, not from Dirl.
+        assertEquals("restrict,pty,from=\"10.0.0.1\" ${key.publicKey} dirl", authorizedKeysLine(target, key, hosts, "192.0.2.9"))
+        assertEquals("restrict,pty,from=\"<JUMP-HOST-IP>\" ${key.publicKey} dirl", authorizedKeysLine(target, key, listOf(jump.copy(sourceAddressForTargets = null), target), "192.0.2.9"))
+        // In a chain every hop is limited to the hop before it.
+        val inner = Host(id = "i", name = "inner", address = "10.0.0.7", username = "u", keyId = key.id, jumpHostId = "j", sourceAddressForTargets = "172.16.0.1")
+        val deepest = Host(id = "d", name = "deep", address = "172.16.0.9", username = "u", keyId = key.id, jumpHostId = "i")
+        assertTrue(authorizedKeysLine(inner, key, hosts + inner + deepest, "192.0.2.9").contains("from=\"10.0.0.1\""))
+        assertTrue(authorizedKeysLine(deepest, key, hosts + inner + deepest, "192.0.2.9").contains("from=\"172.16.0.1\""))
         assertEquals(
             "restrict,port-forwarding,permitopen=\"10.0.0.5:22\",command=\"/bin/false\",$from ${key.publicKey} dirl",
             authorizedKeysLine(jump, key, hosts, "192.0.2.9"),
@@ -63,6 +70,21 @@ class SshTest {
         assertEquals("fd00::5", (bayern.kickner.dirl.web.parseHostForm(form("[fd00::5]"), null, content) as ResultOf2.Success).value.address)
         assertEquals("fd00::5", (bayern.kickner.dirl.web.parseHostForm(form("fd00::5"), null, content) as ResultOf2.Success).value.address)
         assertIs<ResultOf2.Failure<List<String>>>(bayern.kickner.dirl.web.parseHostForm(form("[fd00::5"), null, content))
+    }
+
+    @Test
+    fun `the address seen by hosts behind a jump host is optional and cannot break out of from=`() {
+        val key = generateEd25519Key("k")
+        val content = VaultContent(keys = listOf(key))
+        fun parse(forTargets: String) = bayern.kickner.dirl.web.parseHostForm(io.ktor.http.parametersOf(
+            "name" to listOf("jump"), "address" to listOf("203.0.113.1"), "port" to listOf("22"), "username" to listOf("root"),
+            "keyId" to listOf(key.id), "sourceAddressForTargets" to listOf(forTargets),
+        ), null, content)
+        assertEquals(null, (parse(" ") as ResultOf2.Success).value.sourceAddressForTargets)
+        assertEquals("10.0.0.1", (parse(" 10.0.0.1 ") as ResultOf2.Success).value.sourceAddressForTargets)
+        assertEquals("10.0.0.0/24,fd00::1", (parse("10.0.0.0/24,fd00::1") as ResultOf2.Success).value.sourceAddressForTargets)
+        // A quote would end from="..." and could append options such as command= to the line.
+        for (bad in listOf("10.0.0.1\",command=\"sh", "10.0.0.1 x", "a\nb")) assertIs<ResultOf2.Failure<List<String>>>(parse(bad), bad)
     }
 
     @Test

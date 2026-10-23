@@ -69,6 +69,9 @@ data class VaultContent(
  * @property jumpOnly Only used as jump host: no terminal, no files, no metrics, and its `authorized_keys` line runs
  *   `command="/bin/false"`. A jump host that is also a terminal target leaves this off.
  * @property pinnedHostKey The host key accepted on first contact (TOFU). `null` until confirmed in the UI.
+ * @property sourceAddressForTargets Only for jump hosts: the address the hosts behind this one see it connecting
+ *   from, often its address in their network. Only used to fill `from=` in their `authorized_keys` lines, like
+ *   [VaultSettings.sshSourceAddress] for hosts Dirl reaches directly.
  */
 @Serializable
 data class Host(
@@ -82,6 +85,7 @@ data class Host(
     val tags: List<String> = emptyList(),
     val jumpOnly: Boolean = false,
     val pinnedHostKey: PinnedHostKey? = null,
+    val sourceAddressForTargets: String? = null,
 )
 
 /**

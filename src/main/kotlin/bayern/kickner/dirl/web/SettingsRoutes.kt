@@ -4,6 +4,7 @@ import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.auth.RevokeError
 import bayern.kickner.dirl.config.UnlockMode
 import bayern.kickner.dirl.formatTimestamp
+import bayern.kickner.dirl.ssh.SOURCE_ADDRESS_PATTERN
 import bayern.kickner.dirl.vault.ChangePassphraseError
 import bayern.kickner.dirl.vault.MIN_PASSPHRASE_LENGTH
 import bayern.kickner.dirl.vault.MIN_PASSPHRASE_WORDS
@@ -37,9 +38,6 @@ import kotlinx.html.tr
 import kotnexlib.ResultOf2
 import java.time.Instant
 import java.time.LocalDate
-
-/** What `from="..."` in `authorized_keys` accepts: addresses, CIDR, host names, wildcards, negation, lists. */
-private val sourceAddressPattern = Regex("^[A-Za-z0-9.:/*?,!\\[\\]-]{1,200}$")
 
 /**
  * Settings and the audit log.
@@ -102,7 +100,7 @@ fun Route.settingsRoutes(dirl: Dirl) {
 
     post("/settings/ssh") {
         val value = call.receiveParameters()["sshSourceAddress"].orEmpty().trim()
-        if (value.isNotEmpty() && sourceAddressPattern.matches(value).not()) {
+        if (value.isNotEmpty() && SOURCE_ADDRESS_PATTERN.matches(value).not()) {
             return@post call.settingsPage(dirl, "The source address may only contain addresses, host names, CIDR ranges and wildcards.")
         }
         dirl.vault.update { it.copy(settings = it.settings.copy(sshSourceAddress = value.ifEmpty { null })) }

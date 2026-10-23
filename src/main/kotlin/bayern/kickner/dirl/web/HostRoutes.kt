@@ -5,6 +5,7 @@ import bayern.kickner.dirl.formatTimestamp
 import bayern.kickner.dirl.newId
 import bayern.kickner.dirl.ssh.ConnectionState
 import bayern.kickner.dirl.ssh.MetricsSample
+import bayern.kickner.dirl.ssh.SOURCE_ADDRESS_PATTERN
 import bayern.kickner.dirl.ssh.authorizedKeysLine
 import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.ssh.resolveRoute
@@ -169,7 +170,12 @@ fun Route.hostRoutes(dirl: Dirl) {
                         +"Put this line into ~/.ssh/authorized_keys of ${host.username} on ${host.name}. It limits what a stolen Dirl key can do on this host."
                     }
                     copyBlock(authorizedKeysLine(host, key, content.hosts, content.settings.sshSourceAddress))
-                    if (content.settings.sshSourceAddress == null) p("muted small") {
+                    val jump = host.jumpHostId?.let { content.host(it) }
+                    if (jump != null && jump.sourceAddressForTargets == null) p("muted small") {
+                        style = "margin-top:10px"
+                        +"${host.name} sees the connection coming from ${jump.name}, not from Dirl. Set \"Address seen by hosts behind it\" on ${jump.name} to fill in from=\"...\"."
+                    }
+                    if (jump == null && content.settings.sshSourceAddress == null) p("muted small") {
                         style = "margin-top:10px"
                         +"Set Dirl's source address under Settings to fill in from=\"...\"."
                     }
@@ -296,6 +302,7 @@ fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): Res
     val keyId = form["keyId"].orEmpty()
     val jumpHostId = form["jumpHostId"].orEmpty().ifBlank { null }
     val tags = form["tags"].orEmpty().split(',', ' ').map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }.distinct()
+    val sourceAddressForTargets = form["sourceAddressForTargets"].orEmpty().trim().ifEmpty { null }
 
     if (name.isEmpty() || name.length > 64) errors += "Name is required (at most 64 characters)"
     if (addressPattern.matches(address).not()) errors += "Address must be a host name or an IP address"
@@ -304,6 +311,8 @@ fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): Res
     if (content.key(keyId) == null) errors += "Choose a key, or create one under Keys first"
     if (jumpHostId != null && content.host(jumpHostId) == null) errors += "Unknown jump host"
     if (tags.any { tagPattern.matches(it).not() }) errors += "Tags may only contain letters, digits, dots, dashes and underscores"
+    if (sourceAddressForTargets != null && SOURCE_ADDRESS_PATTERN.matches(sourceAddressForTargets).not())
+        errors += "The address seen by hosts behind it may only contain addresses, host names, CIDR ranges and wildcards"
     if (errors.isNotEmpty()) return ResultOf2.Failure(errors)
 
     val endpointChanged = existing != null &&
@@ -319,6 +328,7 @@ fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): Res
         tags = tags,
         jumpOnly = form["jumpOnly"] == "on",
         pinnedHostKey = if (endpointChanged) null else existing?.pinnedHostKey,
+        sourceAddressForTargets = sourceAddressForTargets,
     )
 
     val candidate = content.copy(hosts = content.hosts.filterNot { it.id == host.id } + host)
@@ -540,6 +550,11 @@ private suspend fun ApplicationCall.hostFormPage(content: VaultContent, host: Ho
                 checkField(
                     "Jump host only: no terminal, no files, no metrics. Its authorized_keys line then allows nothing but forwarding to the hosts behind it",
                     "jumpOnly", (form?.get("jumpOnly") ?: if (host?.jumpOnly == true) "on" else "") == "on",
+                )
+                textField(
+                    "Address seen by hosts behind it", "sourceAddressForTargets", value("sourceAddressForTargets", host?.sourceAddressForTargets.orEmpty()),
+                    hint = "Only for jump hosts. The address the hosts behind this one see it connecting from, often its address in their network. Fills from=\"...\" in their authorized_keys lines.",
+                    required = false, placeholder = "e.g. 10.0.0.1",
                 )
                 if (host?.pinnedHostKey != null) p("muted small") { +"Changing address, port or jump host removes the pinned host key." }
                 div("btn-row") {

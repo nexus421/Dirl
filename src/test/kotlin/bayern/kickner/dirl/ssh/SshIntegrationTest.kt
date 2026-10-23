@@ -81,8 +81,9 @@ class SshIntegrationTest {
 
     private fun sshd() = LocalSshd.start(root!!).also { servers += it }
 
-    private fun addHost(name: String, port: Int, keyId: String, jumpHostId: String? = null, pin: PinnedHostKey? = null, jumpOnly: Boolean = false): Host {
-        val host = Host(id = name, name = name, address = "127.0.0.1", port = port, username = user, keyId = keyId, jumpHostId = jumpHostId, pinnedHostKey = pin, jumpOnly = jumpOnly)
+    /** A host on loopback. Hosts behind it see it coming from [forTargets], `127.0.0.1` for targets on IPv4 loopback. */
+    private fun addHost(name: String, port: Int, keyId: String, jumpHostId: String? = null, pin: PinnedHostKey? = null, jumpOnly: Boolean = false, forTargets: String? = "127.0.0.1"): Host {
+        val host = Host(id = name, name = name, address = "127.0.0.1", port = port, username = user, keyId = keyId, jumpHostId = jumpHostId, pinnedHostKey = pin, jumpOnly = jumpOnly, sourceAddressForTargets = forTargets)
         dirl.vault.update { it.copy(hosts = it.hosts.filterNot { h -> h.id == name } + host) }
         return host
     }
@@ -255,18 +256,42 @@ class SshIntegrationTest {
     }
 
     @Test
+    fun `a target behind a jump host accepts the line with the jump host's address, not Dirl's`(): Unit = runBlocking {
+        // Dirl reaches the jump host on a non-loopback address, the jump host reaches the target on loopback. So the
+        // target sees 127.0.0.1 while Dirl's own source address is the non-loopback one.
+        val dirlAddress = java.net.NetworkInterface.networkInterfaces().toList().filter { it.isUp && it.isLoopback.not() }
+            .flatMap { it.inetAddresses().toList() }.firstOrNull { it is java.net.Inet4Address }?.hostAddress
+        assumeTrue(dirlAddress != null, "No non-loopback IPv4 address")
+        val jumpServer = LocalSshd.start(root!!, listen = dirlAddress!!).also { servers += it }
+        val targetServer = sshd()
+        val key = newKey()
+        val jump = addHost("jumpwan", jumpServer.port, key.id, pin = PinnedHostKey("ssh-ed25519", jumpServer.hostKeyFingerprint, now), jumpOnly = true)
+            .copy(address = dirlAddress).also { j -> dirl.vault.update { it.copy(hosts = it.hosts.map { h -> if (h.id == j.id) j else h }) } }
+        val target = addHost("lan", targetServer.port, key.id, jumpHostId = jump.id, pin = PinnedHostKey("ssh-ed25519", targetServer.hostKeyFingerprint, now))
+        val hosts = dirl.vault.content!!.hosts
+        jumpServer.authorize(authorizedKeysLine(jump, key, hosts, dirlAddress))
+        val targetLine = authorizedKeysLine(target, key, hosts, dirlAddress)
+        assertTrue(targetLine.startsWith("restrict,pty,from=\"127.0.0.1\" "), targetLine)
+        targetServer.authorize(targetLine)
+
+        val result = dirl.connections.connection(target.id)
+        assertIs<ResultOf2.Success<SSHClient>>(result, "state: $result\ntarget sshd log:\n${targetServer.log().lines().takeLast(5).joinToString("\n")}")
+        assertTrue(exec(result.value, "echo via-wan-jump").contains("via-wan-jump"))
+    }
+
+    @Test
     fun `an IPv6 target behind a restricted jump host is reachable with the generated lines`(): Unit = runBlocking {
         val v6 = runCatching { java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("::1")).close() }.isSuccess
         assumeTrue(v6, "No IPv6 loopback")
         val jumpServer = sshd()
         val targetServer = LocalSshd.start(root!!, listen = "::1").also { servers += it }
         val key = newKey()
-        val jump = addHost("jump6", jumpServer.port, key.id, pin = PinnedHostKey("ssh-ed25519", jumpServer.hostKeyFingerprint, now), jumpOnly = true)
+        val jump = addHost("jump6", jumpServer.port, key.id, pin = PinnedHostKey("ssh-ed25519", jumpServer.hostKeyFingerprint, now), jumpOnly = true, forTargets = "::1")
         val target = Host(id = "target6", name = "target6", address = "::1", port = targetServer.port, username = user, keyId = key.id, jumpHostId = jump.id, pinnedHostKey = PinnedHostKey("ssh-ed25519", targetServer.hostKeyFingerprint, now))
         dirl.vault.update { it.copy(hosts = it.hosts + target) }
         val content = dirl.vault.content!!
         jumpServer.authorize(authorizedKeysLine(jump, key, content.hosts, "127.0.0.1"))
-        targetServer.authorize(authorizedKeysLine(target, key, content.hosts, "::1"))
+        targetServer.authorize(authorizedKeysLine(target, key, content.hosts, "127.0.0.1"))
 
         val result = dirl.connections.connection(target.id)
         assertIs<ResultOf2.Success<SSHClient>>(result, "state: $result\njump sshd log:\n${jumpServer.log().lines().takeLast(10).joinToString("\n")}")

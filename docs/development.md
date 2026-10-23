@@ -56,12 +56,13 @@ for f in openssh-*.deb; do dpkg-deb -x "$f" "$HOME/sshd-root"; done
 DIRL_SSHD_ROOT="$HOME/sshd-root" ./gradlew test
 ```
 
-The tests cover trust on first use, a changed host key, the stop after three rejected logins, both jump host
-variants, an IPv6 target behind a restricted jump host (skipped without IPv6 loopback), atomic SFTP writes including
-broken transfers and kept permissions and group, symlinks in listing, editor and delete, upload overwrite protection, the terminal WebSocket
-including resize, closing all connections while a connect is still running (a held back handshake through
-`GatedProxy`), closing for absence without losing a stop, and the status poll only while somebody is present and
-never twice at once for a host. [PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt)
+The tests cover trust on first use, a changed host key, the stop after three rejected logins, both jump host variants,
+an IPv6 target behind a restricted jump host (skipped without IPv6 loopback), a target that sees the jump host's
+address instead of Dirl's (skipped without a non-loopback IPv4 address), atomic SFTP writes including broken transfers
+and kept permissions and group, symlinks in listing, editor and delete, upload overwrite protection, the terminal
+WebSocket including resize, closing all connections while a connect is still running (a held back handshake through
+`GatedProxy`), closing for absence without losing a stop, and the status poll only while somebody is present and never
+twice at once for a host. [PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt)
 starts Dirl on a real CIO server and checks that an open presence WebSocket holds the presence, the engine detail
 the connection model rests on.
 [LoginFlowTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/LoginFlowTest.kt) runs the complete OIDC login against
