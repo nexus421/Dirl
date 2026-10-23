@@ -6,10 +6,11 @@ How Dirl protects keys, access and the browser session, and why.
 
 `dataDir/vault.json` holds hosts, keys, host key pins, snippets and the UI settings as one AES-256-GCM ciphertext,
 with a new random nonce on every write. The data key (DEK) is random and stored only wrapped: encrypted with a key
-derived from the passphrase with Argon2id (64 MiB, 3 passes, stored next to the salt so they can be raised later),
-and in key file mode additionally with the key file. Changing the passphrase creates a new DEK, re-encrypts the vault and deletes the local
-backups, so the old passphrase opens nothing on the server any more. Backups downloaded earlier still open with it. GCM
-also protects integrity, so nobody with write access can silently swap a pinned host key or add a user.
+derived from the passphrase with Argon2id (64 MiB, 3 passes, stored next to the salt so they can be raised later), and
+in key file mode additionally with the key file. Changing the passphrase creates a new DEK, re-encrypts the vault and
+deletes the local backups, so the old passphrase opens nothing on the server any more. Backups downloaded earlier
+still open with it. GCM also protects integrity, so nobody with write access can change a pinned host key or add a
+user in the file.
 
 The Argon2 parameters are not authenticated. Changing them only derives a wrong key, but huge values would exhaust the
 heap or hang the unlock, so unlock and restore refuse more than 128 MiB, 10 passes or 4 lanes with a message instead
@@ -18,6 +19,14 @@ of running Argon2.
 Writes go to a temporary file, are `fsync`ed and renamed over the old file. The previous three versions are kept as
 `vault.json.1` to `vault.json.3`. Settings offers the current file as encrypted backup download, the setup page of a
 fresh installation restores it.
+
+GCM does not notice an older genuine version put back in place of the current one: every version opens with the same
+DEK until the passphrase changes. Whoever can write to the data directory can therefore bring back a removed user or
+an old host key pin, for example from `vault.json.1`. Real protection against that would need a place outside the
+data directory that Dirl can write and an attacker cannot reset, which a plain server does not have. Only `dirl` and
+root can write there with mode 0700 as in the [deployment](deployment.md), and both are beyond such a protection
+anyway: root can read everything, the `dirl` user can read the keys from the memory of its own process unless ptrace
+is restricted on the system. Keep the data directory to `dirl` alone.
 
 KotNexLib's `AES.GCM.encrypt` only returns the ciphertext, and with its default nonce argument the result can never
 be decrypted again. Dirl always creates the nonce itself and stores it next to the ciphertext

@@ -27,7 +27,8 @@ data class SealedBox(val nonce: String, val ct: String)
  *
  * GCM protects integrity as well as confidentiality: a modified ciphertext or a wrong key makes [open] fail instead
  * of returning garbage. That is what makes a wrong passphrase detectable and keeps someone with write access to the
- * vault from silently swapping a pinned host key.
+ * vault from changing a pinned host key in the file. Putting back an older genuine file is not detected, see
+ * docs/security.md.
  *
  * Compression stays off on purpose. Compressing before encrypting leaks information through the ciphertext length.
  *
