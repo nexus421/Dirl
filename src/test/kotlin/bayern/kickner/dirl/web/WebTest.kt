@@ -233,18 +233,7 @@ class WebTest {
         assertEquals("a.txt", safeFileName("../../a.txt"))
         assertEquals("b.txt", safeFileName("C:\\x\\b.txt"))
         assertEquals(null, safeFileName(".."))
-        assertEquals(null, decodeUtf8Strict(byteArrayOf(0xC3.toByte(), 0x28)))
         assertEquals("a__b_c_.txt", headerSafeFileName("a\r\nb\"c\\.txt"))
         assertEquals("parent", parentOf("/parent/child").removePrefix("/"))
-    }
-
-    @Test
-    fun `the editor opens only what a browser gives back unchanged`() {
-        for (fine in listOf("", "a=1\nb=2\n", "a=1\r\nb=2\r\n", "\r\nleading\r\n", "no newline", "\uFEFFbom & <tags>\u000B\u000C\u0085\u2028\n"))
-            assertEquals(null, editorProblem(fine), fine)
-        assertEquals("contains NUL characters", editorProblem("key\u0000value\n"))
-        assertEquals("contains carriage returns without a line feed", editorProblem("progress 10%\rprogress 100%\n"))
-        assertEquals("contains carriage returns without a line feed", editorProblem("ends with cr\r"))
-        assertEquals("mixes CRLF and LF line endings", editorProblem("windows\r\nlinux\n"))
     }
 }

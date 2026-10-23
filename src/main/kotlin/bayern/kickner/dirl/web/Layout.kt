@@ -54,7 +54,7 @@ enum class PageFrame {
     /** App bar with navigation and a centered content column. */
     APP,
 
-    /** App bar with navigation and full width content, for terminal and editor. */
+    /** App bar with navigation and full width content, for the terminal. */
     WIDE,
 
     /** Only a centered card, for login and unlock. */
@@ -85,7 +85,6 @@ private val flashMessages = mapOf(
     "session-revoked" to "Session ended.",
     "settings-saved" to "Settings saved.",
     "uploaded" to "Upload complete.",
-    "saved" to "File saved.",
     "renamed" to "Renamed.",
     "deleted" to "Deleted.",
     "created" to "Directory created.",

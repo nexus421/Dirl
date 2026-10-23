@@ -2,7 +2,6 @@ package bayern.kickner.dirl.web
 
 import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.formatTimestamp
-import bayern.kickner.dirl.readAtMost
 import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.ssh.describeChannelError
 import bayern.kickner.dirl.vault.Host
@@ -36,13 +35,10 @@ import kotlinx.html.form
 import kotlinx.html.hiddenInput
 import kotlinx.html.input
 import kotlinx.html.label
-import kotlinx.html.p
 import kotlinx.html.span
-import kotlinx.html.style
 import kotlinx.html.table
 import kotlinx.html.tbody
 import kotlinx.html.td
-import kotlinx.html.textArea
 import kotlinx.html.th
 import kotlinx.html.thead
 import kotlinx.html.tr
@@ -56,12 +52,7 @@ import net.schmizz.sshj.sftp.RenameFlags
 import net.schmizz.sshj.sftp.SFTPClient
 import java.io.InputStream
 import java.net.URLEncoder
-import java.nio.ByteBuffer
-import java.nio.charset.CodingErrorAction
 import java.util.EnumSet
-
-/** Files up to this size can be opened in the text editor. */
-const val MAX_EDIT_BYTES = 1L * 1024 * 1024
 
 /** Directories with more entries are not listed, a compromised server could otherwise send an endless listing. */
 const val MAX_LIST_ENTRIES = 10_000
@@ -82,12 +73,10 @@ private const val MAX_UPLOAD_BYTES = 4L * 1024 * 1024 * 1024
  *   Existing files are only replaced when "Overwrite existing files" is ticked.
  * - `POST /hosts/{id}/files/mkdir`, `POST /hosts/{id}/files/delete` create directories and delete entries.
  * - `GET /hosts/{id}/files/rename?path=`, `POST /hosts/{id}/files/rename` rename or move an entry.
- * - `GET /hosts/{id}/files/edit?path=`, `POST /hosts/{id}/files/save` edit UTF-8 text files up to 1 MiB.
  *
- * Contents are moved as bytes, nothing guesses encodings. The editor refuses files that are not valid UTF-8 or that
- * a browser would change on the way back, see [editorProblem].
- * Uploads and saves write to a temporary file next to the target and rename it, so a broken transfer never leaves
- * a half-written file behind.
+ * Contents are moved as bytes, nothing guesses encodings. There is no editor in the browser, files are changed in the
+ * terminal. Uploads write to a temporary file next to the target and rename it, so a broken transfer never leaves a
+ * half-written file behind.
  */
 fun Route.fileRoutes(dirl: Dirl) {
     get("/hosts/{id}/files") {
@@ -139,8 +128,6 @@ fun Route.fileRoutes(dirl: Dirl) {
                                         td("num") { if (isDir.not()) +humanSize(entry.size) }
                                         td("nowrap hide-sm muted") { +formatTimestamp(entry.mtime * 1000) }
                                         td("actions") {
-                                            val editable = entry.type == FileMode.Type.REGULAR && entry.size <= MAX_EDIT_BYTES
-                                            if (editable) linkButton("/hosts/${host.id}/files/edit?path=${enc(entry.path)}", "Edit", "sm ghost")
                                             linkButton("/hosts/${host.id}/files/rename?path=${enc(entry.path)}", "Rename", "sm ghost")
                                             postButton(
                                                 "/hosts/${host.id}/files/delete", "Delete", "sm danger",
@@ -298,67 +285,17 @@ fun Route.fileRoutes(dirl: Dirl) {
         dirl.audit.record(call.session.actor, AuditAction.SFTP_RENAME, host.name, "$path to $target")
         call.respondRedirect(filesUrl(host, parentOf(target)) + "&done=renamed")
     }
-
-    get("/hosts/{id}/files/edit") {
-        val (_, host) = hostOr404(dirl) ?: return@get
-        val path = call.request.queryParameters["path"].orEmpty()
-        val bytes = withSftp(dirl, host) { sftp ->
-            // The size check only saves a pointless read, the server may report a wrong size. The read is capped as well.
-            if (sftp.size(path) > MAX_EDIT_BYTES) null
-            else sftp.open(path, EnumSet.of(OpenMode.READ)).use { f -> f.RemoteFileInputStream(0).use { it.readAtMost(MAX_EDIT_BYTES.toInt()) } }
-        } ?: return@get
-        val text = decodeUtf8Strict(bytes) ?: return@get call.fileError(host, "This file is not valid UTF-8 text. Download it instead.")
-        editorProblem(text)?.let { return@get call.fileError(host, "Saving in the browser would change this file: it $it. Download it instead.") }
-        // The page carries the whole file, so it is read access like a download.
-        dirl.audit.record(call.session.actor, AuditAction.SFTP_OPENED, host.name, path)
-        call.page("Edit ${path.substringAfterLast('/')}", call.session, Nav.HOSTS, frame = PageFrame.WIDE) {
-            form(action = "/hosts/${host.id}/files/save", method = FormMethod.post, classes = "form") {
-                div("page-header") {
-                    style = "margin:0"
-                    p("mono") { style = "margin:0"; +"${host.name}:$path" }
-                    div("actions") {
-                        submit("Save")
-                        linkButton(filesUrl(host, parentOf(path)), "Close", "ghost")
-                    }
-                }
-                hiddenInput(name = "path") { value = path }
-                hiddenInput(name = "crlf") { value = text.contains("\r\n").toString() }
-                textArea(rows = "30", classes = "editor") {
-                    name = "content"
-                    attributes["spellcheck"] = "false"
-                    attributes["aria-label"] = "File content"
-                    // HTML drops one newline right after <textarea>, this keeps a leading empty line of the file.
-                    +"\n$text"
-                }
-            }
-        }
-    }
-
-    post("/hosts/{id}/files/save") {
-        val (_, host) = hostOr404(dirl) ?: return@post
-        val form = call.receiveParameters()
-        val path = form["path"].orEmpty()
-        // Browsers submit textarea line breaks as CRLF. Restore what the file had before.
-        val normalized = form["content"].orEmpty().replace("\r\n", "\n")
-        val text = if (form["crlf"] == "true") normalized.replace("\n", "\r\n") else normalized
-        withSftp(dirl, host) { sftp -> writeAtomically(sftp, path, text.toByteArray(Charsets.UTF_8).inputStream()) } ?: return@post
-        dirl.audit.record(call.session.actor, AuditAction.SFTP_EDIT, host.name, path)
-        call.respondRedirect(filesUrl(host, parentOf(path)) + "&done=saved")
-    }
 }
 
 /**
  * Runs [block] with a fresh SFTP channel on the host's connection. Errors are rendered as an error page.
  *
- * @return the block's result, or `null` after an error page was sent (or when the block itself returned `null`,
- *   e.g. a file too large for the editor, in which case this sends the error page).
+ * @return the block's result, or `null` after an error page was sent.
  */
-private suspend fun <T : Any> RoutingContext.withSftp(dirl: Dirl, host: Host, block: (SFTPClient) -> T?): T? {
+private suspend fun <T : Any> RoutingContext.withSftp(dirl: Dirl, host: Host, block: (SFTPClient) -> T): T? {
     val client = connectedClient(dirl, host) ?: return null
-    val result = withContext(Dispatchers.IO) { runCatching { client.newSFTPClient().use(block) } }
-    val value = result.getOrNull()
-    if (value == null) call.fileError(host, result.exceptionOrNull()?.let(::describeChannelError) ?: "The file is too large or not readable")
-    return value
+    return withContext(Dispatchers.IO) { runCatching { client.newSFTPClient().use(block) } }
+        .getOrElse { error -> call.fileError(host, describeChannelError(error)); null }
 }
 
 /** The host's live connection, or `null` after an error page was sent. */
@@ -515,28 +452,6 @@ fun safeFileName(raw: String?): String? {
  */
 fun headerSafeFileName(name: String): String =
     name.map { c -> if (c.code < 0x20 || c == '\u007f' || c == '"' || c == '\\') '_' else c }.joinToString("").ifEmpty { "download" }
-
-/** Decodes [bytes] as UTF-8, `null` if they are not valid UTF-8. */
-fun decodeUtf8Strict(bytes: ByteArray): String? = runCatching {
-    Charsets.UTF_8.newDecoder()
-        .onMalformedInput(CodingErrorAction.REPORT)
-        .onUnmappableCharacter(CodingErrorAction.REPORT)
-        .decode(ByteBuffer.wrap(bytes)).toString()
-}.getOrNull()
-
-/**
- * Why the editor cannot give [text] back unchanged, `null` if it can. Browsers turn every CR of a textarea into LF
- * and NUL into U+FFFD, the save restores only one line ending for the whole file.
- */
-fun editorProblem(text: String): String? {
-    val crlf = text.contains("\r\n")
-    return when {
-        text.contains('\u0000') -> "contains NUL characters"
-        Regex("\r(?!\n)").containsMatchIn(text) -> "contains carriage returns without a line feed"
-        crlf && Regex("(?<!\r)\n").containsMatchIn(text) -> "mixes CRLF and LF line endings"
-        else -> null
-    }
-}
 
 /** Parent directory of an absolute path, `/` for top level entries. */
 fun parentOf(path: String): String = path.trimEnd('/').substringBeforeLast('/', "").ifEmpty { "/" }

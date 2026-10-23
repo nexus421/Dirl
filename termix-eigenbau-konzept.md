@@ -198,7 +198,7 @@ val pubLine = "ssh-ed25519 " + Base64.getEncoder().encodeToString(OpenSSHPublicK
 - **Host-Key-Pinning (TOFU)**: Beim ersten Verbinden Fingerprint anzeigen und bestätigen, dann im Vault speichern. Bei Änderung hart blockieren, nie stillschweigend akzeptieren.
 - **Jump-Host**: `jump.newDirectConnection(ziel, 22)` → `client.connectVia(tunnel)`. Eigener Host-Key-Check pro Hop, Zyklus-Erkennung, maximal 2 Hops, Referenzzählung auf die Jump-Verbindung. [`connectVia(DirectConnection)` im sshj-Code vorhanden]
 - **Terminal**: `allocatePTY("xterm-256color", …)`, Resize über `Shell.changeWindowDimensions(cols, rows, w, h)` [vorhanden]. Keine tmux-Integration mehr (entfernt am 20.10.2026): Der Sitzungsname `dirl-<host>` hatte keine Nutzerkennung, zwei Nutzer landeten in derselben Shell. Wer tmux will, startet es selbst im Terminal.
-- **SFTP**: Up- und Download als gestreamte Bytes, ohne Encoding-Raten. Speichern über Temp-Datei und Rename. Texteditor nur bis 1 MiB.
+- **SFTP**: Up- und Download als gestreamte Bytes, ohne Encoding-Raten. Hochladen über Temp-Datei und Rename. **Kein Texteditor (entschieden am 23.10.2026):** Ein Textarea im Browser gibt nicht jede Datei unverändert zurück (aus CR wird LF, aus NUL wird U+FFFD, gemischte Zeilenenden gehen verloren), und Dateien lassen sich im Terminal mit `nano` oder `vim` bearbeiten.
 - **Kryptographie der Verbindung**: sshj kann **kein ML-KEM/sntrup** (nur curve25519 u. a.). OpenSSH 10.0 auf Debian 13 bietet curve25519 weiter an, das funktioniert also. Die Verbindungen sind aber nicht post-quanten-sicher. Für interne Hops akzeptiert. Wäre PQ Pflicht, müsste MINA SSHD statt sshj her.
 
 ### Metriken [Befehl geprüft]

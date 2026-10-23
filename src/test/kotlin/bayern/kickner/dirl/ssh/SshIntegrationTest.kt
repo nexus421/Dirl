@@ -17,7 +17,6 @@ import bayern.kickner.dirl.web.writeAtomically
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.forms.formData
-import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -359,42 +358,6 @@ class SshIntegrationTest {
     }
 
     @Test
-    fun `the editor saves files unchanged and refuses the ones a browser would change`(): Unit = testApplication {
-        val server = sshd()
-        val key = newKey()
-        server.authorize("restrict,pty ${key.publicKey} dirl")
-        val host = addHost("edit", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
-        val dir = Files.createTempDirectory("dirl-edit").toFile()
-        val session = dirl.sessions.create(actor)
-        application { dirlModule(dirl) }
-        val client = createClient { followRedirects = false }
-
-        for (content in listOf("a=1\nb=2\n", "a=1\r\nb=2\r\n", "\r\nleading empty line\r\n")) {
-            val file = File(dir, "ok.conf").apply { writeText(content) }
-            val page = client.get("/hosts/${host.id}/files/edit?path=${file.absolutePath}") { header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}") }
-            assertEquals(HttpStatusCode.OK, page.status)
-            assertEquals(file.absolutePath, dirl.audit.tail(1).single { it.action == AuditAction.SFTP_OPENED }.detail, "reading a file in the editor is audited like a download")
-            val crlf = Regex("name=\"crlf\" value=\"(\\w+)\"").find(page.bodyAsText())!!.groupValues[1]
-            // What a browser submits: the parser turned every CR into LF, the form data turns every LF into CRLF.
-            val submitted = content.replace("\r\n", "\n").replace("\n", "\r\n")
-            val saved = client.submitForm("/hosts/${host.id}/files/save", io.ktor.http.parameters { append("path", file.absolutePath); append("crlf", crlf); append("content", submitted) }) {
-                header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}")
-                header(HttpHeaders.Origin, "https://ssh.example.com")
-            }
-            assertEquals(HttpStatusCode.Found, saved.status)
-            assertEquals(content, file.readText())
-        }
-        for (content in listOf("key\u0000value\n", "progress 10%\rprogress 100%\n", "windows\r\nlinux\n")) {
-            val file = File(dir, "bad.conf").apply { writeText(content) }
-            val page = client.get("/hosts/${host.id}/files/edit?path=${file.absolutePath}") { header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}") }
-            assertEquals(HttpStatusCode.BadGateway, page.status)
-            assertTrue(page.bodyAsText().contains("Saving in the browser would change this file"))
-        }
-        assertEquals(3, dirl.audit.tail(100).count { it.action == AuditAction.SFTP_OPENED }, "only the files actually shown are audited")
-        dir.deleteRecursively()
-    }
-
-    @Test
     fun `uploads do not overwrite existing files unless asked to`(): Unit = testApplication {
         val server = sshd()
         val key = newKey()
@@ -495,7 +458,7 @@ class SshIntegrationTest {
     }
 
     @Test
-    fun `symlinks list, delete and save like their targets without touching them`(): Unit = runBlocking {
+    fun `symlinks list, delete and overwrite like their targets without touching them`(): Unit = runBlocking {
         val server = sshd()
         val key = newKey()
         server.authorize("restrict ${key.publicKey} dirl")
@@ -512,14 +475,14 @@ class SshIntegrationTest {
             val entries = listEntries(sftp, dir.absolutePath).associateBy { it.name }
             assertTrue(entries.getValue("linkdir").isDirectory, "a link to a directory must be navigable")
             assertTrue(entries.getValue("linkdir").isLink)
-            assertEquals(FileMode.Type.REGULAR, entries.getValue("link.txt").type, "a link to a text file must be editable")
+            assertEquals(FileMode.Type.REGULAR, entries.getValue("link.txt").type, "a link to a file must be listed as a file")
             assertEquals(3, entries.getValue("link.txt").size, "size of the target, not of the link")
             assertTrue(entries.getValue("broken").isDirectory.not() && entries.getValue("broken").isLink)
             assertTrue(entries.getValue("real.txt").isLink.not())
 
-            // Saving through the link writes the target and keeps the link.
+            // Overwriting through the link, as an upload does, writes the target and keeps the link.
             writeAtomically(sftp, File(dir, "link.txt").absolutePath, "new".byteInputStream())
-            assertTrue(Files.isSymbolicLink(File(dir, "link.txt").toPath()), "the link must survive a save")
+            assertTrue(Files.isSymbolicLink(File(dir, "link.txt").toPath()), "the link must survive an overwrite")
             assertEquals("new", real.readText())
 
             // Deleting a link removes the link, never the target.

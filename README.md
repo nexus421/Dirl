@@ -19,7 +19,7 @@ managed entirely in the UI.
 ## Features
 
 - Browser terminal (xterm.js) with resize and snippets
-- SFTP file manager with upload, editor, rename and download
+- SFTP file manager with upload, rename and download
 - Up to two jump hosts, with restricted `authorized_keys` lines generated for every host
 - Host key pinning (trust on first use), hard block on changes
 - Status per host: reachability, CPU, RAM, swap, disks

@@ -91,17 +91,16 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   runs is skipped. Bind mounts and btrfs subvolumes of one device are shown once. Pure jump hosts with
   `command="/bin/false"` have no metrics.
 - SFTP: bytes only, no encoding guessing. An upload never replaces an existing file unless "Overwrite existing files"
-  is ticked, the skipped names are shown at the form. Uploads and edits go to a temporary file and are renamed over
-  the target (`posix-rename`, with a fallback for servers without it). The new file keeps the permissions, owner and
-  group of the old one and is never readable by others in between. If the login may not keep the owner or group, the
-  write is refused and the file stays unchanged, a file of another user is changed by logging in as that user.
-  Downloads keep 16 reads of 32 KiB in flight and uploads 16 writes, so a long round trip does not throttle a transfer
-  to one block at a time. The editor only opens valid UTF-8 up to 1 MiB that a browser gives back unchanged: files
-  with NUL characters, a carriage return without a line feed or mixed CRLF and LF line endings are refused, they can
-  be downloaded instead. It keeps CRLF line endings and a leading empty line.
-- A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust
-  the heap (which would restart Dirl sealed): metrics output at 256 KiB, the editor at 1 MiB even if the server
-  reports a smaller size, directory listings at 10000 entries. Terminal output and downloads are streamed.
+  is ticked, the skipped names are shown at the form. Uploads go to a temporary file and are renamed over the target
+  (`posix-rename`, with a fallback for servers without it). The new file keeps the permissions, owner and group of the
+  old one and is never readable by others in between. If the login may not keep the owner or group, the write is
+  refused and the file stays unchanged, a file of another user is changed by logging in as that user. Downloads keep
+  16 reads of 32 KiB in flight and uploads 16 writes, so a long round trip does not throttle a transfer to one block
+  at a time. There is no editor in the browser: a textarea cannot give every file back unchanged (browsers turn CR
+  into LF and NUL into U+FFFD), files are changed in the terminal.
+- A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust the
+  heap (which would restart Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries. Terminal
+  output and downloads are streamed.
 - sshj has no ML-KEM or sntrup key exchange, connections use curve25519. Fine for internal hops, MINA SSHD would be
   the replacement if post-quantum key exchange becomes a requirement.
 
@@ -183,8 +182,8 @@ not depend on Dirl: your own keys in the password manager and the provider's con
 `dataDir/audit.jsonl` (`0600`), one JSON object per line, appended and synced per entry: logins, rejected logins,
 access granted and removed, sessions ended, vault setup, restore, backup download, unlocks, failures and lockouts,
 passphrase and settings changes, host and key changes, key exports, host key pins and mismatches, terminal open and
-close, every SFTP change and download and every file opened in the editor. Reading files in a terminal is not visible
-there, only that the terminal was opened. Never terminal contents, passphrases or keys. The Audit page shows and
-filters the latest entries and only reads the last MiB of the file, so a log that grows for years stays cheap to view.
+close, every SFTP change and download. Reading files in a terminal is not visible there, only that the terminal was
+opened. Never terminal contents, passphrases or keys. The Audit page shows and filters the latest entries and only
+reads the last MiB of the file, so a log that grows for years stays cheap to view.
 
 [Back to the README](../README.md)

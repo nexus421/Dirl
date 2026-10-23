@@ -14,7 +14,7 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * `WS /ws/presence`: every Dirl page opens it through `app.js` and keeps it open while the page is open. No data
  * goes over it. Like every request it counts as presence for as long as it runs (see `installGuards`), so the SSH
- * connections stay open while a Dirl tab is open, also on quiet pages such as the editor.
+ * connections stay open while a Dirl tab is open, also on quiet pages such as the host details.
  *
  * It never extends the session: opening it does not count as activity (see [installGuards]), incoming frames are
  * ignored and the session is only peeked at. A watchdog closes it every [checkEvery] once the session expired, was

@@ -195,7 +195,6 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible {
   outline-offset: 1px;
 }
 textarea { font-family: var(--mono); font-size: 13px; resize: vertical; }
-textarea.editor { min-height: 65vh; line-height: 1.45; tab-size: 4; }
 .check { display: flex; gap: 10px; align-items: flex-start; }
 .check input { margin-top: 4px; }
 input[type=file] { font: inherit; }

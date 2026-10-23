@@ -23,7 +23,10 @@ data class Actor(val sub: String, val name: String) {
     }
 }
 
-/** Everything that ends up in the audit log. Terminal contents are never logged, only that a terminal was opened. */
+/**
+ * Everything that ends up in the audit log. Terminal contents are never logged, only that a terminal was opened.
+ * [SFTP_EDIT] is no longer written since the file editor was removed, it stays so older entries still show.
+ */
 enum class AuditAction {
     LOGIN, LOGIN_REJECTED, LOGOUT, SESSION_REVOKED, USER_ALLOWED, USER_REVOKED,
     VAULT_SETUP, VAULT_RESTORED, VAULT_EXPORTED, VAULT_UNLOCKED, VAULT_UNLOCK_FAILED, VAULT_LOCKED_OUT, VAULT_LOCKED,
@@ -32,7 +35,7 @@ enum class AuditAction {
     KEY_GENERATED, KEY_IMPORTED, KEY_RENAMED, KEY_EXPORTED, KEY_DELETED,
     HOST_KEY_PINNED, HOST_KEY_MISMATCH,
     TERMINAL_OPENED, TERMINAL_CLOSED,
-    SFTP_DOWNLOAD, SFTP_OPENED, SFTP_UPLOAD, SFTP_EDIT, SFTP_MKDIR, SFTP_RENAME, SFTP_DELETE,
+    SFTP_DOWNLOAD, SFTP_UPLOAD, SFTP_EDIT, SFTP_MKDIR, SFTP_RENAME, SFTP_DELETE,
     SNIPPET_ADDED, SNIPPET_UPDATED, SNIPPET_DELETED,
     CONNECTION_STOPPED,
 }

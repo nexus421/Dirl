@@ -59,12 +59,11 @@ DIRL_SSHD_ROOT="$HOME/sshd-root" ./gradlew test
 The tests cover trust on first use, a changed host key, the stop after three rejected logins, both jump host variants,
 an IPv6 target behind a restricted jump host (skipped without IPv6 loopback), a target that sees the jump host's
 address instead of Dirl's (skipped without a non-loopback IPv4 address), atomic SFTP writes including broken transfers
-and kept permissions and group, downloads byte for byte around the read-ahead block size, editor saves that keep the
-bytes and the refusal of files a browser would change, symlinks in listing, editor and delete, upload overwrite
-protection, the terminal WebSocket including resize, a refused terminal not using up the sessions of a connection and
-the explanation beyond the session limit, closing all connections while a connect is still running (a held back
-handshake through `GatedProxy`), closing for absence without losing a stop, and the status poll only while somebody is
-present and never twice at once for a host. [PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt)
+and kept permissions and group, downloads byte for byte around the read-ahead block size, symlinks in listing,
+overwrite and delete, upload overwrite protection, the terminal WebSocket including resize, a refused terminal not
+using up the sessions of a connection and the explanation beyond the session limit, closing all connections while a
+connect is still running (a held back handshake through `GatedProxy`), closing for absence without losing a stop, and
+the status poll only while somebody is present and never twice at once for a host. [PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt)
 starts Dirl on a real CIO server and checks that an open presence WebSocket holds the presence, the engine detail
 the connection model rests on.
 [LoginFlowTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/LoginFlowTest.kt) runs the complete OIDC login against
@@ -145,8 +144,8 @@ vault is sealed only `/unlock`, `/setup`, `/setup/restore` and `/logout` work.
 | GET    | `/hosts/{id}/terminal`                                       | Terminal page                                   |
 | WS     | `/ws/terminal/{id}?cols=&rows=`                              | Terminal stream                                 |
 | WS     | `/ws/presence`                                               | Open while a Dirl page is open, no data         |
-| GET    | `/hosts/{id}/files?path=`, `/files/download`, `/files/edit`, `/files/rename` | File manager                    |
-| POST   | `/hosts/{id}/files/upload`, `/mkdir`, `/delete`, `/rename`, `/save` | File operations                          |
+| GET    | `/hosts/{id}/files?path=`, `/files/download`, `/files/rename` | File manager                                   |
+| POST   | `/hosts/{id}/files/upload`, `/mkdir`, `/delete`, `/rename`   | File operations                                 |
 | GET    | `/keys`, `/keys/{id}/export`                                 | Keys                                            |
 | POST   | `/keys/generate`, `/keys/import`, `/keys/{id}/rename`, `/keys/{id}/export`, `/keys/{id}/delete` | Key actions  |
 | GET    | `/snippets`, `/snippets/{id}/edit`                           | Snippets                                        |
@@ -167,17 +166,17 @@ Verified:
 - Every page clicked through in a browser, desktop and phone width, light layout and dark mode: login, setup,
   unlock with a wrong and the right passphrase, access request and grant, keys, hosts, host key confirmation for a
   jump host and a target behind it, terminal (fish shell, UTF-8, 300000 lines of output, `top`, resize to phone
-  width, Ctrl+C from the key bar, snippets), files (upload with progress, CRLF preserving edit, rename, download,
+  width, Ctrl+C from the key bar, snippets), files (upload with progress, rename, download,
   delete), metrics, audit log, settings, seal closing open terminals, key export, encrypted backup.
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines, jump host forwarding, `PerSourcePenalties`.
 - Login against a real Pocket ID instance as confidential client with PKCE.
-- 91 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
+- 89 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
   opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file,
   OIDC (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of
   anonymous logins, a failing and a slow provider), backup restore through the UI up to the unlock, access control,
   idle timeout with automatic reloads, security headers, origin checks and path tricks, config validation including
   `config.example.json`, presence (on a real CIO server), snippet folders, SSH integration as listed above and the
-  limits on data read from servers. Without an `sshd` the 21 SSH integration tests are skipped.
+  limits on data read from servers. Without an `sshd` the 20 SSH integration tests are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
   provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
   target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all
