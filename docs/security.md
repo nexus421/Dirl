@@ -180,7 +180,8 @@ password manager and the provider's console.
 `dataDir/audit.jsonl` (`0600`), one JSON object per line, appended and synced per entry: logins, rejected logins,
 access granted and removed, sessions ended, vault setup, restore, backup download, unlocks, failures and lockouts,
 passphrase and settings changes, host and key changes, key exports, host key pins and mismatches, terminal open and
-close, every SFTP change and download. Never terminal contents, passphrases or keys. The Audit page shows and filters
-the latest entries and only reads the last MiB of the file, so a log that grows for years stays cheap to view.
+close, every SFTP change and download and every file opened in the editor. Reading files in a terminal is not visible
+there, only that the terminal was opened. Never terminal contents, passphrases or keys. The Audit page shows and
+filters the latest entries and only reads the last MiB of the file, so a log that grows for years stays cheap to view.
 
 [Back to the README](../README.md)

@@ -307,6 +307,8 @@ fun Route.fileRoutes(dirl: Dirl) {
         } ?: return@get
         val text = decodeUtf8Strict(bytes) ?: return@get call.fileError(host, "This file is not valid UTF-8 text. Download it instead.")
         editorProblem(text)?.let { return@get call.fileError(host, "Saving in the browser would change this file: it $it. Download it instead.") }
+        // The page carries the whole file, so it is read access like a download.
+        dirl.audit.record(call.session.actor, AuditAction.SFTP_OPENED, host.name, path)
         call.page("Edit ${path.substringAfterLast('/')}", call.session, Nav.HOSTS, frame = PageFrame.WIDE) {
             form(action = "/hosts/${host.id}/files/save", method = FormMethod.post, classes = "form") {
                 div("page-header") {

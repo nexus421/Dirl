@@ -373,6 +373,7 @@ class SshIntegrationTest {
             val file = File(dir, "ok.conf").apply { writeText(content) }
             val page = client.get("/hosts/${host.id}/files/edit?path=${file.absolutePath}") { header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}") }
             assertEquals(HttpStatusCode.OK, page.status)
+            assertEquals(file.absolutePath, dirl.audit.tail(1).single { it.action == AuditAction.SFTP_OPENED }.detail, "reading a file in the editor is audited like a download")
             val crlf = Regex("name=\"crlf\" value=\"(\\w+)\"").find(page.bodyAsText())!!.groupValues[1]
             // What a browser submits: the parser turned every CR into LF, the form data turns every LF into CRLF.
             val submitted = content.replace("\r\n", "\n").replace("\n", "\r\n")
@@ -389,6 +390,7 @@ class SshIntegrationTest {
             assertEquals(HttpStatusCode.BadGateway, page.status)
             assertTrue(page.bodyAsText().contains("Saving in the browser would change this file"))
         }
+        assertEquals(3, dirl.audit.tail(100).count { it.action == AuditAction.SFTP_OPENED }, "only the files actually shown are audited")
         dir.deleteRecursively()
     }
 
