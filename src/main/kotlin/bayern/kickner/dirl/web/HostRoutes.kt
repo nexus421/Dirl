@@ -284,7 +284,8 @@ suspend fun RoutingContext.hostOr404(dirl: Dirl): Pair<VaultContent, Host>? {
 }
 
 /**
- * Builds a host from the form fields and validates it, including the route through the jump hosts.
+ * Builds a host from the form fields and validates it, including the route through the jump hosts. A change that
+ * breaks the route of another host that worked before, e.g. a chain behind this host getting too long, is refused.
  *
  * Changing address, port or jump host drops the pinned host key: it is a different endpoint, and a stale pin
  * would only show up as a scary mismatch.
@@ -332,10 +333,15 @@ fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): Res
     )
 
     val candidate = content.copy(hosts = content.hosts.filterNot { it.id == host.id } + host)
-    return when (val route = resolveRoute(candidate, host.id)) {
-        is ResultOf2.Success -> ResultOf2.Success(host)
-        is ResultOf2.Failure -> ResultOf2.Failure(listOf(route.value))
+    val route = resolveRoute(candidate, host.id)
+    if (route is ResultOf2.Failure) return ResultOf2.Failure(listOf(route.value))
+    // The hosts behind this one get a longer chain as well. Only routes that worked before count, an older broken
+    // one must not block saving an unrelated host.
+    val broken = content.hosts.firstNotNullOfOrNull { other ->
+        if (other.id == host.id || resolveRoute(content, other.id) is ResultOf2.Failure) null
+        else (resolveRoute(candidate, other.id) as? ResultOf2.Failure)?.value
     }
+    return if (broken == null) ResultOf2.Success(host) else ResultOf2.Failure(listOf("Saving would break another host: $broken"))
 }
 
 private fun FlowContent.gettingStarted(content: VaultContent) = card {

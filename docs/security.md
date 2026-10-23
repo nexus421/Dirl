@@ -61,12 +61,12 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
 - Host keys: trust on first use. The first connection shows the `SHA256:` fingerprint for confirmation, the pin is
   stored per host in the vault. A different key blocks the host hard and is audited. Changing address, port or jump
   host removes the pin.
-- Jump hosts: up to two, through direct-tcpip channels on the jump host's own managed connection. Every hop checks
-  its own pinned key. Cycles and longer chains are rejected when the host is saved. A host marked "jump host only"
-  offers no terminal, no files and no metrics, its connection is still kept and shown while somebody uses Dirl.
-  Reference counting on the jump connection, as the concept suggested, is not needed: all connections are closed
-  together when nobody uses Dirl, a dead jump connection takes its targets down and they reconnect through the
-  backoff.
+- Jump hosts: up to two, through direct-tcpip channels on the jump host's own managed connection. Every hop checks its
+  own pinned key. Cycles and longer chains are rejected when a host is saved, also for the hosts behind it. A host
+  marked "jump host only" offers no terminal, no files and no metrics, its connection is still kept and shown while
+  somebody uses Dirl. Reference counting on the jump connection, as the concept suggested, is not needed: all
+  connections are closed together when nobody uses Dirl, a dead jump connection takes its targets down and they
+  reconnect through the backoff.
 - Keys: Ed25519 generated with BouncyCastle in OpenSSH format, imports of unencrypted OpenSSH or PEM keys.
 - Terminal: `xterm-256color` PTY with a plain login shell. There is no tmux integration: a shared session name would
   put several users into the same shell. Whoever wants tmux starts it in the terminal.

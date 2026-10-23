@@ -103,6 +103,29 @@ class SshTest {
     }
 
     @Test
+    fun `saving a jump host must not make the chain of a host behind it too long`() {
+        val key = generateEd25519Key("k")
+        fun h(id: String, jump: String? = null) = Host(id = id, name = id, address = "10.0.0.1", username = "root", keyId = key.id, jumpHostId = jump)
+        // t goes through j, which is fine with one jump host. Giving j the jump host k (behind l) makes it three for t.
+        val content = VaultContent(hosts = listOf(h("l"), h("k", "l"), h("j"), h("t", "j")), keys = listOf(key))
+        fun save(jump: String) = bayern.kickner.dirl.web.parseHostForm(io.ktor.http.parametersOf(
+            "name" to listOf("j"), "address" to listOf("10.0.0.1"), "port" to listOf("22"), "username" to listOf("root"),
+            "keyId" to listOf(key.id), "jumpHostId" to listOf(jump),
+        ), content.host("j"), content)
+
+        val refused = assertIs<ResultOf2.Failure<List<String>>>(save("k"))
+        assertTrue(refused.value.single().contains("t"), refused.value.single())
+        // One jump host for j keeps t at two, that is allowed.
+        assertIs<ResultOf2.Success<Host>>(save("l"))
+        // A chain that was already broken before does not block saving a host it does not go through.
+        val alreadyBroken = content.copy(hosts = content.hosts + h("x", "t") + h("y", "x"))
+        val unrelated = bayern.kickner.dirl.web.parseHostForm(io.ktor.http.parametersOf(
+            "name" to listOf("l2"), "address" to listOf("10.0.0.2"), "port" to listOf("22"), "username" to listOf("root"), "keyId" to listOf(key.id),
+        ), content.host("l"), alreadyBroken)
+        assertIs<ResultOf2.Success<Host>>(unrelated)
+    }
+
+    @Test
     fun `backoff grows from 30 seconds to 15 minutes`() {
         assertEquals(30_000, backoffDelayMillis(1))
         assertEquals(60_000, backoffDelayMillis(2))

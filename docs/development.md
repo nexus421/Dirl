@@ -170,7 +170,7 @@ Verified:
   delete), metrics, audit log, settings, seal closing open terminals, key export, encrypted backup.
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines, jump host forwarding, `PerSourcePenalties`.
 - Login against a real Pocket ID instance as confidential client with PKCE.
-- 88 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
+- 89 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
   opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file,
   OIDC (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of
   anonymous logins, a failing and a slow provider), backup restore through the UI up to the unlock, access control,
