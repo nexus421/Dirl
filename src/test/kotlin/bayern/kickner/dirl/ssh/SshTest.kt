@@ -42,12 +42,12 @@ class SshTest {
         assertTrue(authorizedKeysLine(inner, key, hosts + inner + deepest, "192.0.2.9").contains("from=\"10.0.0.1\""))
         assertTrue(authorizedKeysLine(deepest, key, hosts + inner + deepest, "192.0.2.9").contains("from=\"172.16.0.1\""))
         assertEquals(
-            "restrict,port-forwarding,permitopen=\"10.0.0.5:22\",command=\"/bin/false\",$from ${key.publicKey} dirl",
+            "restrict,port-forwarding,permitopen=\"10.0.0.5:22\",permitlisten=\"127.0.0.1:1\",command=\"/bin/false\",$from ${key.publicKey} dirl",
             authorizedKeysLine(jump, key, hosts, "192.0.2.9"),
         )
         // A jump host that is also a terminal target keeps its PTY and gets forwarding only to its targets.
         assertEquals(
-            "restrict,pty,port-forwarding,permitopen=\"10.0.0.5:22\",$from ${key.publicKey} dirl",
+            "restrict,pty,port-forwarding,permitopen=\"10.0.0.5:22\",permitlisten=\"127.0.0.1:1\",$from ${key.publicKey} dirl",
             authorizedKeysLine(jump.copy(jumpOnly = false), key, hosts, "192.0.2.9"),
         )
         // Two targets with the same address need only one permitopen.

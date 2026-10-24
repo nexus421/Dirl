@@ -125,13 +125,13 @@ restrict,pty,from="<Dirl IP>" ssh-ed25519 AAAA... dirl
 A host marked "jump host only" gets forwarding to the hosts behind it and nothing else:
 
 ```
-restrict,port-forwarding,permitopen="10.0.0.5:22",command="/bin/false",from="<Dirl IP>" ssh-ed25519 AAAA... dirl
+restrict,port-forwarding,permitopen="10.0.0.5:22",permitlisten="127.0.0.1:1",command="/bin/false",from="<Dirl IP>" ssh-ed25519 AAAA... dirl
 ```
 
 A jump host that is also a terminal target keeps its PTY and gets the same narrow forwarding:
 
 ```
-restrict,pty,port-forwarding,permitopen="10.0.0.5:22",from="<Dirl IP>" ssh-ed25519 AAAA... dirl
+restrict,pty,port-forwarding,permitopen="10.0.0.5:22",permitlisten="127.0.0.1:1",from="<Dirl IP>" ssh-ed25519 AAAA... dirl
 ```
 
 A host behind a jump host sees the connection coming from the jump host, not from Dirl. Its line therefore gets the
@@ -145,9 +145,14 @@ Without that address the line shows `<JUMP-HOST-IP>` and the host page says wher
 limited to the host right before it.
 
 A "jump host only" without any host behind it gets no forwarding at all, because `port-forwarding` without
-`permitopen` would allow every destination. All forms were verified against OpenSSH 10.2, the line behind a jump host
-against 9.2: the target accepts commands, PTY and SFTP, both jump variants forward only to the permitted target and
-refuse other destinations, the pure jump host runs no commands. Use a key that exists only for Dirl.
+`permitopen` would allow every destination. `port-forwarding` also allows remote forwarding (`ssh -R`), which
+`permitopen` does not limit, so both jump variants get `permitlisten="127.0.0.1:1"`. OpenSSH has no "none" for this
+option, a line with `permitlisten="none"` is rejected as a whole. `permitlisten` needs OpenSSH 7.8 or newer (Debian 10
+and later), older servers reject the line. Jump host lines copied before this option existed
+still work but allow `-R`, copy them again. All forms were verified against OpenSSH 10.2, the line behind a jump host
+and the refused remote forwarding against 9.2: the target accepts commands, PTY and SFTP, both jump variants forward
+only to the permitted target and refuse other destinations and remote forwarding, the pure jump host runs no commands.
+Use a key that exists only for Dirl.
 `AllowTcpForwarding` must stay enabled on jump hosts (the default). Raise `MaxSessions` on a host where more than
 about eight terminals at once are normal, all users of Dirl share its one connection. Keep an emergency path that does
 not depend on Dirl: your own keys in the password manager and the provider's console.

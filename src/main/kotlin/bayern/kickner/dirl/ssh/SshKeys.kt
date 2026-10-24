@@ -64,6 +64,12 @@ fun fingerprint(key: PublicKey): String =
     "SHA256:" + Base64.getEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(publicKeyBlob(key)))
 
 /**
+ * Limits remote forwarding (`ssh -R`) to port 1 on loopback, which no forward Dirl needs. OpenSSH has no way to say
+ * "none" here, `permitlisten="none"` makes it reject the whole line.
+ */
+private const val NO_REMOTE_FORWARDING = "permitlisten=\"127.0.0.1:1\""
+
+/**
  * The `authorized_keys` line for [host] that limits what a stolen Dirl key can do.
  *
  * - A normal target gets `restrict,pty`: commands, a terminal and SFTP work, port forwarding, agent and X11
@@ -73,6 +79,8 @@ fun fingerprint(key: PublicKey): String =
  * - A pure jump host ([Host.jumpOnly]) gets `restrict,port-forwarding,permitopen=...,command="/bin/false"`: it can
  *   only forward to the hosts that use it, nothing else. Without any host behind it, it gets no forwarding at all,
  *   because `port-forwarding` without `permitopen` would allow every destination.
+ * - Both jump variants also get [NO_REMOTE_FORWARDING], because `port-forwarding` enables remote forwarding
+ *   (`ssh -R`) as well and `permitopen` does not limit it.
  *
  * Every line is limited with `from=` to the address the host sees the connection coming from: [sourceAddress] for
  * hosts Dirl reaches directly, [Host.sourceAddressForTargets] of the jump host for hosts behind one. A missing
@@ -92,9 +100,9 @@ fun authorizedKeysLine(host: Host, key: SshKey, allHosts: List<Host>, sourceAddr
         .map { "permitopen=\"${if (':' in it.address) "[${it.address}]" else it.address}:${it.port}\"" }.distinct().joinToString(",")
     val options = when {
         host.jumpOnly && permits.isEmpty() -> "restrict,command=\"/bin/false\",$from"
-        host.jumpOnly -> "restrict,port-forwarding,$permits,command=\"/bin/false\",$from"
+        host.jumpOnly -> "restrict,port-forwarding,$permits,$NO_REMOTE_FORWARDING,command=\"/bin/false\",$from"
         permits.isEmpty() -> "restrict,pty,$from"
-        else -> "restrict,pty,port-forwarding,$permits,$from"
+        else -> "restrict,pty,port-forwarding,$permits,$NO_REMOTE_FORWARDING,$from"
     }
     return "$options ${key.publicKey} $KEY_COMMENT"
 }

@@ -37,11 +37,15 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotnexlib.ResultOf2
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.connection.channel.forwarded.RemotePortForwarder
+import net.schmizz.sshj.connection.channel.forwarded.SocketForwardingConnectListener
 import net.schmizz.sshj.sftp.FileMode
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeEach
 import java.io.File
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
@@ -96,6 +100,13 @@ class SshIntegrationTest {
         val out = cmd.inputStream.readBytes().decodeToString()
         cmd.join(10, TimeUnit.SECONDS)
         out
+    }
+
+    /** Whether [client] may open a listening port on its server, what `ssh -R` does. */
+    private fun remoteForwardAllowed(client: SSHClient): Boolean {
+        val port = ServerSocket(0).use { it.localPort }
+        val forward = RemotePortForwarder.Forward("127.0.0.1", port)
+        return runCatching { client.remotePortForwarder.bind(forward, SocketForwardingConnectListener(InetSocketAddress("127.0.0.1", 9))) }.isSuccess
     }
 
     @Test
@@ -254,6 +265,7 @@ class SshIntegrationTest {
         val jumpClient = (dirl.connections.connection(jump.id) as ResultOf2.Success).value
         assertEquals("", exec(jumpClient, "echo should-not-run").trim())
         assertTrue(runCatching { jumpClient.newDirectConnection("127.0.0.1", jumpServer.port).use { it.inputStream.read() } }.isFailure, "forwarding to other destinations must be refused")
+        assertTrue(remoteForwardAllowed(jumpClient).not(), "remote forwarding must be refused")
     }
 
     @Test
@@ -335,6 +347,7 @@ class SshIntegrationTest {
         val targetClient = (dirl.connections.connection(target.id) as ResultOf2.Success).value
         assertTrue(exec(targetClient, "echo behind-jump").contains("behind-jump"))
         assertTrue(runCatching { jumpClient.newDirectConnection("127.0.0.1", jumpServer.port).use { it.inputStream.read() } }.isFailure, "forwarding to other destinations must be refused")
+        assertTrue(remoteForwardAllowed(jumpClient).not(), "remote forwarding must be refused")
     }
 
     @Test
