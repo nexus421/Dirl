@@ -98,6 +98,13 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   16 reads of 32 KiB in flight and uploads 16 writes, so a long round trip does not throttle a transfer to one block
   at a time. There is no editor in the browser: a textarea cannot give every file back unchanged (browsers turn CR
   into LF and NUL into U+FFFD), files are changed in the terminal.
+- Accepted risk: uploads trust the target directory. The temporary file has a fixed name (`.<name>.dirl-tmp`) and
+  is opened without `O_EXCL`, and a symlink as the target is followed on purpose. Another user who can write to the
+  directory can therefore plant a symlink and make a more privileged login write to, and when overwriting change the
+  owner of, a file elsewhere. `scp` and `sftp put` share most of this. Do not upload with a privileged login into
+  directories that less privileged users can write to. Hardening the write path (random name, `O_EXCL`, attributes
+  through the open handle) was left out: with one service per container the gain is small and the write path
+  already has many special cases.
 - A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust the
   heap (which would restart Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries, SFTP packets
   at 1 MiB. sshj alone accepts SFTP packets up to 1 GiB and allocates the buffer as soon as a server announces the
