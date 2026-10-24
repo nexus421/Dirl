@@ -145,12 +145,12 @@ restrict,pty,from="10.0.0.1" ssh-ed25519 AAAA... dirl
 Without that address the line shows `<JUMP-HOST-IP>` and the host page says where to set it. In a chain every host is
 limited to the host right before it.
 
-A "jump host only" without any host behind it gets no forwarding at all, because `port-forwarding` without
-`permitopen` would allow every destination. `port-forwarding` also allows remote forwarding (`ssh -R`), which
-`permitopen` does not limit. For TCP both jump variants get `permitlisten="127.0.0.1:1"`, a port nothing uses.
-OpenSSH has no "none" for this option, a line with `permitlisten="none"` is rejected as a whole. `permitlisten` needs
-OpenSSH 7.8 or newer (Debian 10 and later), older servers reject the line. Jump host lines copied before this option
-existed still work but allow TCP `-R`, copy them again.
+A "jump host only" without any host behind it gets no forwarding at all, because `port-forwarding` without `permitopen`
+would allow every destination. `port-forwarding` also allows remote forwarding (`ssh -R`), which `permitopen` does not
+limit. For TCP both jump variants get `permitlisten="127.0.0.1:1"`, so a holder of the key can at most listen on port 1
+on loopback, which Dirl never uses. OpenSSH has no "none" for this option, a line with `permitlisten="none"` is rejected
+as a whole. `permitlisten` needs OpenSSH 7.8 or newer (Debian 10 and later), older servers reject the line. Jump host
+lines copied before this option existed still work but allow TCP `-R`, copy them again.
 
 Remote forwarding to a Unix socket (`ssh -R /path/to.sock:...`) cannot be limited in `authorized_keys`. A holder of
 the Dirl key can create new sockets wherever the jump host login may write, existing sockets are not replaced
