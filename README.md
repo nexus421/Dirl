@@ -42,11 +42,8 @@ cp config.example.json config.json
 Set `publicUrl` and the `oidc` section in `config.json`, then:
 
 ```bash
-(umask 077 && java -jar build/libs/dirl.jar config=config.json)
+java -jar build/libs/dirl.jar config=config.json
 ```
-
-`umask 077` keeps the data directory and the log readable only for the user running Dirl. For a server use the
-systemd unit from [docs/deployment.md](docs/deployment.md), it sets the same.
 
 Open `publicUrl`, sign in and create the vault passphrase. The first user becomes the first allowed user, so do this
 right after deployment. Then generate a key, add a host, put the shown `authorized_keys` line on the server and

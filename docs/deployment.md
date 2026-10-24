@@ -21,6 +21,10 @@ Then open `publicUrl` right away and create the vault, see [Quick start](../READ
 core dumps and systemd sandboxing. In an unprivileged container the sandboxing options can fail with
 `status=226/NAMESPACE`. Then enable `security.nesting` for the container or drop the failing options.
 
+Without the unit, for example with a plain `java -jar`, the data directory, `logs/` and `logs/app.log` follow the
+shell's umask. With the common `022` other users on the machine can read the log, which holds host and user names but
+no passphrases, keys or tokens. Start Dirl with `umask 077` there, then they get `0700` and `0600` like under the unit.
+
 Each connected host costs about 0.3 MiB heap and two threads (measured with 100 hosts), so 256 MiB are enough for a
 few hundred hosts. Raise `-Xmx` beyond that.
 
