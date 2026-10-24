@@ -105,6 +105,10 @@ class LoginFlowTest {
         assertIs<ResultOf2.Success<Unit>>(dirl.access.revoke(bob.sub, Actor(ada.sub, ada.name)))
         assertEquals("/login", client.get("/") { header(HttpHeaders.Cookie, bobAllowed) }.headers[HttpHeaders.Location])
         assertEquals(RevokeError.LastUser, (dirl.access.revoke(ada.sub, Actor(ada.sub, ada.name)) as ResultOf2.Failure).value)
+        // Removing somebody who is not in the list changes nothing and leaves no audit entry.
+        val audited = dirl.audit.tail().size
+        assertIs<ResultOf2.Success<Unit>>(dirl.access.revoke("nobody", Actor(ada.sub, ada.name)))
+        assertEquals(audited, dirl.audit.tail().size)
     }
 
     @Test

@@ -126,16 +126,23 @@ class AccessControl(
         writeMirror(users)
     }
 
-    /** Removes [sub]. The last user cannot be removed, someone has to be able to log in. */
+    /**
+     * Removes [sub]. The last user cannot be removed, someone has to be able to log in. A [sub] that is not in the
+     * list counts as removed, nothing is written or audited.
+     *
+     * The new list is computed before [Vault.update], so an [allow] at the same moment can get lost. Accepted: the
+     * outcome is one access too few, never one too many, and there are rarely two admins clicking at once.
+     */
     fun revoke(sub: String, actor: Actor): ResultOf2<Unit, RevokeError> {
         val users = vault.content?.settings?.allowedUsers ?: return ResultOf2.Failure(RevokeError.NotUnlocked)
+        // Nothing to remove is the wanted outcome already, without a write and an audit entry.
+        val removed = users.firstOrNull { it.sub == sub } ?: return ResultOf2.Success(Unit)
         val remaining = users.filterNot { it.sub == sub }
         if (remaining.isEmpty()) return ResultOf2.Failure(RevokeError.LastUser)
-        val removed = users.firstOrNull { it.sub == sub }
         vault.update { content -> content.copy(settings = content.settings.copy(allowedUsers = remaining)) }
             ?: return ResultOf2.Failure(RevokeError.NotUnlocked)
         writeMirror(remaining)
-        audit.record(actor, AuditAction.USER_REVOKED, detail = "${removed?.name} ($sub)")
+        audit.record(actor, AuditAction.USER_REVOKED, detail = "${removed.name} ($sub)")
         return ResultOf2.Success(Unit)
     }
 
