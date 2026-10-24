@@ -401,6 +401,10 @@ fun deleteEntry(sftp: SFTPClient, path: String) {
  * A failed write removes the temporary file again, a broken upload would otherwise leave a large hidden file on a
  * possibly full file system. Once the target was removed for the fallback rename, the temporary file holds the only
  * copy of the new content and stays if that rename fails. Errors are rethrown.
+ *
+ * The directory is trusted: the temporary name is fixed and opened without `EXCL`, and attributes are set by path.
+ * Another user who can write to the directory can plant a symlink there. Accepted, see "Accepted risk" in
+ * docs/security.md.
  */
 fun writeAtomically(sftp: SFTPClient, path: String, input: InputStream) {
     val target = resolveLink(sftp, path)

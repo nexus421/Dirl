@@ -30,6 +30,7 @@ fun Application.installErrorPages() {
             staticLog(KLogger.Level.DEBUG, TAG) { "Bad request ${call.request.path()}: ${cause.message}" }
             call.errorPage(HttpStatusCode.BadRequest, "Bad request", "The request was malformed.")
         }
+        // receiveMultipart throws UnsupportedMediaTypeException, a subclass, for a form post to restore or upload.
         exception<ContentTransformationException> { call, cause ->
             staticLog(KLogger.Level.DEBUG, TAG) { "Unreadable body ${call.request.path()}: ${cause.message}" }
             call.errorPage(HttpStatusCode.BadRequest, "Bad request", "The request was malformed.")
