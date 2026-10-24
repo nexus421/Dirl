@@ -98,12 +98,12 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   16 reads of 32 KiB in flight and uploads 16 writes, so a long round trip does not throttle a transfer to one block
   at a time. There is no editor in the browser: a textarea cannot give every file back unchanged (browsers turn CR
   into LF and NUL into U+FFFD), files are changed in the terminal.
-- Accepted risk: uploads trust the target directory. The temporary file has a fixed name (`.<name>.dirl-tmp`) and
-  is opened without `O_EXCL`, and a symlink as the target is followed on purpose. Another user who can write to the
+- Accepted risk: uploads trust the target directory. The temporary file has a fixed name (`.<name>.dirl-tmp`) and is
+  opened without `O_EXCL`, and a symlink as the target is followed on purpose. Another user who can write to the
   directory can therefore plant a symlink and make a more privileged login write to, and when overwriting change the
-  owner of, a file elsewhere. `scp` and `sftp put` share most of this. Do not upload with a privileged login into
-  directories that less privileged users can write to. Hardening the write path (random name, `O_EXCL`, attributes
-  through the open handle) was left out: with one service per container the gain is small and the write path
+  owner and permissions of, a file elsewhere. `scp` and `sftp put` share most of this. Do not upload with a privileged
+  login into directories that less privileged users can write to. Hardening the write path (random name, `O_EXCL`,
+  attributes through the open handle) was left out: with one service per container the gain is small and the write path
   already has many special cases.
 - A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust the
   heap (which would restart Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries, SFTP packets
@@ -122,7 +122,8 @@ is stored. Each host page shows the line to put into `authorized_keys`:
 restrict,pty,from="<Dirl IP>" ssh-ed25519 AAAA... dirl
 ```
 
-A host marked "jump host only" gets forwarding to the hosts behind it and nothing else:
+A host marked "jump host only" gets forwarding to the hosts behind it and nothing else (Unix socket forwarding aside,
+see below):
 
 ```
 restrict,port-forwarding,permitopen="10.0.0.5:22",permitlisten="127.0.0.1:1",command="/bin/false",from="<Dirl IP>" ssh-ed25519 AAAA... dirl
@@ -146,12 +147,25 @@ limited to the host right before it.
 
 A "jump host only" without any host behind it gets no forwarding at all, because `port-forwarding` without
 `permitopen` would allow every destination. `port-forwarding` also allows remote forwarding (`ssh -R`), which
-`permitopen` does not limit, so both jump variants get `permitlisten="127.0.0.1:1"`. OpenSSH has no "none" for this
-option, a line with `permitlisten="none"` is rejected as a whole. `permitlisten` needs OpenSSH 7.8 or newer (Debian 10
-and later), older servers reject the line. Jump host lines copied before this option existed
-still work but allow `-R`, copy them again. All forms were verified against OpenSSH 10.2, the line behind a jump host
-and the refused remote forwarding against 9.2: the target accepts commands, PTY and SFTP, both jump variants forward
-only to the permitted target and refuse other destinations and remote forwarding, the pure jump host runs no commands.
+`permitopen` does not limit. For TCP both jump variants get `permitlisten="127.0.0.1:1"`, a port nothing uses.
+OpenSSH has no "none" for this option, a line with `permitlisten="none"` is rejected as a whole. `permitlisten` needs
+OpenSSH 7.8 or newer (Debian 10 and later), older servers reject the line. Jump host lines copied before this option
+existed still work but allow TCP `-R`, copy them again.
+
+Remote forwarding to a Unix socket (`ssh -R /path/to.sock:...`) cannot be limited in `authorized_keys`. A holder of
+the Dirl key can create new sockets wherever the jump host login may write, existing sockets are not replaced
+(`StreamLocalBindUnlink` is off by default). To close it, put this at the end of the jump host's `sshd_config`, with
+the address the jump host sees Dirl coming from. Your own logins from other addresses keep socket forwarding.
+
+```
+Match Address <Dirl IP>
+    AllowStreamLocalForwarding no
+```
+
+The forms were verified against OpenSSH 10.2 before `permitlisten` was added. The current lines, the line behind a
+jump host and the `Match` block were verified against 9.2: the target accepts commands, PTY and SFTP, both jump
+variants forward only to the permitted target and refuse other destinations and TCP remote forwarding, the block also
+refuses Unix socket remote forwarding, the pure jump host runs no commands.
 Use a key that exists only for Dirl.
 `AllowTcpForwarding` must stay enabled on jump hosts (the default). Raise `MaxSessions` on a host where more than
 about eight terminals at once are normal, all users of Dirl share its one connection. Keep an emergency path that does

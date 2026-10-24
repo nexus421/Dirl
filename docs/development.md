@@ -56,19 +56,19 @@ for f in openssh-*.deb; do dpkg-deb -x "$f" "$HOME/sshd-root"; done
 DIRL_SSHD_ROOT="$HOME/sshd-root" ./gradlew test
 ```
 
-The tests cover trust on first use, a changed host key, the stop after three rejected logins, both jump host variants,
-an IPv6 target behind a restricted jump host (skipped without IPv6 loopback), a target that sees the jump host's
-address instead of Dirl's (skipped without a non-loopback IPv4 address), atomic SFTP writes including broken transfers
-and kept permissions and group, downloads byte for byte around the read-ahead block size, symlinks in listing,
-overwrite and delete, upload overwrite protection, a hostile SFTP server announcing a 1 GiB packet, the terminal
-WebSocket including resize, a refused terminal not using up the sessions of a connection and the explanation beyond
-the session limit, closing all connections while a connect is still running (a held back handshake through
-`GatedProxy`), closing for absence without losing a stop, and the status poll only while somebody is present and never
-twice at once for a host. [PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt)
-starts Dirl on a real CIO server and checks that an open presence WebSocket holds the presence, the engine detail
-the connection model rests on.
-[LoginFlowTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/LoginFlowTest.kt) runs the complete OIDC login against
-the mock provider.
+The tests cover trust on first use, a changed host key, the stop after three rejected logins, both jump host variants
+including refused TCP remote forwarding, an IPv6 target behind a restricted jump host (skipped without IPv6 loopback), a
+target that sees the jump host's address instead of Dirl's (skipped without a non-loopback IPv4 address), atomic SFTP
+writes including broken transfers and kept permissions and group, downloads byte for byte around the read-ahead block
+size, symlinks in listing, overwrite and delete, upload overwrite protection, rename onto an existing entry or a
+dangling symlink, a hostile SFTP server announcing a 1 GiB packet, the terminal WebSocket including resize, a refused
+terminal not using up the sessions of a connection and the explanation beyond the session limit, closing all connections
+while a connect is still running (a held back handshake through `GatedProxy`), closing for absence without losing a
+stop, and the status poll only while somebody is present and never twice at once for a host.
+[PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt) starts Dirl on a real CIO server and
+checks that an open presence WebSocket holds the presence, the engine detail the connection model rests on.
+[LoginFlowTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/LoginFlowTest.kt) runs the complete OIDC login against the
+mock provider.
 
 ## Fat JAR check
 
@@ -169,15 +169,16 @@ Verified:
   jump host and a target behind it, terminal (fish shell, UTF-8, 300000 lines of output, `top`, resize to phone
   width, Ctrl+C from the key bar, snippets), files (upload with progress, rename, download,
   delete), metrics, audit log, settings, seal closing open terminals, key export, encrypted backup.
-- Against OpenSSH 10.2: the restricted `authorized_keys` lines, jump host forwarding, `PerSourcePenalties`.
+- Against OpenSSH 10.2: the restricted `authorized_keys` lines before `permitlisten`, jump host forwarding,
+  `PerSourcePenalties`. Against 9.2: the current lines and the `Match` block against Unix socket forwarding.
 - Login against a real Pocket ID instance as confidential client with PKCE.
-- 91 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
-  opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file,
-  OIDC (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of
-  anonymous logins, a failing and a slow provider), backup restore through the UI up to the unlock, access control,
-  idle timeout with automatic reloads, security headers, origin checks and path tricks, config validation including
-  `config.example.json`, presence (on a real CIO server), snippet folders, SSH integration as listed above and the
-  limits on data read from servers. Without an `sshd` the 21 SSH integration tests are skipped.
+- 96 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase opening
+  nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC (token
+  checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous logins, a
+  failing and a slow provider), backup restore through the UI up to the unlock, access control (including revokes at the
+  same moment), idle timeout with automatic reloads, security headers, origin checks and path tricks, config validation
+  including `config.example.json`, presence (on a real CIO server), snippet folders, SSH integration as listed above and
+  the limits on data read from servers. Without an `sshd` the 22 SSH integration tests are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
   provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
   target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all

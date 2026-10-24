@@ -554,7 +554,7 @@ private suspend fun ApplicationCall.hostFormPage(content: VaultContent, host: Ho
                     span("hint") { +"At most two jump hosts in a row." }
                 }
                 checkField(
-                    "Jump host only: no terminal, no files, no metrics. Its authorized_keys line then allows nothing but forwarding to the hosts behind it",
+                    "Jump host only: no terminal, no files, no metrics. Its authorized_keys line then only forwards to the hosts behind it. Unix socket forwarding needs a server setting, see the security docs",
                     "jumpOnly", (form?.get("jumpOnly") ?: if (host?.jumpOnly == true) "on" else "") == "on",
                 )
                 textField(

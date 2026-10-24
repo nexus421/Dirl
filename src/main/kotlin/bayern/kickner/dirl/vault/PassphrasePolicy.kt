@@ -13,8 +13,8 @@ const val MIN_PASSPHRASE_WORDS = 5
  * The passphrase protects the vault against offline attacks on a leaked backup, so it is the one secret that
  * really has to be strong. It lives in the password manager, typing effort does not matter.
  *
- * Only length is checked, not randomness, so `aaaaaaaaaaaaaaaaaaaa` passes. Deliberate: only the admin sets the
- * passphrase, and a simple rule cannot stop someone who wants a weak one.
+ * Only length or word count is checked, not randomness, so `aaaaaaaaaaaaaaaaaaaa` passes. Deliberate: the passphrase is
+ * set by someone who already has full access, and a simple rule cannot stop someone who wants a weak one.
  *
  * @return `null` if acceptable, otherwise a reason to show to the user.
  */

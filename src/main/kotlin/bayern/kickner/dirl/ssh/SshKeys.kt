@@ -64,8 +64,9 @@ fun fingerprint(key: PublicKey): String =
     "SHA256:" + Base64.getEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(publicKeyBlob(key)))
 
 /**
- * Limits remote forwarding (`ssh -R`) to port 1 on loopback, which no forward Dirl needs. OpenSSH has no way to say
- * "none" here, `permitlisten="none"` makes it reject the whole line.
+ * Limits TCP remote forwarding (`ssh -R`) to port 1 on loopback, which no forward Dirl needs. OpenSSH has no way to
+ * say "none" here, `permitlisten="none"` makes it reject the whole line. Remote forwarding to Unix sockets cannot be
+ * limited in `authorized_keys` at all, docs/security.md shows the `sshd_config` setting for it.
  */
 private const val NO_REMOTE_FORWARDING = "permitlisten=\"127.0.0.1:1\""
 
@@ -79,8 +80,8 @@ private const val NO_REMOTE_FORWARDING = "permitlisten=\"127.0.0.1:1\""
  * - A pure jump host ([Host.jumpOnly]) gets `restrict,port-forwarding,permitopen=...,command="/bin/false"`: it can
  *   only forward to the hosts that use it, nothing else. Without any host behind it, it gets no forwarding at all,
  *   because `port-forwarding` without `permitopen` would allow every destination.
- * - Both jump variants also get [NO_REMOTE_FORWARDING], because `port-forwarding` enables remote forwarding
- *   (`ssh -R`) as well and `permitopen` does not limit it.
+ * - Both jump variants also get [NO_REMOTE_FORWARDING], because `port-forwarding` enables TCP remote forwarding
+ *   (`ssh -R`) as well and `permitopen` does not limit it. Unix socket remote forwarding needs a server setting.
  *
  * Every line is limited with `from=` to the address the host sees the connection coming from: [sourceAddress] for
  * hosts Dirl reaches directly, [Host.sourceAddressForTargets] of the jump host for hosts behind one. A missing
