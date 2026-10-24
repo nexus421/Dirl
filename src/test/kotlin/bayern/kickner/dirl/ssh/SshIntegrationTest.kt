@@ -430,6 +430,17 @@ class SshIntegrationTest {
         assertEquals("b", File(dir, "b.txt").readText())
         assertEquals(HttpStatusCode.Found, rename("c.txt").status)
         assertEquals("a", File(dir, "c.txt").readText())
+
+        // A dangling symlink is an existing entry too. OpenSSH would refuse a file with a bare "Failure" and silently
+        // replace the link with a directory.
+        val link = File(dir, "gone.lnk").toPath()
+        Files.createSymbolicLink(link, File(dir, "missing").toPath())
+        File(dir, "a.txt").also { File(dir, "c.txt").renameTo(it) }
+        assertTrue(rename("gone.lnk").bodyAsText().contains("already exists"), "a dangling link must count as existing")
+        File(dir, "a.txt").delete()
+        File(dir, "a.txt").mkdir()
+        assertTrue(rename("gone.lnk").bodyAsText().contains("already exists"), "a directory must not replace the link")
+        assertTrue(Files.isSymbolicLink(link), "the link must stay")
         dir.deleteRecursively()
     }
 

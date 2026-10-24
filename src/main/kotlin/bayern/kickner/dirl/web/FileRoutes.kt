@@ -50,7 +50,9 @@ import net.schmizz.sshj.sftp.OpenMode
 import net.schmizz.sshj.sftp.RemoteResourceFilter
 import net.schmizz.sshj.sftp.RemoteResourceInfo
 import net.schmizz.sshj.sftp.RenameFlags
+import net.schmizz.sshj.sftp.Response
 import net.schmizz.sshj.sftp.SFTPClient
+import net.schmizz.sshj.sftp.SFTPException
 import java.io.InputStream
 import java.net.URLEncoder
 import java.util.EnumSet
@@ -282,9 +284,11 @@ fun Route.fileRoutes(dirl: Dirl) {
         val path = form["path"].orEmpty()
         val target = form["target"].orEmpty().trim()
         if (target.isEmpty() || target == path) return@post call.respondRedirect(filesUrl(host, parentOf(path)))
-        // OpenSSH refuses a rename onto an existing entry with a bare "Failure", so the check is only for the message.
+        // OpenSSH refuses a rename onto an existing entry with a bare "Failure", or replaces a dangling symlink, so the
+        // check gives a clear message. On servers whose rename overwrites, it is the only guard (an entry created in
+        // between still gets replaced there).
         val renamed = withSftp(dirl, host) { sftp ->
-            val free = sftp.statExistence(target) == null
+            val free = entryExists(sftp, target).not()
             if (free) sftp.rename(path, target)
             free
         } ?: return@post
@@ -438,6 +442,12 @@ private fun keepAttributes(sftp: SFTPClient, tmp: String, target: String, origin
     }
     sftp.setattr(tmp, FileAttributes.Builder().withPermissions(original.mode.permissionsMask).build())
 }
+
+/** Whether anything exists at [path], a dangling symlink included. `stat` follows links and misses a dangling one. */
+private fun entryExists(sftp: SFTPClient, path: String): Boolean = runCatching { sftp.lstat(path) }.fold(
+    onSuccess = { true },
+    onFailure = { error -> if ((error as? SFTPException)?.statusCode == Response.StatusCode.NO_SUCH_FILE) false else throw error },
+)
 
 /** The real path behind a symlink, or [path] itself for everything else, including paths that do not exist yet. */
 private fun resolveLink(sftp: SFTPClient, path: String): String {
