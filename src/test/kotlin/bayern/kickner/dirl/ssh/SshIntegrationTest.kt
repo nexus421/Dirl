@@ -17,6 +17,7 @@ import bayern.kickner.dirl.web.writeAtomically
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.forms.formData
+import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -25,6 +26,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.HttpHeaders
+import io.ktor.http.parameters
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readBytes
@@ -398,6 +400,36 @@ class SshIntegrationTest {
         assertEquals("old", File(dir, "a.txt").readText())
         assertEquals(HttpStatusCode.Found, upload(overwrite = true).status)
         assertEquals("new", File(dir, "a.txt").readText())
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun `renaming onto an existing entry says so and changes nothing`(): Unit = testApplication {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict,pty ${key.publicKey} dirl")
+        val host = addHost("ren", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val dir = Files.createTempDirectory("dirl-rename").toFile()
+        File(dir, "a.txt").writeText("a")
+        File(dir, "b.txt").writeText("b")
+        val session = dirl.sessions.create(actor)
+        application { dirlModule(dirl) }
+        val client = createClient { followRedirects = false }
+
+        suspend fun rename(target: String) = client.submitForm("/hosts/${host.id}/files/rename", parameters {
+            append("path", File(dir, "a.txt").absolutePath)
+            append("target", File(dir, target).absolutePath)
+        }) {
+            header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}")
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+
+        val refused = rename("b.txt")
+        assertTrue(refused.bodyAsText().contains("already exists"), "the reason must be shown")
+        assertEquals("a", File(dir, "a.txt").readText())
+        assertEquals("b", File(dir, "b.txt").readText())
+        assertEquals(HttpStatusCode.Found, rename("c.txt").status)
+        assertEquals("a", File(dir, "c.txt").readText())
         dir.deleteRecursively()
     }
 

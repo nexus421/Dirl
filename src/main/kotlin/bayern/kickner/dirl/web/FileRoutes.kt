@@ -282,7 +282,13 @@ fun Route.fileRoutes(dirl: Dirl) {
         val path = form["path"].orEmpty()
         val target = form["target"].orEmpty().trim()
         if (target.isEmpty() || target == path) return@post call.respondRedirect(filesUrl(host, parentOf(path)))
-        withSftp(dirl, host) { it.rename(path, target) } ?: return@post
+        // OpenSSH refuses a rename onto an existing entry with a bare "Failure", so the check is only for the message.
+        val renamed = withSftp(dirl, host) { sftp ->
+            val free = sftp.statExistence(target) == null
+            if (free) sftp.rename(path, target)
+            free
+        } ?: return@post
+        if (renamed.not()) return@post call.fileError(host, "$target already exists. Choose another name, existing entries are not overwritten.")
         dirl.audit.record(call.session.actor, AuditAction.SFTP_RENAME, host.name, "$path to $target")
         call.respondRedirect(filesUrl(host, parentOf(target)) + "&done=renamed")
     }
