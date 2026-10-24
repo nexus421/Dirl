@@ -66,7 +66,8 @@ fun Route.settingsRoutes(dirl: Dirl) {
         if (sub == call.session.actor.sub) return@post call.settingsPage(dirl, "You cannot remove yourself.")
         when (val result = dirl.access.revoke(sub, call.session.actor)) {
             is ResultOf2.Success -> {
-                dirl.sessions.removeAllFor(sub)
+                // Only for a user who was in the list. A break-glass subject from the config stays logged in.
+                if (result.value) dirl.sessions.removeAllFor(sub)
                 call.respondRedirect("/settings?done=user-revoked")
             }
 

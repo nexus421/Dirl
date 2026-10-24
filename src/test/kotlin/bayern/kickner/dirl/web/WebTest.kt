@@ -182,6 +182,23 @@ class WebTest {
     }
 
     @Test
+    fun `removing a subject that is not in the list keeps its sessions`(): Unit = testApplication {
+        // user-1 is break-glass from the config, the vault list only holds user-2.
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-2", "Bob"))
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val breakGlass = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        val other = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-2", "Bob")).token}"
+
+        val revoked = client.submitForm("/settings/users/revoke", parameters { append("sub", "user-1") }) {
+            header(HttpHeaders.Cookie, other)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        assertEquals(HttpStatusCode.Found, revoked.status)
+        assertEquals(HttpStatusCode.OK, client.get("/settings") { header(HttpHeaders.Cookie, breakGlass) }.status, "the session must stay")
+    }
+
+    @Test
     fun `a restore without a multipart body is a bad request, not a server error`(): Unit = testApplication {
         application { dirlModule(dirl) }
         val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"

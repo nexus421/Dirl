@@ -128,22 +128,36 @@ class AccessControl(
 
     /**
      * Removes [sub]. The last user cannot be removed, someone has to be able to log in. A [sub] that is not in the
-     * list counts as removed, nothing is written or audited.
+     * list is no error, nothing is audited.
      *
-     * The new list is computed before [Vault.update], so an [allow] at the same moment can get lost. Accepted: the
-     * outcome is one access too few, never one too many, and there are rarely two admins clicking at once.
+     * The decision is made again inside [Vault.update] on the current list. A list computed from an earlier read
+     * would bring back a user that a revoke at the same moment just removed, and two revokes of the last two users
+     * would both pass a check made outside.
+     *
+     * @return `true` if [sub] was removed, `false` if it was not in the list.
      */
-    fun revoke(sub: String, actor: Actor): ResultOf2<Unit, RevokeError> {
+    fun revoke(sub: String, actor: Actor): ResultOf2<Boolean, RevokeError> {
         val users = vault.content?.settings?.allowedUsers ?: return ResultOf2.Failure(RevokeError.NotUnlocked)
-        // Nothing to remove is the wanted outcome already, without a write and an audit entry.
-        val removed = users.firstOrNull { it.sub == sub } ?: return ResultOf2.Success(Unit)
-        val remaining = users.filterNot { it.sub == sub }
-        if (remaining.isEmpty()) return ResultOf2.Failure(RevokeError.LastUser)
-        vault.update { content -> content.copy(settings = content.settings.copy(allowedUsers = remaining)) }
-            ?: return ResultOf2.Failure(RevokeError.NotUnlocked)
-        writeMirror(remaining)
-        audit.record(actor, AuditAction.USER_REVOKED, detail = "${removed.name} ($sub)")
-        return ResultOf2.Success(Unit)
+        // Answered from the read above without a write. Inside update both are checked again for a revoke in between.
+        if (users.none { it.sub == sub }) return ResultOf2.Success(false)
+        if (users.all { it.sub == sub }) return ResultOf2.Failure(RevokeError.LastUser)
+
+        var removed: AllowedUser? = null
+        var lastUser = false
+        val updated = vault.update { content ->
+            val current = content.settings.allowedUsers
+            val remaining = current.filterNot { it.sub == sub }
+            removed = current.firstOrNull { it.sub == sub }
+            lastUser = removed != null && remaining.isEmpty()
+            if (removed == null || lastUser) content
+            else content.copy(settings = content.settings.copy(allowedUsers = remaining))
+        } ?: return ResultOf2.Failure(RevokeError.NotUnlocked)
+        if (lastUser) return ResultOf2.Failure(RevokeError.LastUser)
+        val user = removed ?: return ResultOf2.Success(false)
+
+        writeMirror(updated.settings.allowedUsers)
+        audit.record(actor, AuditAction.USER_REVOKED, detail = "${user.name} ($sub)")
+        return ResultOf2.Success(true)
     }
 
     private fun readMirror(): List<AllowedUser> = runCatching {
