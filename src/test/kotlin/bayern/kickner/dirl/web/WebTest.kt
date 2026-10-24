@@ -182,6 +182,17 @@ class WebTest {
     }
 
     @Test
+    fun `a restore without a multipart body is a bad request, not a server error`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        val response = noRedirects().submitForm("/setup/restore", parameters { append("file", "x") }) {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
     fun `the overview reloads fast only while hosts are on their way to a status, and not forever`(): Unit = testApplication {
         dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
         val key = bayern.kickner.dirl.ssh.generateEd25519Key("k")
