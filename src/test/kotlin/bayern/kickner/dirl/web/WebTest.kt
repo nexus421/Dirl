@@ -137,6 +137,9 @@ class WebTest {
         zram = bayern.kickner.dirl.ssh.ZramUsage(origBytes = 1_288_490_188, comprBytes = 429_496_729, memUsedBytes = 440_000_000),
     )
 
+    /** A number as Dirl prints it, in the JVM's locale like the pages (`0,54` with a German one). */
+    private fun num(pattern: String, value: Double) = pattern.format(value)
+
     /** The overview card of the host named [name] in [page]. */
     private fun cardOf(page: String, name: String): String =
         page.split("class=\"card host-card\"").drop(1).first { it.contains(">$name</a>") }
@@ -159,9 +162,12 @@ class WebTest {
         listOf("Load", "Swap", "Up ", "failed", "Reboot", "zram", "Debian", "logged in", "/srv/data").forEach { assertFalse(default.contains(it), "default hides $it") }
 
         val everything = cardOf(page, "everything")
+        assertTrue(everything.contains("title=\"/srv/data\""), "a long mount point stays readable as tooltip")
         listOf(
-            ">CPU<", ">RAM<", ">Swap<", ">Disk<", ">/srv/data<", "Load 0.54 0.50 0.37", "4 cores", "Up 3 d 2 h", "Reboot needed",
-            "2 failed services", "zram 1.2 GiB", "3.0x", "Debian GNU/Linux 13 (trixie)", "6.12.38+deb13-amd64", "2 logged in",
+            ">CPU<", ">RAM<", ">Swap<", ">Disk<", ">/srv/data<",
+            "Load ${num("%.2f", 0.54)} ${num("%.2f", 0.50)} ${num("%.2f", 0.37)}", "4 cores", "Up 3 d 2 h", "Reboot needed",
+            "2 failed services", "zram ${num("%.1f", 1.2)} GiB", "${num("%.1f", 3.0)}x", "Debian GNU/Linux 13 (trixie)", "6.12.38+deb13-amd64",
+            "2 logged in",
         ).forEach { assertTrue(everything.contains(it), "all metrics show $it") }
 
         val nothing = cardOf(page, "nothing")
@@ -180,7 +186,7 @@ class WebTest {
         val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
         val page = noRedirects().get("/hosts/a") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
         listOf(
-            "0.54 / 0.50 / 0.37", "4 cores", "3 d 2 h", "yes, 6.12.38+deb13-amd64 runs, 6.12.41+deb13-amd64 is installed",
+            "${num("%.2f", 0.54)} / ${num("%.2f", 0.50)} / ${num("%.2f", 0.37)}", "4 cores", "3 d 2 h", "yes, 6.12.38+deb13-amd64 runs, 6.12.41+deb13-amd64 is installed",
             "backup.service", "Debian GNU/Linux 13 (trixie)", "Logged in users", "/srv/data",
         ).forEach { assertTrue(page.contains(it), "host page shows $it") }
         assertFalse(page.contains("<script>alert(1)"), "a unit name from the server must not become markup")
