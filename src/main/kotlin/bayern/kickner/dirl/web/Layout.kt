@@ -1,5 +1,6 @@
 package bayern.kickner.dirl.web
 
+import bayern.kickner.dirl.RELEASES_URL
 import bayern.kickner.dirl.appVersion
 import bayern.kickner.dirl.auth.Session
 import io.ktor.http.HttpStatusCode
@@ -119,6 +120,10 @@ suspend fun ApplicationCall.page(
     content: FlowContent.() -> Unit,
 ) {
     val flash = request.queryParameters["done"]?.let { flashMessages[it] }
+    // Only logged in users see the notice, so only their pages ask GitHub (at most once an hour).
+    val updates = if (session != null) application.attributes.getOrNull(DirlKey)?.updates else null
+    updates?.checkIfDue(application)
+    val newer = updates?.available()
     respondHtml(status) {
         head {
             meta(charset = "utf-8")
@@ -173,7 +178,17 @@ suspend fun ApplicationCall.page(
                     }
                 } else content()
             }
-            if (frame != PageFrame.WIDE) footer { +"Dirl $appVersion" }
+            if (frame != PageFrame.WIDE) footer {
+                +"Dirl $appVersion"
+                if (newer != null) {
+                    +" · "
+                    // Only a version that matched v1.2.3 gets here, the link is built from the fixed release URL.
+                    a(href = "$RELEASES_URL/tag/v$newer") {
+                        attributes["rel"] = "noopener noreferrer"
+                        +"$newer available"
+                    }
+                }
+            }
             script(src = "/static/app.js") {}
             assets.filter { it.endsWith(".js") }.forEach { script(src = it) {} }
         }

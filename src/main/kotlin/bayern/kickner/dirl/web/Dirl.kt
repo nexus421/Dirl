@@ -1,5 +1,6 @@
 package bayern.kickner.dirl.web
 
+import bayern.kickner.dirl.UpdateCheck
 import bayern.kickner.dirl.audit.AuditLog
 import bayern.kickner.dirl.auth.AccessControl
 import bayern.kickner.dirl.auth.OidcClient
@@ -17,6 +18,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
+import io.ktor.util.AttributeKey
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -31,6 +33,7 @@ import kotlin.time.Duration.Companion.seconds
  * @property connections SSH connections.
  * @property presence Whether anybody uses Dirl, connections only exist while somebody does.
  * @property metrics Latest status per host.
+ * @property updates Whether a newer release exists.
  */
 class Dirl(
     val config: AppConfig,
@@ -42,6 +45,7 @@ class Dirl(
     val connections: ConnectionManager,
     val presence: Presence,
     val metrics: MetricsPoller,
+    val updates: UpdateCheck,
 ) {
     /** The only `Origin` accepted for form posts and WebSockets. */
     val publicOrigin: String = originOf(config.publicUrl)
@@ -50,8 +54,12 @@ class Dirl(
 /** Maximum WebSocket frame size. Ktor's default is unlimited, which lets one client exhaust the heap. */
 const val MAX_FRAME_BYTES = 1L * 1024 * 1024
 
+/** The [Dirl] of the running application, for code that only has the call, like the page layout. */
+val DirlKey = AttributeKey<Dirl>("dirl")
+
 /** The Ktor module: plugins, guards and all routes. */
 fun Application.dirlModule(dirl: Dirl) {
+    attributes.put(DirlKey, dirl)
     install(WebSockets) {
         // Ping is off by default. 20 s keeps idle connections open through the reverse proxy's idle timeout
         pingPeriod = 20.seconds

@@ -53,6 +53,9 @@ when unlocking and everything typed into terminals. Keep that hop off any physic
 Requests that bypass Zoraxy cannot log in anyway (the session cookies are `Secure` and every form post must carry
 the `publicUrl` origin), but anyone on the path between the two could read along.
 
+Outgoing, Dirl connects to the identity provider, the SSH hosts and, for the update check, `api.github.com` on port
+443. The update check can be turned off under Settings, see [security](security.md#update-check).
+
 Backup: the encrypted download under Settings, or `tar czf dirl-$(date +%F).tgz -C /var/lib/dirl .`. Both are
 useless without the passphrase.
 

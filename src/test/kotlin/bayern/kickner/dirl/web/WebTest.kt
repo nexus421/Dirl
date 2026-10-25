@@ -1,6 +1,7 @@
 package bayern.kickner.dirl.web
 
 import bayern.kickner.dirl.audit.Actor
+import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.config.AppConfig
 import bayern.kickner.dirl.config.OidcConfig
 import bayern.kickner.dirl.config.validateConfig
@@ -17,8 +18,13 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.parameters
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -43,6 +49,78 @@ class WebTest {
         // "no-referrer" makes browsers send "Origin: null" on form posts, which the origin check rejects.
         assertEquals("same-origin", response.headers["Referrer-Policy"])
         assertEquals("max-age=31536000", response.headers["Strict-Transport-Security"])
+    }
+
+    /** A Dirl whose update check answers [latest] instead of asking GitHub, counting the questions in [asked]. */
+    private fun dirlWithRelease(latest: String?, asked: AtomicInteger = AtomicInteger()) = createDirl(
+        config, Files.createTempDirectory("dirl-update-web").toFile(), latestRelease = { asked.incrementAndGet(); latest },
+    ).also { it.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada")) }
+
+    @Test
+    fun `opening a page starts the update check`(): Unit = testApplication {
+        val asked = AtomicInteger()
+        val dirl = dirlWithRelease("99.0.0", asked)
+        application { dirlModule(dirl) }
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        assertEquals(0, asked.get(), "nothing is asked before a page is opened")
+        noRedirects().get("/") { header(HttpHeaders.Cookie, cookie) }
+        val deadline = System.currentTimeMillis() + 5000
+        while (asked.get() == 0 && System.currentTimeMillis() < deadline) Thread.sleep(10)
+        assertEquals(1, asked.get())
+        noRedirects().get("/keys") { header(HttpHeaders.Cookie, cookie) }
+        Thread.sleep(200)
+        assertEquals(1, asked.get(), "the next page within the hour does not ask again")
+    }
+
+    @Test
+    fun `a newer release shows in the footer of logged in pages only`(): Unit = testApplication {
+        val dirl = dirlWithRelease("99.0.0")
+        runBlocking { dirl.updates.checkIfDue(CoroutineScope(Dispatchers.IO))?.join() }
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+
+        val page = client.get("/") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        assertTrue(page.contains("99.0.0 available"), "footer must show the release")
+        assertTrue(page.contains("href=\"https://github.com/nexus421/Dirl/releases/tag/v99.0.0\""), "link to the release")
+        assertFalse(client.get("/login").bodyAsText().contains("available"), "not before login")
+        val settings = client.get("/settings") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        assertTrue(settings.contains("99.0.0"), "the settings show the latest release")
+    }
+
+    @Test
+    fun `the running version shows no update`(): Unit = testApplication {
+        val dirl = dirlWithRelease(bayern.kickner.dirl.BuildConfig.VERSION)
+        runBlocking { dirl.updates.checkIfDue(CoroutineScope(Dispatchers.IO))?.join() }
+        application { dirlModule(dirl) }
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        assertFalse(noRedirects().get("/") { header(HttpHeaders.Cookie, cookie) }.bodyAsText().contains("available"))
+    }
+
+    @Test
+    fun `the update check can be turned off and on in the settings`(): Unit = testApplication {
+        val dirl = dirlWithRelease("99.0.0")
+        runBlocking { dirl.updates.checkIfDue(CoroutineScope(Dispatchers.IO))?.join() }
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        suspend fun save(on: Boolean) = client.submitForm("/settings/updates", parameters { if (on) append("updateCheck", "on") }) {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+
+        val off = save(on = false)
+        assertEquals(HttpStatusCode.Found, off.status)
+        assertEquals("/settings?done=settings-saved", off.headers[HttpHeaders.Location])
+        assertFalse(dirl.vault.content!!.settings.updateCheck)
+        assertFalse(client.get("/") { header(HttpHeaders.Cookie, cookie) }.bodyAsText().contains("available"), "hidden when off")
+        val audited = dirl.audit.tail().first()
+        assertEquals(AuditAction.SETTINGS_CHANGED, audited.action)
+        assertEquals("updateCheck=off", audited.detail)
+
+        save(on = true)
+        assertTrue(dirl.vault.content!!.settings.updateCheck)
+        assertTrue(client.get("/") { header(HttpHeaders.Cookie, cookie) }.bodyAsText().contains("99.0.0 available"))
     }
 
     @Test

@@ -1,5 +1,6 @@
 package bayern.kickner.dirl.web
 
+import bayern.kickner.dirl.BuildConfig
 import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.auth.RevokeError
 import bayern.kickner.dirl.config.UnlockMode
@@ -46,6 +47,7 @@ import java.time.LocalDate
  * - `POST /settings/users/allow`, `/settings/users/revoke`, `/settings/requests/dismiss`.
  * - `POST /settings/sessions/revoke`.
  * - `POST /settings/ssh` for the source address used in the `authorized_keys` lines.
+ * - `POST /settings/updates` turns the update check on or off, see [bayern.kickner.dirl.UpdateCheck].
  * - `POST /settings/passphrase`, `GET /settings/backup`, `POST /vault/seal`.
  * - `GET /audit?q=` latest audit entries, filterable.
  */
@@ -106,6 +108,14 @@ fun Route.settingsRoutes(dirl: Dirl) {
         }
         dirl.vault.update { it.copy(settings = it.settings.copy(sshSourceAddress = value.ifEmpty { null })) }
         dirl.audit.record(call.session.actor, AuditAction.SETTINGS_CHANGED, detail = "sshSourceAddress=${value.ifEmpty { "none" }}")
+        call.respondRedirect("/settings?done=settings-saved")
+    }
+
+    post("/settings/updates") {
+        // An unticked checkbox is not sent at all, so a missing field means off.
+        val on = call.receiveParameters()["updateCheck"] == "on"
+        dirl.vault.update { it.copy(settings = it.settings.copy(updateCheck = on)) }
+        dirl.audit.record(call.session.actor, AuditAction.SETTINGS_CHANGED, detail = "updateCheck=${if (on) "on" else "off"}")
         call.respondRedirect("/settings?done=settings-saved")
     }
 
@@ -306,6 +316,19 @@ private suspend fun ApplicationCall.settingsPage(dirl: Dirl, error: String?) {
                 card("Seal vault", "danger") {
                     p("muted") { +"Closes all SSH connections and removes keys from memory until the passphrase is entered again." }
                     postButton("/vault/seal", "Seal now", "danger", confirm = "Seal the vault? All terminals and connections close.")
+                }
+            }
+
+            card("Updates") {
+                keyValues(
+                    "Running" to BuildConfig.VERSION,
+                    "Latest release" to (dirl.updates.latest ?: "not known yet"),
+                    "Last asked GitHub" to (dirl.updates.lastAttempt?.let(::formatTimestamp) ?: "not yet"),
+                )
+                form(action = "/settings/updates", method = FormMethod.post, classes = "form") {
+                    checkField("Ask GitHub for a newer release, at most once an hour while Dirl is used", "updateCheck", content.settings.updateCheck)
+                    p("muted small") { +"Only the version number is read, nothing is downloaded or installed. GitHub sees the address of this server." }
+                    div("btn-row") { submit("Save") }
                 }
             }
 

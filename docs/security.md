@@ -205,6 +205,21 @@ not depend on Dirl: your own keys in the password manager and the provider's con
   Remote file names are cleaned before they go into a `Content-Disposition` header.
 - Destructive actions ask for confirmation, a private key export asks for the vault passphrase again.
 
+## Update check
+
+Dirl asks `https://api.github.com/repos/nexus421/Dirl/releases/latest` whether a newer release exists. The server
+asks, never the browser. There is no timer: a page shown to a logged in user starts the question in the background
+when the last one is at least an hour ago, failed ones included. Nobody using Dirl means no requests, and neither
+does a sealed vault, which cannot tell whether the check was turned off. GitHub sees the server's address and the
+JDK's user agent with the Java version (`Java-http-client/25.0.4.1`), no Dirl version and nothing from the vault.
+Without a token GitHub allows 60 requests per hour and address, a refused answer (403, 429) is ignored until the
+next hour.
+
+The answer is untrusted like everything from outside: at most 1 MiB is read, redirects are not followed, only
+`tag_name` is used and only if it is exactly `v1.2.3`. The footer link is built from the fixed release URL and that
+version. Nothing is downloaded or installed. The switch under Settings is stored in the vault and only written when
+the check is off. Dirl 0.2.0 and older cannot read a vault where it is off.
+
 ## Audit log
 
 `dataDir/audit.jsonl` (`0600`), one JSON object per line, appended and synced per entry: logins, rejected logins,

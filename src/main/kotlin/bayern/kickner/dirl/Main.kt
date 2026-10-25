@@ -69,7 +69,7 @@ fun main(args: Array<String>) {
     configureLogging(File(dataDir, "logs"))
     staticLog(KLogger.Level.INFO, TAG) { "Dirl $appVersion starting on ${config.host}:${config.port}, public URL ${config.publicUrl}" }
 
-    val dirl = createDirl(config, dataDir)
+    val dirl = createDirl(config, dataDir, latestRelease = ::fetchLatestRelease)
     if (dirl.access.isBootstrap) {
         staticLog(KLogger.Level.WARN, TAG) { "No vault yet. The first user the identity provider lets through can create it. Do that now." }
     }
@@ -94,9 +94,17 @@ fun main(args: Array<String>) {
 /**
  * Creates all services. Nothing connects anywhere yet, the vault starts sealed or uninitialized.
  *
- * @param clock Unix milliseconds for every service, injectable for tests.
+ * @param latestRelease Asks for the newest release, see [UpdateCheck]. [main] passes [fetchLatestRelease], the
+ *   default never asks anybody, so tests do not reach GitHub.
+ * @param clock Unix milliseconds for every service, injectable for tests. Stays the last parameter, callers pass it
+ *   as trailing lambda.
  */
-fun createDirl(config: AppConfig, dataDir: File, clock: () -> Long = System::currentTimeMillis): Dirl {
+fun createDirl(
+    config: AppConfig,
+    dataDir: File,
+    latestRelease: () -> String? = { null },
+    clock: () -> Long = System::currentTimeMillis,
+): Dirl {
     val audit = AuditLog(File(dataDir, "audit.jsonl"))
     val keyFile = if (config.unlockMode == UnlockMode.KEYFILE) File(config.keyFile) else null
     val vault = Vault(VaultStore(dataDir), audit, keyFile, clock)
@@ -112,6 +120,7 @@ fun createDirl(config: AppConfig, dataDir: File, clock: () -> Long = System::cur
         connections = connections,
         presence = presence,
         metrics = MetricsPoller(vault, connections, presence, clock = clock),
+        updates = UpdateCheck(vault, clock, fetchLatest = latestRelease),
     )
 }
 

@@ -149,11 +149,15 @@ data class Snippet(
  * @property allowedUsers Who may use Dirl. Checked on every request while the vault is unlocked.
  * @property sshSourceAddress The address target servers see Dirl connecting from. Only used to prefill the
  *   `from="..."` restriction in the `authorized_keys` lines. `null` shows a placeholder.
+ * @property updateCheck Whether Dirl asks GitHub at most once an hour for a newer release, see
+ *   [bayern.kickner.dirl.UpdateCheck]. On by default. Only written to the file when off, older versions of Dirl
+ *   cannot read a vault where it is off.
  */
 @Serializable
 data class VaultSettings(
     val allowedUsers: List<AllowedUser> = emptyList(),
     val sshSourceAddress: String? = null,
+    val updateCheck: Boolean = true,
 )
 
 /**

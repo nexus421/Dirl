@@ -107,6 +107,7 @@ One package per concern under `bayern.kickner.dirl`:
 | Package / file     | Content                                                                                   |
 |--------------------|-------------------------------------------------------------------------------------------|
 | `Main.kt`          | Argument parsing, config, logging, wiring, server start                                   |
+| `UpdateCheck.kt`   | Asks GitHub at most once an hour for the newest release, version rules, answer limit      |
 | `config`           | Config model and strict loader with validation                                            |
 | `crypto`           | Argon2id KEK derivation, AES-GCM with explicit nonce                                      |
 | `vault`            | Vault model, crash-safe store, lifecycle (setup, unlock, lockout, passphrase change, backup, restore) |
@@ -154,7 +155,7 @@ vault is sealed only `/unlock`, `/setup`, `/setup/restore` and `/logout` work.
 | POST   | `/snippets`, `/snippets/{id}`, `/snippets/{id}/delete`       | Snippet actions                                 |
 | GET    | `/audit?q=`                                                  | Audit log                                       |
 | GET    | `/settings`, `/settings/backup`                              | Settings, encrypted vault download              |
-| POST   | `/settings/users/allow`, `/settings/users/revoke`, `/settings/requests/dismiss`, `/settings/sessions/revoke`, `/settings/ssh`, `/settings/passphrase`, `/vault/seal` | Settings actions |
+| POST   | `/settings/users/allow`, `/settings/users/revoke`, `/settings/requests/dismiss`, `/settings/sessions/revoke`, `/settings/ssh`, `/settings/updates`, `/settings/passphrase`, `/vault/seal` | Settings actions |
 
 WebSocket protocol: binary frames carry terminal bytes in both directions. Text frames are JSON control messages,
 `{"type":"resize","cols":120,"rows":40}` from the browser and `{"type":"error","message":"..."}` from the server.
@@ -173,13 +174,14 @@ Verified:
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines before `permitlisten`, jump host forwarding,
   `PerSourcePenalties`. Against 9.2: the current lines and the `Match` block against Unix socket forwarding.
 - Login against a real Pocket ID instance as confidential client with PKCE.
-- 96 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase opening
-  nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC (token
-  checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous logins, a
-  failing and a slow provider), backup restore through the UI up to the unlock, access control (including revokes at the
-  same moment), idle timeout with automatic reloads, security headers, origin checks and path tricks, config validation
-  including `config.example.json`, presence (on a real CIO server), snippet folders, SSH integration as listed above and
-  the limits on data read from servers. Without an `sshd` the 22 SSH integration tests are skipped.
+- 111 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
+  opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC
+  (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous
+  logins, a failing and a slow provider), backup restore through the UI up to the unlock, access control (including
+  revokes at the same moment), idle timeout with automatic reloads, security headers, origin checks and path tricks,
+  config validation including `config.example.json`, presence (on a real CIO server), snippet folders, the update check
+  (version rules, answer limit, at most once an hour, the switch, the footer), SSH integration as listed above and the
+  limits on data read from servers. Without an `sshd` the 22 SSH integration tests are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
   provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
   target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all

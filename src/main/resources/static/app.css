@@ -171,7 +171,7 @@ footer { flex-shrink: 0; text-align: center; color: var(--muted); font-size: 12p
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .btn-row > input, .btn-row > .field { flex: 1 1 200px; width: auto; }
 .btn-row > .field { margin: 0; }
-.kv + p, .kv + .code { margin-top: 14px; }
+.kv + p, .kv + .code, .kv + .form { margin-top: 14px; }
 .path-form { flex: 1 1 260px; max-width: 460px; flex-wrap: nowrap; }
 form.inline { display: inline; }
 

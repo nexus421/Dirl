@@ -22,6 +22,11 @@ Kennzeichnung: **[geprüft]** = am Quellcode, an der Doku oder per Test in einer
 | Server-Status: erreichbar, CPU, RAM, Swap, Platte | Alarme (später ggf. Webhook an KNot) |
 | Host-Key-Pinning, Audit-Log | Datenbank-Server, i18n, Themes, Telemetrie |
 
+Update-Hinweis (25.10.2026): Der Server fragt GitHub höchstens einmal pro Stunde und nur, wenn ein angemeldeter
+Nutzer eine Seite aufruft, nach dem neuesten Release. Gelesen wird nur `tag_name`, nichts wird geladen oder
+installiert, der Hinweis steht in der Fußzeile. In den Settings abschaltbar (im Vault gespeichert). Keine Telemetrie:
+GitHub sieht nur IP-Adresse und Java-Version. HTTP wie beim Login mit dem JDK-Client, kein Ktor-Client.
+
 ## Stack (Versionen Stand 15.10.2026, aus Git-Tags bzw. npm) [geprüft]
 | Baustein | Version | Anmerkung |
 |---|---|---|
