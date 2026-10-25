@@ -6,7 +6,7 @@
 |-----------|--------------------------------------------------------------------------------------------------------------------------|
 | Hosts     | Overview cards with state, CPU, RAM and fullest disk, filter by tag. Add, edit, delete, connect now. A host can be marked "jump host only", a jump host takes the address the hosts behind it see it coming from |
 | Host      | Connection details, host key confirmation and pin removal, the restricted `authorized_keys` line with copy button, latest metrics, disks |
-| Terminal  | xterm.js with resize, snippet buttons, a key bar with Ctrl, Esc, Tab, arrows on touch devices, Enter reloads after a disconnect |
+| Terminal  | xterm.js with resize, snippet buttons, a key bar with Ctrl, Esc, Tab, arrows on touch devices, Enter reloads after a disconnect. While connected, the browser asks before leaving the page (also on Ctrl+W), because leaving ends the shell. Run long jobs in `tmux` or `screen` |
 | Files     | Breadcrumbs, path input, download, upload with progress (existing files only with "Overwrite existing files"), new directory, rename or move, delete. There is no editor, files are changed in the terminal. Symlinks are marked with →, they open, download and get overwritten like their target, deleting one removes only the link |
 | Keys      | Generate Ed25519, import, rename, export after entering the passphrase again, delete unused keys, fingerprints           |
 | Snippets  | Add, edit, delete, "run immediately" or "insert only", optional folder: each folder is a menu above the terminal |

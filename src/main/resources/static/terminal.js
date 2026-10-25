@@ -45,6 +45,15 @@
     };
   }
 
+  // Leaving the page closes the shell on the server, and Ctrl+W, which deletes a word in the shell, closes the tab in
+  // the browser. While the connection is open the browser asks first. After a disconnect it does not, so Enter can
+  // reload.
+  window.addEventListener('beforeunload', function (event) {
+    if (closed) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+
   // Sticky Ctrl from the key bar: the next single character is sent as control character.
   const ctrlButton = document.getElementById('ctrl');
   let ctrl = false;
