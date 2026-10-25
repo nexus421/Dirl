@@ -214,6 +214,11 @@ LC_ALL=C sh -c 'cat /proc/uptime /proc/loadavg; head -n1 /proc/stat; grep -E "^(
 - CPU als Delta zweier `/proc/stat`-Zeilen: `busy = total − idle − iowait`. RAM = `MemTotal − MemAvailable`.
 - `-l` lässt Netzwerk- und FUSE-Mounts weg, `timeout 5` verhindert Hänger bei toten Mounts.
 - LXC-Container zeigen in `/proc/meminfo` nur mit LXCFS die Container-Werte [Spike].
+- Seit 25.10.2026 fragt der Befehl mehr ab, jeder Teil mit einer Markierung `@@name`: Kerne (`nproc`), Neustart nötig
+  (Kernel aus `/vmlinuz` bzw. zuletzt installiert in `/boot` gegen `uname -r`, dazu `/run/reboot-required`, wie das
+  Admin-Skript), fehlgeschlagene systemd-Units samt Exit-Code von `systemctl`, `PRETTY_NAME`, Kernel, Anzahl `who`,
+  zram aus `mm_stat` der als Swap aktiven Geräte. Es wird immer alles abgefragt, pro Host wählt man nur, was die
+  Karte in der Übersicht zeigt (Standard wie bisher CPU, RAM, vollste Platte). Die Detailseite zeigt alles.
 
 ## Frontend
 - **Weg A**: Seiten serverseitig mit kotlinx.html (Kotlin), dazu ~300 Zeilen Vanilla-JS für Terminal, Upload und Fortschritt. xterm.js liegt als statische Datei mit Prüfsumme im JAR.

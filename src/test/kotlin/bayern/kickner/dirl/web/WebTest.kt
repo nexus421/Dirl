@@ -123,6 +123,99 @@ class WebTest {
         assertTrue(client.get("/") { header(HttpHeaders.Cookie, cookie) }.bodyAsText().contains("99.0.0 available"))
     }
 
+    /** A sample like a Debian 13 host sends, with a hostile unit name. */
+    private val sample = bayern.kickner.dirl.ssh.RawMetrics(
+        uptimeSeconds = 3 * 86400.0 + 7200, load1 = 0.54, load5 = 0.50, load15 = 0.37, cpuPercent = 12.0, cores = 4,
+        memTotalKiB = 4_000_000, memAvailableKiB = 1_000_000, swapTotalKiB = 1_000_000, swapFreeKiB = 750_000,
+        disks = listOf(
+            bayern.kickner.dirl.ssh.DiskUsage("/dev/sda1", "/", "ext4", 10_000_000, 2_500_000),
+            bayern.kickner.dirl.ssh.DiskUsage("/dev/sdb1", "/srv/data", "xfs", 20_000_000, 18_000_000),
+        ),
+        reboot = bayern.kickner.dirl.ssh.RebootStatus(needed = true, newerKernel = "6.12.41+deb13-amd64"),
+        failedUnits = listOf("backup.service", "<script>alert(1)</script>.service"),
+        osName = "Debian GNU/Linux 13 (trixie)", kernel = "6.12.38+deb13-amd64", loggedInUsers = 2,
+        zram = bayern.kickner.dirl.ssh.ZramUsage(origBytes = 1_288_490_188, comprBytes = 429_496_729, memUsedBytes = 440_000_000),
+    )
+
+    /** The overview card of the host named [name] in [page]. */
+    private fun cardOf(page: String, name: String): String =
+        page.split("class=\"card host-card\"").drop(1).first { it.contains(">$name</a>") }
+
+    @Test
+    fun `the overview shows exactly the metrics chosen per host`(): Unit = testApplication {
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        val key = bayern.kickner.dirl.ssh.generateEd25519Key("k")
+        val plain = bayern.kickner.dirl.vault.Host(id = "a", name = "plain", address = "10.0.0.1", username = "u", keyId = key.id)
+        val all = plain.copy(id = "b", name = "everything", overview = bayern.kickner.dirl.vault.OverviewMetric.entries.toSet())
+        val none = plain.copy(id = "c", name = "nothing", overview = emptySet())
+        dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(plain, all, none)) }
+        listOf(plain, all, none).forEach { dirl.metrics.record(it.id, sample) }
+        application { dirlModule(dirl) }
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        val page = noRedirects().get("/") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+
+        val default = cardOf(page, "plain")
+        listOf(">CPU<", ">RAM<", ">Disk<").forEach { assertTrue(default.contains(it), "default shows $it") }
+        listOf("Load", "Swap", "Up ", "failed", "Reboot", "zram", "Debian", "logged in", "/srv/data").forEach { assertFalse(default.contains(it), "default hides $it") }
+
+        val everything = cardOf(page, "everything")
+        listOf(
+            ">CPU<", ">RAM<", ">Swap<", ">Disk<", ">/srv/data<", "Load 0.54 0.50 0.37", "4 cores", "Up 3 d 2 h", "Reboot needed",
+            "2 failed services", "zram 1.2 GiB", "3.0x", "Debian GNU/Linux 13 (trixie)", "6.12.38+deb13-amd64", "2 logged in",
+        ).forEach { assertTrue(everything.contains(it), "all metrics show $it") }
+
+        val nothing = cardOf(page, "nothing")
+        assertFalse(nothing.contains("class=\"meters\"") || nothing.contains("class=\"facts\""), "nothing chosen shows no metrics")
+        assertTrue(nothing.contains("class=\"pill"), "the connection state stays")
+    }
+
+    @Test
+    fun `the host page shows every metric and escapes text from the server`(): Unit = testApplication {
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        val key = bayern.kickner.dirl.ssh.generateEd25519Key("k")
+        val host = bayern.kickner.dirl.vault.Host(id = "a", name = "web", address = "10.0.0.1", username = "u", keyId = key.id, overview = emptySet())
+        dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(host)) }
+        dirl.metrics.record(host.id, sample)
+        application { dirlModule(dirl) }
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        val page = noRedirects().get("/hosts/a") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        listOf(
+            "0.54 / 0.50 / 0.37", "4 cores", "3 d 2 h", "yes, 6.12.38+deb13-amd64 runs, 6.12.41+deb13-amd64 is installed",
+            "backup.service", "Debian GNU/Linux 13 (trixie)", "Logged in users", "/srv/data",
+        ).forEach { assertTrue(page.contains(it), "host page shows $it") }
+        assertFalse(page.contains("<script>alert(1)"), "a unit name from the server must not become markup")
+        assertTrue(page.contains("&lt;script&gt;alert(1)&lt;/script&gt;.service"))
+    }
+
+    @Test
+    fun `the host form offers the overview choice with the default ticked`(): Unit = testApplication {
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        val key = bayern.kickner.dirl.ssh.generateEd25519Key("k")
+        dirl.vault.update { it.copy(keys = listOf(key)) }
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        val form = client.get("/hosts/new") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        bayern.kickner.dirl.vault.OverviewMetric.entries.forEach { metric ->
+            val checked = Regex("""<input[^>]*name="overview"[^>]*value="${metric.name}"[^>]*>""").find(form)?.value
+            assertTrue(checked != null, "${metric.name} is offered")
+            assertEquals(metric in bayern.kickner.dirl.vault.DEFAULT_OVERVIEW, checked.contains("checked"), metric.name)
+        }
+
+        val saved = client.submitForm("/hosts", parameters {
+            append("name", "web"); append("address", "10.0.0.5"); append("port", "22"); append("username", "root"); append("keyId", key.id)
+            append("overviewShown", "1"); append("overview", "UPTIME"); append("overview", "FAILED_SERVICES")
+        }) {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        assertEquals(HttpStatusCode.Found, saved.status)
+        assertEquals(
+            setOf(bayern.kickner.dirl.vault.OverviewMetric.UPTIME, bayern.kickner.dirl.vault.OverviewMetric.FAILED_SERVICES),
+            dirl.vault.content!!.hosts.single().overview,
+        )
+    }
+
     @Test
     fun `an unknown host is a plain 404 on every host page`(): Unit = testApplication {
         dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))

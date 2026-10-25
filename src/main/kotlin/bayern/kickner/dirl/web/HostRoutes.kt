@@ -4,12 +4,15 @@ import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.formatTimestamp
 import bayern.kickner.dirl.newId
 import bayern.kickner.dirl.ssh.ConnectionState
+import bayern.kickner.dirl.ssh.MAX_FAILED_UNITS
 import bayern.kickner.dirl.ssh.MetricsSample
 import bayern.kickner.dirl.ssh.SOURCE_ADDRESS_PATTERN
 import bayern.kickner.dirl.ssh.authorizedKeysLine
 import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.ssh.resolveRoute
+import bayern.kickner.dirl.vault.DEFAULT_OVERVIEW
 import bayern.kickner.dirl.vault.Host
+import bayern.kickner.dirl.vault.OverviewMetric
 import bayern.kickner.dirl.vault.VaultContent
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
@@ -24,10 +27,12 @@ import io.ktor.server.routing.post
 import kotlinx.html.FlowContent
 import kotlinx.html.FormMethod
 import kotlinx.html.a
+import kotlinx.html.checkBoxInput
 import kotlinx.html.code
 import kotlinx.html.div
 import kotlinx.html.form
 import kotlinx.html.h2
+import kotlinx.html.hiddenInput
 import kotlinx.html.label
 import kotlinx.html.li
 import kotlinx.html.ol
@@ -39,6 +44,7 @@ import kotlinx.html.style
 import kotlinx.html.table
 import kotlinx.html.tbody
 import kotlinx.html.td
+import kotlinx.html.title
 import kotlinx.html.th
 import kotlinx.html.thead
 import kotlinx.html.tr
@@ -303,6 +309,12 @@ fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): Res
     val jumpHostId = form["jumpHostId"].orEmpty().ifBlank { null }
     val tags = form["tags"].orEmpty().split(',', ' ').map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }.distinct()
     val sourceAddressForTargets = form["sourceAddressForTargets"].orEmpty().trim().ifEmpty { null }
+    // The choice only counts when the form showed it, any other form keeps what the host had. Unknown values are
+    // dropped, nothing ticked is a valid choice.
+    val overview = if (form["overviewShown"] == "1") {
+        val ticked = form.getAll("overview").orEmpty().toSet()
+        OverviewMetric.entries.filter { it.name in ticked }.toSet()
+    } else existing?.overview ?: DEFAULT_OVERVIEW
 
     if (name.isEmpty() || name.length > 64) errors += "Name is required (at most 64 characters)"
     if (addressPattern.matches(address).not()) errors += "Address must be a host name or an IP address"
@@ -329,6 +341,7 @@ fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): Res
         jumpOnly = form["jumpOnly"] == "on",
         pinnedHostKey = if (endpointChanged) null else existing?.pinnedHostKey,
         sourceAddressForTargets = sourceAddressForTargets,
+        overview = overview,
     )
 
     val candidate = content.copy(hosts = content.hosts.filterNot { it.id == host.id } + host)
@@ -375,12 +388,7 @@ private fun FlowContent.hostCard(dirl: Dirl, content: VaultContent, host: Host) 
         if (host.jumpOnly) span("chip") { +"jump host" }
         host.tags.forEach { span("chip") { +"#$it" } }
     }
-    if (sample != null && host.jumpOnly.not()) div("meters") {
-        meter("CPU", sample.cpuPercent)
-        meter("RAM", percentOf(sample.memUsedKiB, sample.memTotalKiB))
-        val disk = sample.disks.filter { it.totalKiB > 0 }.maxByOrNull { it.usedKiB.toDouble() / it.totalKiB }
-        meter("Disk", disk?.let { percentOf(it.usedKiB, it.totalKiB) })
-    }
+    if (sample != null && host.jumpOnly.not()) overviewMetrics(host.overview, sample)
     div("btn-row") {
         if (host.jumpOnly.not()) {
             linkButton("/hosts/${host.id}/terminal", "Terminal", "primary sm")
@@ -390,8 +398,54 @@ private fun FlowContent.hostCard(dirl: Dirl, content: VaultContent, host: Host) 
     }
 }
 
-private fun FlowContent.meter(label: String, percent: Double?) = div("meter") {
-    span { +label }
+/** The values of [sample] that [chosen] asks for: warnings, then bars, then short facts. */
+private fun FlowContent.overviewMetrics(chosen: Set<OverviewMetric>, sample: MetricsSample) {
+    val raw = sample.raw
+    val warnings = buildList {
+        // An unknown reboot status is not shown: it is unknown in every container, it would be on every such card.
+        // The host page says it.
+        if (OverviewMetric.REBOOT in chosen && raw.reboot?.needed == true) add("Reboot needed")
+        val failed = raw.failedUnits.orEmpty()
+        if (OverviewMetric.FAILED_SERVICES in chosen && failed.isNotEmpty()) add(
+            when {
+                failed.size >= MAX_FAILED_UNITS -> "At least $MAX_FAILED_UNITS failed services"
+                failed.size == 1 -> "1 failed service"
+                else -> "${failed.size} failed services"
+            },
+        )
+    }
+    if (warnings.isNotEmpty()) div("chips") { warnings.forEach { span("pill warn") { +it } } }
+
+    val bars = setOf(OverviewMetric.CPU, OverviewMetric.RAM, OverviewMetric.SWAP, OverviewMetric.DISK, OverviewMetric.DISKS)
+    val disks = sample.disks.filter { it.totalKiB > 0 }
+    // With mount points as labels every bar of the card gets the wide label column, so the bars line up.
+    val wide = OverviewMetric.DISKS in chosen
+    if (chosen.any { it in bars }) div("meters") {
+        if (OverviewMetric.CPU in chosen) meter("CPU", sample.cpuPercent, wide)
+        if (OverviewMetric.RAM in chosen) meter("RAM", percentOf(sample.memUsedKiB, sample.memTotalKiB), wide)
+        if (OverviewMetric.SWAP in chosen && sample.swapTotalKiB > 0) meter("Swap", percentOf(sample.swapUsedKiB, sample.swapTotalKiB), wide)
+        if (OverviewMetric.DISK in chosen) {
+            val fullest = disks.maxByOrNull { it.usedKiB.toDouble() / it.totalKiB }
+            meter("Disk", fullest?.let { percentOf(it.usedKiB, it.totalKiB) }, wide)
+        }
+        if (wide) disks.forEach { meter(it.mount, percentOf(it.usedKiB, it.totalKiB), wide = true) }
+    }
+
+    val facts = buildList {
+        if (OverviewMetric.SWAP in chosen && sample.swapTotalKiB == 0L) add("No swap")
+        if (OverviewMetric.LOAD in chosen) add("Load ${loads(raw.load1, raw.load5, raw.load15, " ")}" + (raw.cores?.let { " · ${cores(it)}" } ?: ""))
+        if (OverviewMetric.UPTIME in chosen) add("Up ${uptime(sample.uptimeSeconds)}")
+        if (OverviewMetric.FAILED_SERVICES in chosen && raw.failedUnits == null) add("Services unknown")
+        if (OverviewMetric.ZRAM in chosen) add(raw.zram?.let { "zram ${bytes(it.origBytes)} → ${bytes(it.comprBytes)} (${ratio(it.origBytes, it.comprBytes)})" } ?: "No zram")
+        if (OverviewMetric.SYSTEM in chosen) listOfNotNull(raw.osName, raw.kernel).takeIf { it.isNotEmpty() }?.let { add(it.joinToString(" · ")) }
+        if (OverviewMetric.USERS in chosen) raw.loggedInUsers?.let { add("$it logged in") }
+    }
+    if (facts.isNotEmpty()) div("facts") { facts.forEach { span { +it } } }
+}
+
+/** A bar with [label]. [wide] leaves room for a mount point as label, cut with an ellipsis and complete as tooltip. */
+private fun FlowContent.meter(label: String, percent: Double?, wide: Boolean = false) = div(if (wide) "meter wide" else "meter") {
+    span { if (wide) title = label; +label }
     val level = when {
         percent == null -> ""
         percent >= 90 -> " critical"
@@ -476,12 +530,29 @@ private fun FlowContent.hostKeyCard(host: Host, state: ConnectionState) = card {
 }
 
 private fun FlowContent.metricsSection(sample: MetricsSample) {
+    val raw = sample.raw
     keyValues(
         "CPU" to (sample.cpuPercent?.let { "${it.roundToInt()}%" } ?: "unknown"),
-        "Load (1 min)" to "%.2f".format(sample.load1),
+        "Load" to "${loads(raw.load1, raw.load5, raw.load15, " / ")} (1, 5, 15 min)" + (raw.cores?.let { ", ${cores(it)}" } ?: ""),
         "RAM" to "${pct(sample.memUsedKiB, sample.memTotalKiB)} of ${gib(sample.memTotalKiB)}",
         "Swap" to if (sample.swapTotalKiB == 0L) "none" else "${pct(sample.swapUsedKiB, sample.swapTotalKiB)} of ${gib(sample.swapTotalKiB)}",
+        "zram" to (raw.zram?.let { "${bytes(it.origBytes)} stored in ${bytes(it.comprBytes)} (${ratio(it.origBytes, it.comprBytes)}), ${bytes(it.memUsedBytes)} RAM used" } ?: "none"),
         "Uptime" to uptime(sample.uptimeSeconds),
+        "Reboot needed" to when {
+            raw.reboot == null -> "unknown, no kernel under /boot (for example a container)"
+            raw.reboot.needed.not() -> "no"
+            raw.reboot.newerKernel != null -> "yes, ${raw.kernel} runs, ${raw.reboot.newerKernel} is installed"
+            else -> "yes, the system asks for it (/run/reboot-required)"
+        },
+        "Failed services" to when {
+            raw.failedUnits == null -> "unknown, no systemd"
+            raw.failedUnits.isEmpty() -> "none"
+            raw.failedUnits.size >= MAX_FAILED_UNITS -> "at least $MAX_FAILED_UNITS: ${raw.failedUnits.joinToString()}"
+            else -> raw.failedUnits.joinToString()
+        },
+        "System" to (raw.osName ?: "unknown"),
+        "Kernel" to (raw.kernel ?: "unknown"),
+        "Logged in users" to (raw.loggedInUsers?.let { "$it (logins with a terminal, Dirl's own terminals count too)" } ?: "unknown"),
     )
     if (sample.disks.isNotEmpty()) div("table-wrap") {
         style = "margin-top:16px"
@@ -561,6 +632,22 @@ private suspend fun ApplicationCall.hostFormPage(content: VaultContent, host: Ho
                     hint = "Only for jump hosts. The address the hosts behind this one see it connecting from, often its address in their network. Fills from=\"...\" in their authorized_keys lines.",
                     required = false, placeholder = "e.g. 10.0.0.1",
                 )
+                div("field") {
+                    span { +"Shown in the overview" }
+                    // Marks that this form carries the choice, an unticked box is not sent at all.
+                    hiddenInput(name = "overviewShown") { this.value = "1" }
+                    val ticked = if (form?.get("overviewShown") == "1") form.getAll("overview").orEmpty().toSet()
+                    else (host?.overview ?: DEFAULT_OVERVIEW).map { it.name }.toSet()
+                    div("checks") {
+                        OverviewMetric.entries.forEach { metric ->
+                            label("check") {
+                                checkBoxInput(name = "overview") { this.value = metric.name; checked = metric.name in ticked }
+                                span { +metric.label() }
+                            }
+                        }
+                    }
+                    span("hint") { +"Dirl asks every host for all values once a minute while Dirl is used, this only decides what its card shows. The host page shows everything. Jump hosts only have no values." }
+                }
                 if (host?.pinnedHostKey != null) p("muted small") { +"Changing address, port or jump host removes the pinned host key." }
                 div("btn-row") {
                     submit("Save")
@@ -581,6 +668,22 @@ fun waitingForStatus(dirl: Dirl, host: Host): Boolean = when (dirl.connections.s
     else -> false
 }
 
+/** Label of a choice in the host form. */
+private fun OverviewMetric.label(): String = when (this) {
+    OverviewMetric.CPU -> "CPU"
+    OverviewMetric.RAM -> "RAM"
+    OverviewMetric.SWAP -> "Swap"
+    OverviewMetric.DISK -> "Fullest disk"
+    OverviewMetric.DISKS -> "All disks"
+    OverviewMetric.LOAD -> "Load and cores"
+    OverviewMetric.UPTIME -> "Uptime"
+    OverviewMetric.REBOOT -> "Reboot needed"
+    OverviewMetric.FAILED_SERVICES -> "Failed services"
+    OverviewMetric.ZRAM -> "zram"
+    OverviewMetric.SYSTEM -> "System and kernel"
+    OverviewMetric.USERS -> "Logged in users"
+}
+
 /** Human readable role of [host] in the jump host chain. */
 private fun roleOf(host: Host, content: VaultContent): String {
     val behind = content.hosts.filter { it.jumpHostId == host.id }.map { it.name }
@@ -597,6 +700,18 @@ private fun percentOf(used: Long, total: Long): Double? = if (total <= 0) null e
 private fun pct(used: Long, total: Long): String = percentOf(used, total)?.let { "${it.roundToInt()}%" }.orEmpty()
 
 private fun gib(kib: Long): String = "%.1f GiB".format(kib / 1024.0 / 1024.0)
+
+private fun loads(one: Double, five: Double, fifteen: Double, separator: String) =
+    listOf(one, five, fifteen).joinToString(separator) { "%.2f".format(it) }
+
+private fun cores(count: Int) = if (count == 1) "1 core" else "$count cores"
+
+/** Bytes as MiB below 1 GiB, as GiB above. */
+private fun bytes(count: Long): String =
+    if (count < 1024L * 1024 * 1024) "%.0f MiB".format(count / 1024.0 / 1024.0) else "%.1f GiB".format(count / 1024.0 / 1024.0 / 1024.0)
+
+/** How many times smaller the compressed data is, e.g. `3.0x`. */
+private fun ratio(orig: Long, compressed: Long): String = if (compressed <= 0) "empty" else "%.1fx".format(orig.toDouble() / compressed)
 
 private fun uptime(seconds: Double): String {
     val days = (seconds / 86400).toInt()

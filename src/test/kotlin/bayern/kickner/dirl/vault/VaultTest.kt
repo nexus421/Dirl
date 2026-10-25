@@ -47,6 +47,19 @@ class VaultTest {
     }
 
     @Test
+    fun `hosts from before the overview choice keep the default, and the default is not written`() {
+        val json = Json { ignoreUnknownKeys = false }
+        val old = json.decodeFromString(Host.serializer(), """{"id":"h","name":"web","address":"10.0.0.1","username":"root","keyId":"k"}""")
+        assertEquals(DEFAULT_OVERVIEW, old.overview)
+        assertEquals(setOf(OverviewMetric.CPU, OverviewMetric.RAM, OverviewMetric.DISK), DEFAULT_OVERVIEW, "what the overview showed before")
+        assertTrue("overview" !in json.encodeToString(Host.serializer(), old), "an unchanged host stays readable by older versions")
+        // Order does not matter, the same choice is the default.
+        assertTrue("overview" !in json.encodeToString(Host.serializer(), old.copy(overview = setOf(OverviewMetric.DISK, OverviewMetric.CPU, OverviewMetric.RAM))))
+        val chosen = old.copy(overview = setOf(OverviewMetric.LOAD))
+        assertEquals(chosen, json.decodeFromString(Host.serializer(), json.encodeToString(Host.serializer(), chosen)))
+    }
+
+    @Test
     fun `the file on disk contains no plaintext`() {
         vault().apply {
             setup(passphrase.toCharArray(), actor)

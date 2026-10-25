@@ -89,7 +89,14 @@ Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed u
   or "Connect now". It reads `/proc/stat` twice one second apart, so each poll has the CPU usage on its own. Only the
   latest sample per host is kept, in memory, and forgotten when nobody uses Dirl. A host whose previous poll still
   runs is skipped. Bind mounts and btrfs subvolumes of one device are shown once. Pure jump hosts with
-  `command="/bin/false"` have no metrics.
+  `command="/bin/false"` have no metrics. Every host is asked for all values, the choice per host only decides what
+  its overview card shows. Each part of the output carries a marker, a part a host cannot deliver (no systemd, no
+  `who`, no kernel under `/boot` in a container) leaves only that value unknown. Text from the server (system name,
+  kernel, unit names) loses control, format and escape characters and is cut at 100 characters, at most 50 failed
+  units are kept.
+- Reboot needed is decided like Debian admins do it: the kernel `/vmlinuz` points to, else the last `vmlinuz-*`
+  installed in `/boot`, differs from `uname -r`, or `/run/reboot-required` exists. A container has no kernel of its
+  own under `/boot`, there it is only known from the flag.
 - SFTP: bytes only, no encoding guessing. An upload never replaces an existing file unless "Overwrite existing files"
   is ticked, the skipped names are shown at the form. Uploads go to a temporary file and are renamed over the target
   (`posix-rename`, with a fallback for servers without it). The new file keeps the permissions, owner and group of the

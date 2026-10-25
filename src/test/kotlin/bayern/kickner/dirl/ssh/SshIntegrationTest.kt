@@ -127,6 +127,13 @@ class SshIntegrationTest {
         assertTrue(exec(client, "echo dirl-ok").contains("dirl-ok"))
         val metrics = assertIs<ResultOf2.Success<RawMetrics>>(parseMetrics(exec(client, METRICS_COMMAND)), "metrics output did not parse")
         assertTrue(metrics.value.cpuPercent != null, "one poll must yield the CPU usage on its own")
+        // The optional parts against the real system the test runs on.
+        val raw = metrics.value
+        assertEquals(Runtime.getRuntime().availableProcessors(), raw.cores, "nproc")
+        assertEquals(ProcessBuilder("uname", "-r").start().inputStream.readBytes().decodeToString().trim(), raw.kernel)
+        if (File("/etc/os-release").exists()) assertTrue(raw.osName != null, "PRETTY_NAME from /etc/os-release")
+        assertTrue(raw.loggedInUsers != null, "who")
+        if (File("/run/systemd/system").isDirectory) assertTrue(raw.failedUnits != null, "systemd runs, its list counts")
     }
 
     @Test

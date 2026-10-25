@@ -72,6 +72,9 @@ data class VaultContent(
  * @property sourceAddressForTargets Only for jump hosts: the address the hosts behind this one see it connecting
  *   from, often its address in their network. Only used to fill `from=` in their `authorized_keys` lines, like
  *   [VaultSettings.sshSourceAddress] for hosts Dirl reaches directly.
+ * @property overview What the overview card shows, the host page always shows everything. Dirl asks every host for
+ *   all values anyway, the choice is only about display. [DEFAULT_OVERVIEW] is what the overview showed before the
+ *   choice existed. Only written to the file when it differs, older versions of Dirl cannot read a vault where it does.
  */
 @Serializable
 data class Host(
@@ -86,7 +89,51 @@ data class Host(
     val jumpOnly: Boolean = false,
     val pinnedHostKey: PinnedHostKey? = null,
     val sourceAddressForTargets: String? = null,
+    val overview: Set<OverviewMetric> = DEFAULT_OVERVIEW,
 )
+
+/** A value the overview card of a host can show, see [Host.overview]. The order here is the order on the card. */
+@Serializable
+enum class OverviewMetric {
+    /** CPU usage as bar. */
+    CPU,
+
+    /** RAM usage as bar. */
+    RAM,
+
+    /** Swap usage as bar, zram used as swap included. */
+    SWAP,
+
+    /** The fullest file system as bar. */
+    DISK,
+
+    /** One bar per file system. */
+    DISKS,
+
+    /** Load averages over 1, 5 and 15 minutes with the number of CPUs. */
+    LOAD,
+
+    /** Time since boot. */
+    UPTIME,
+
+    /** A warning if a newer kernel is installed or the system flags a reboot. */
+    REBOOT,
+
+    /** A warning with the number of failed systemd units. */
+    FAILED_SERVICES,
+
+    /** Data in zram and how well it compresses. */
+    ZRAM,
+
+    /** Operating system and running kernel. */
+    SYSTEM,
+
+    /** Number of logins with a terminal. */
+    USERS,
+}
+
+/** What the overview showed before the choice existed, for new hosts and for hosts saved before. */
+val DEFAULT_OVERVIEW: Set<OverviewMetric> = setOf(OverviewMetric.CPU, OverviewMetric.RAM, OverviewMetric.DISK)
 
 /**
  * A host key confirmed by the user. Every later connection must present exactly this key, a different one is
