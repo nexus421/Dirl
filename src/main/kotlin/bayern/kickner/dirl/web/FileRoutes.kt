@@ -220,10 +220,11 @@ fun Route.fileRoutes(dirl: Dirl) {
                         name == null -> failed += (part.originalFileName ?: "unnamed")
                         exists && overwrite.not() -> skipped += name
                         else -> {
-                            val ok = withContext(Dispatchers.IO) {
-                                runCatching { part.provider().toInputStream().use { writeAtomically(sftp, target, it) } }.isSuccess
+                            val error = withContext(Dispatchers.IO) {
+                                runCatching { part.provider().toInputStream().use { writeAtomically(sftp, target, it) } }.exceptionOrNull()
                             }
-                            if (ok) uploaded += target else failed += name
+                            // The reason matters, for example "Permission denied" or a file of another owner.
+                            if (error == null) uploaded += target else failed += "$name (${describeChannelError(error)})"
                         }
                     }
                 }

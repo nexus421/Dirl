@@ -60,11 +60,12 @@ The tests cover trust on first use, a changed host key, the stop after three rej
 including refused TCP remote forwarding, an IPv6 target behind a restricted jump host (skipped without IPv6 loopback), a
 target that sees the jump host's address instead of Dirl's (skipped without a non-loopback IPv4 address), atomic SFTP
 writes including broken transfers and kept permissions and group, downloads byte for byte around the read-ahead block
-size, symlinks in listing, overwrite and delete, upload overwrite protection, rename onto an existing entry or a
-dangling symlink, a hostile SFTP server announcing a 1 GiB packet, the terminal WebSocket including resize, a refused
-terminal not using up the sessions of a connection and the explanation beyond the session limit, closing all connections
-while a connect is still running (a held back handshake through `GatedProxy`), closing for absence without losing a
-stop, and the status poll only while somebody is present and never twice at once for a host.
+size, symlinks in listing, overwrite and delete, upload overwrite protection and the reason of a failed upload, rename
+onto an existing entry or a dangling symlink, a hostile SFTP server announcing a 1 GiB packet, the terminal WebSocket
+including resize, a refused terminal not using up the sessions of a connection and the explanation beyond the session
+limit, closing all connections while a connect is still running (a held back handshake through `GatedProxy`), closing
+for absence without losing a stop, and the status poll only while somebody is present and never twice at once for a
+host.
 [PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt) starts Dirl on a real CIO server and
 checks that an open presence WebSocket holds the presence, the engine detail the connection model rests on.
 [LoginFlowTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/LoginFlowTest.kt) runs the complete OIDC login against the

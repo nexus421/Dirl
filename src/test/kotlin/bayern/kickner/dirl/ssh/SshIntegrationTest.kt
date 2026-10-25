@@ -400,6 +400,12 @@ class SshIntegrationTest {
         assertEquals("old", File(dir, "a.txt").readText())
         assertEquals(HttpStatusCode.Found, upload(overwrite = true).status)
         assertEquals("new", File(dir, "a.txt").readText())
+
+        // A failed upload names the reason from the server, not only the file.
+        dir.setWritable(false)
+        val failed = upload(overwrite = true).bodyAsText()
+        dir.setWritable(true)
+        assertTrue(failed.contains("Failed: a.txt (Permission denied)."), failed.substringAfter("notice").take(200))
         dir.deleteRecursively()
     }
 
