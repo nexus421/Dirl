@@ -219,6 +219,9 @@ LC_ALL=C sh -c 'cat /proc/uptime /proc/loadavg; head -n1 /proc/stat; grep -E "^(
   Admin-Skript), fehlgeschlagene systemd-Units samt Exit-Code von `systemctl`, `PRETTY_NAME`, Kernel, Anzahl `who`,
   zram aus `mm_stat` der als Swap aktiven Geräte. Es wird immer alles abgefragt, pro Host wählt man nur, was die
   Karte in der Übersicht zeigt (Standard wie bisher CPU, RAM, vollste Platte). Die Detailseite zeigt alles.
+- zram-Faktor = gespeicherte Daten durch belegtes RAM (`mem_used_total`), nicht durch die komprimierte Größe: Seiten
+  voller Nullen zählt der Kernel als gespeichert, aber nicht als komprimiert (`write_same_filled_page`), ein fast
+  leeres zram zeigte sonst Faktoren wie 69x. Unter 1 MiB gespeicherter Daten steht nur „fast leer“.
 
 ## Frontend
 - **Weg A**: Seiten serverseitig mit kotlinx.html (Kotlin), dazu ~300 Zeilen Vanilla-JS für Terminal, Upload und Fortschritt. xterm.js liegt als statische Datei mit Prüfsumme im JAR.

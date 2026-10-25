@@ -7,6 +7,7 @@ import bayern.kickner.dirl.ssh.ConnectionState
 import bayern.kickner.dirl.ssh.MAX_FAILED_UNITS
 import bayern.kickner.dirl.ssh.MetricsSample
 import bayern.kickner.dirl.ssh.SOURCE_ADDRESS_PATTERN
+import bayern.kickner.dirl.ssh.ZramUsage
 import bayern.kickner.dirl.ssh.authorizedKeysLine
 import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.ssh.resolveRoute
@@ -436,7 +437,13 @@ private fun FlowContent.overviewMetrics(chosen: Set<OverviewMetric>, sample: Met
         if (OverviewMetric.LOAD in chosen) add("Load ${loads(raw.load1, raw.load5, raw.load15, " ")}" + (raw.cores?.let { " · ${cores(it)}" } ?: ""))
         if (OverviewMetric.UPTIME in chosen) add("Up ${uptime(sample.uptimeSeconds)}")
         if (OverviewMetric.FAILED_SERVICES in chosen && raw.failedUnits == null) add("Services unknown")
-        if (OverviewMetric.ZRAM in chosen) add(raw.zram?.let { "zram ${bytes(it.origBytes)} → ${bytes(it.comprBytes)} (${ratio(it.origBytes, it.comprBytes)})" } ?: "No zram")
+        if (OverviewMetric.ZRAM in chosen) add(
+            when (val z = raw.zram) {
+                null -> "No zram"
+                else -> if (z.origBytes < ZRAM_NEARLY_EMPTY_BYTES) "zram on, nearly empty"
+                else "zram ${bytes(z.origBytes)} in ${bytes(z.memUsedBytes)} RAM" + (zramFactor(z)?.let { " ($it)" } ?: "")
+            },
+        )
         if (OverviewMetric.SYSTEM in chosen) listOfNotNull(raw.osName, raw.kernel).takeIf { it.isNotEmpty() }?.let { add(it.joinToString(" · ")) }
         if (OverviewMetric.USERS in chosen) raw.loggedInUsers?.let { add("$it logged in") }
     }
@@ -536,7 +543,11 @@ private fun FlowContent.metricsSection(sample: MetricsSample) {
         "Load" to "${loads(raw.load1, raw.load5, raw.load15, " / ")} (1, 5, 15 min)" + (raw.cores?.let { ", ${cores(it)}" } ?: ""),
         "RAM" to "${pct(sample.memUsedKiB, sample.memTotalKiB)} of ${gib(sample.memTotalKiB)}",
         "Swap" to if (sample.swapTotalKiB == 0L) "none" else "${pct(sample.swapUsedKiB, sample.swapTotalKiB)} of ${gib(sample.swapTotalKiB)}",
-        "zram" to (raw.zram?.let { "${bytes(it.origBytes)} stored in ${bytes(it.comprBytes)} (${ratio(it.origBytes, it.comprBytes)}), ${bytes(it.memUsedBytes)} RAM used" } ?: "none"),
+        "zram" to when (val z = raw.zram) {
+            null -> "none"
+            else -> if (z.origBytes < ZRAM_NEARLY_EMPTY_BYTES) "on, nearly empty (${bytes(z.origBytes)} stored)"
+            else "${bytes(z.origBytes)} stored, ${bytes(z.comprBytes)} compressed, ${bytes(z.memUsedBytes)} RAM used" + (zramFactor(z)?.let { " ($it)" } ?: "")
+        },
         "Uptime" to uptime(sample.uptimeSeconds),
         "Reboot needed" to when {
             raw.reboot == null -> "unknown, no kernel under /boot (for example a container)"
@@ -706,12 +717,25 @@ private fun loads(one: Double, five: Double, fifteen: Double, separator: String)
 
 private fun cores(count: Int) = if (count == 1) "1 core" else "$count cores"
 
-/** Bytes as MiB below 1 GiB, as GiB above. */
-private fun bytes(count: Long): String =
-    if (count < 1024L * 1024 * 1024) "%.0f MiB".format(count / 1024.0 / 1024.0) else "%.1f GiB".format(count / 1024.0 / 1024.0 / 1024.0)
+/** Bytes as KiB below 1 MiB, as MiB below 1 GiB, as GiB above. */
+private fun bytes(count: Long): String = when {
+    count < 1024L * 1024 -> "%.0f KiB".format(count / 1024.0)
+    count < 1024L * 1024 * 1024 -> "%.0f MiB".format(count / 1024.0 / 1024.0)
+    else -> "%.1f GiB".format(count / 1024.0 / 1024.0 / 1024.0)
+}
 
-/** How many times smaller the compressed data is, e.g. `3.0x`. */
-private fun ratio(orig: Long, compressed: Long): String = if (compressed <= 0) "empty" else "%.1fx".format(orig.toDouble() / compressed)
+/**
+ * Below this much stored data zram counts as nearly empty. A few swapped pages are mostly zero filled ones, which
+ * zram keeps without compressing (they count as stored, not as compressed), so their factor says nothing.
+ */
+private const val ZRAM_NEARLY_EMPTY_BYTES = 1024L * 1024
+
+/**
+ * How much RAM zram really saves, e.g. `5.3x`: stored data against the RAM it takes, overhead included. Not against
+ * the compressed size, zero filled pages would inflate that. `null` if zram takes no RAM at all.
+ */
+private fun zramFactor(zram: ZramUsage): String? =
+    if (zram.memUsedBytes <= 0) null else "%.1fx".format(zram.origBytes.toDouble() / zram.memUsedBytes)
 
 private fun uptime(seconds: Double): String {
     val days = (seconds / 86400).toInt()

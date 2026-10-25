@@ -166,13 +166,48 @@ class WebTest {
         listOf(
             ">CPU<", ">RAM<", ">Swap<", ">Disk<", ">/srv/data<",
             "Load ${num("%.2f", 0.54)} ${num("%.2f", 0.50)} ${num("%.2f", 0.37)}", "4 cores", "Up 3 d 2 h", "Reboot needed",
-            "2 failed services", "zram ${num("%.1f", 1.2)} GiB", "${num("%.1f", 3.0)}x", "Debian GNU/Linux 13 (trixie)", "6.12.38+deb13-amd64",
+            "2 failed services", "zram ${num("%.1f", 1.2)} GiB in 420 MiB RAM (${num("%.1f", 2.9)}x)", "Debian GNU/Linux 13 (trixie)", "6.12.38+deb13-amd64",
             "2 logged in",
         ).forEach { assertTrue(everything.contains(it), "all metrics show $it") }
 
         val nothing = cardOf(page, "nothing")
         assertFalse(nothing.contains("class=\"meters\"") || nothing.contains("class=\"facts\""), "nothing chosen shows no metrics")
         assertTrue(nothing.contains("class=\"pill"), "the connection state stays")
+    }
+
+    @Test
+    fun `zram shows how much RAM it really saves and says when it is nearly empty`(): Unit = testApplication {
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        val key = bayern.kickner.dirl.ssh.generateEd25519Key("k")
+        val zramOnly = setOf(bayern.kickner.dirl.vault.OverviewMetric.ZRAM)
+        val busy = bayern.kickner.dirl.vault.Host(id = "a", name = "busy", address = "10.0.0.1", username = "u", keyId = key.id, overview = zramOnly)
+        val idle = busy.copy(id = "b", name = "idle")
+        val zeros = busy.copy(id = "c", name = "zeros")
+        dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(busy, idle, zeros)) }
+        val mib = 1024L * 1024
+        // Like the first host in the field: 186 MiB stored, 33 MiB compressed, 35 MiB RAM taken.
+        dirl.metrics.record("a", sample.copy(zram = bayern.kickner.dirl.ssh.ZramUsage(186 * mib, 33 * mib, 35 * mib)))
+        // Like the second: a few pages swapped out, mostly zero filled ones that zram stores without compressing.
+        dirl.metrics.record("b", sample.copy(zram = bayern.kickner.dirl.ssh.ZramUsage(70 * 4096, 4130, 0)))
+        // Many zero filled pages cost no RAM at all, the factor must not divide by zero.
+        dirl.metrics.record("c", sample.copy(zram = bayern.kickner.dirl.ssh.ZramUsage(64 * mib, 0, 0)))
+        application { dirlModule(dirl) }
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        val client = noRedirects()
+        val page = client.get("/") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+
+        assertTrue(cardOf(page, "busy").contains("zram 186 MiB in 35 MiB RAM (${num("%.1f", 5.3)}x)"), cardOf(page, "busy"))
+        val idleCard = cardOf(page, "idle")
+        assertTrue(idleCard.contains("zram on, nearly empty"), idleCard)
+        assertFalse(Regex("""\d+x\)""").containsMatchIn(idleCard), "no factor from a few zero filled pages")
+        val zerosCard = cardOf(page, "zeros")
+        assertTrue(zerosCard.contains("zram 64 MiB in 0 KiB RAM"), zerosCard)
+        assertFalse(zerosCard.contains("Infinity") || zerosCard.contains("NaN") || Regex("""\d+x\)""").containsMatchIn(zerosCard), "no factor without RAM")
+
+        val details = client.get("/hosts/a") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        assertTrue(details.contains("186 MiB stored, 33 MiB compressed, 35 MiB RAM used (${num("%.1f", 5.3)}x)"), "all three values on the host page")
+        val idleDetails = client.get("/hosts/b") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        assertTrue(idleDetails.contains("on, nearly empty (280 KiB stored)"), "the host page says how little")
     }
 
     @Test
