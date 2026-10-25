@@ -15,6 +15,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveParameters
+import io.ktor.server.response.respond
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
@@ -266,7 +267,8 @@ fun Route.hostRoutes(dirl: Dirl) {
 }
 
 /**
- * Looks up the host from the `{id}` path parameter, responding 404 if it does not exist.
+ * Looks up the host from the `{id}` path parameter, responding 404 if it does not exist. The page is the general
+ * "Page not found" from [installErrorPages], which replaces every 404 response anyway.
  *
  * @return the content and the host, or `null` after the 404 was sent.
  */
@@ -274,10 +276,7 @@ suspend fun RoutingContext.hostOr404(dirl: Dirl): Pair<VaultContent, Host>? {
     val content = dirl.vault.content
     val host = content?.host(call.parameters["id"].orEmpty())
     if (content == null || host == null) {
-        call.page("Not found", call.session, Nav.HOSTS, status = HttpStatusCode.NotFound) {
-            pageHeader("Host not found")
-            linkButton("/", "All hosts")
-        }
+        call.respond(HttpStatusCode.NotFound)
         return null
     }
     return content to host

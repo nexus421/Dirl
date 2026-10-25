@@ -46,6 +46,24 @@ class WebTest {
     }
 
     @Test
+    fun `an unknown host is a plain 404 on every host page`(): Unit = testApplication {
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        for (path in listOf("/hosts/nope", "/hosts/nope/edit", "/hosts/nope/files", "/hosts/nope/terminal")) {
+            val response = client.get(path) { header(HttpHeaders.Cookie, cookie) }
+            assertEquals(HttpStatusCode.NotFound, response.status, path)
+            assertTrue(response.bodyAsText().contains("This address does not exist in Dirl."), path)
+        }
+        val deleted = client.post("/hosts/nope/delete") {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        assertEquals(HttpStatusCode.NotFound, deleted.status)
+    }
+
+    @Test
     fun `pages require a login`(): Unit = testApplication {
         application { dirlModule(dirl) }
         val response = noRedirects().get("/")
