@@ -50,10 +50,12 @@ class VaultTest {
     fun `the file on disk contains no plaintext`() {
         vault().apply {
             setup(passphrase.toCharArray(), actor)
-            update { it.copy(hosts = listOf(host)) }
+            update { it.copy(hosts = listOf(host.copy(name = "plaintextmarkerhost"))) }
         }
         val raw = File(dir, "vault.json").readText()
-        assertTrue("10.0.0.1" !in raw && "web" !in raw)
+        // Short strings like the host name "web" turn up in random Base64 now and then (about 1 in 1000 vault files),
+        // so the check uses the address and a long marker that ciphertext practically never contains.
+        assertTrue("10.0.0.1" !in raw && "plaintextmarkerhost" !in raw)
     }
 
     @Test
