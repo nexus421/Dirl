@@ -35,8 +35,8 @@ sealed interface ConnectionState {
     /** A connect attempt is running. */
     data object Connecting : ConnectionState
 
-    /** Connected and authenticated. @property since Unix milliseconds. */
-    data class Connected(val since: Long) : ConnectionState
+    /** Connected and authenticated. */
+    data object Connected : ConnectionState
 
     /**
      * The last attempt failed for a reason other than authentication. Retried automatically after [retryAt].
@@ -257,7 +257,7 @@ class ConnectionManager(
             }
             entry.failures = 0
             entry.authFailures = 0
-            entry.state = ConnectionState.Connected(clock())
+            entry.state = ConnectionState.Connected
             infoLog { "Connected to ${host.name}" }
             return ResultOf2.Success(client)
         }
