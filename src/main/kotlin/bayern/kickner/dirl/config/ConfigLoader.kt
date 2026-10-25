@@ -57,6 +57,8 @@ fun validateConfig(config: AppConfig): List<String> = buildList {
 /**
  * The origin check compares the browser's `Origin` header exactly with the origin of `publicUrl`. Browsers send the
  * host in lower case and leave out the default port, so any other spelling would reject every form and terminal.
+ * User info is part of the origin Dirl derives but never of the header. A path, query or fragment cannot work either:
+ * every link and the OIDC callback start at `/`. A lone trailing slash is reported on its own.
  */
 private fun originProblems(publicUrl: String): List<String> {
     val uri = runCatching { URI(publicUrl) }.getOrNull() ?: return emptyList()
@@ -69,6 +71,10 @@ private fun originProblems(publicUrl: String): List<String> {
     return listOfNotNull(
         "publicUrl must not contain the default port $defaultPort, browsers leave it out of the Origin header".takeIf { uri.port == defaultPort },
         "publicUrl must use a lower case host name, browsers send it that way in the Origin header".takeIf { host != host.lowercase() },
+        "publicUrl must not contain user info, browsers never send it in the Origin header".takeIf { uri.rawUserInfo != null },
+        "publicUrl must not contain a path, query or fragment, Dirl only runs at the root of its host".takeIf {
+            uri.rawPath.orEmpty() !in setOf("", "/") || uri.rawQuery != null || uri.rawFragment != null
+        },
     )
 }
 

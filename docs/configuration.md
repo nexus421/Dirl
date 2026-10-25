@@ -28,7 +28,7 @@ except the OIDC client secret, so `0400` and owned by the service user.
 |--------------|--------|-----------------|------------------------------------------------------------------------------------------|
 | `host`       | string | `127.0.0.1`     | Bind address. TLS is done by the reverse proxy                                           |
 | `port`       | int    | `8080`          | HTTP port                                                                                |
-| `publicUrl`  | string | required        | URL in the browser, no trailing slash, lower case host, no default port (`:443`). OIDC redirect base and the only accepted `Origin` |
+| `publicUrl`  | string | required        | URL in the browser, scheme, host and optional port only (no path, no trailing slash), lower case host, no default port (`:443`). OIDC redirect base and the only accepted `Origin` |
 | `dataDir`    | string | `/var/lib/dirl` | Vault, backups, access list copy, audit log, logs                                        |
 | `unlockMode` | string | `passphrase`    | `passphrase` or `keyfile`, see [Unlocking](#unlocking)                                   |
 | `keyFile`    | string | `/etc/dirl/kek` | 32 random bytes, only read in `keyfile` mode                                             |

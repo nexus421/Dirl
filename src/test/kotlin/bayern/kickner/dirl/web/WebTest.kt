@@ -249,7 +249,11 @@ class WebTest {
 
     @Test
     fun `publicUrl must have the form browsers send as Origin`() {
-        listOf("https://ssh.example.com:443", "http://localhost:80", "https://SSH.example.com").forEach { url ->
+        // A path, query, fragment or user info never matches the Origin header and breaks the absolute links.
+        listOf(
+            "https://ssh.example.com:443", "http://localhost:80", "https://SSH.example.com",
+            "https://ssh.example.com/dirl", "https://ssh.example.com?x=1", "https://ssh.example.com#top", "https://user@ssh.example.com",
+        ).forEach { url ->
             assertEquals(1, validateConfig(config.copy(publicUrl = url)).size, url)
         }
         assertTrue(validateConfig(config.copy(publicUrl = "https://ssh.example.com:8443")).isEmpty())
