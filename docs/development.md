@@ -174,12 +174,12 @@ Verified:
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines before `permitlisten`, jump host forwarding,
   `PerSourcePenalties`. Against 9.2: the current lines and the `Match` block against Unix socket forwarding.
 - Login against a real Pocket ID instance as confidential client with PKCE.
-- 122 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
+- 123 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
   opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC
   (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous
   logins, a failing and a slow provider), backup restore through the UI up to the unlock, access control (including
   revokes at the same moment), idle timeout with automatic reloads, security headers, origin checks and path tricks,
-  config validation including `config.example.json`, presence (on a real CIO server), snippet folders, metrics (real
+  config validation including `config.example.json`, the keys page layout, presence (on a real CIO server), snippet folders, metrics (real
   output, missing parts, text from the server, the reboot rule, the choice per host and what each card shows), the
   update check (version rules, answer limit, at most once an hour, the switch, the footer), SSH integration as listed
   above and the limits on data read from servers. Without an `sshd` the 22 SSH integration tests are skipped.

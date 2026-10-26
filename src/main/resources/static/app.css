@@ -349,5 +349,28 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
 /* Disclosure */
 details { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
 details summary { cursor: pointer; color: var(--muted); font-weight: 550; margin-bottom: 12px; }
+details.import:not([open]) > summary { margin-bottom: 0; }
+
+/* Keys page: one folded row per key. The fingerprint shortens with an ellipsis on narrow screens. */
+.key-add { align-items: flex-end; }
+.key-list { padding-top: 4px; padding-bottom: 4px; }
+details.key-row { margin: 0; padding: 0; border-top: 0; border-bottom: 1px solid var(--border); }
+details.key-row:last-child { border-bottom: 0; }
+.key-row > summary { display: flex; align-items: center; gap: 12px; margin: 0; padding: 12px 0; color: var(--fg); list-style: none; }
+.key-row > summary::-webkit-details-marker { display: none; }
+.key-row > summary::before {
+  content: "";
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+}
+.key-row[open] > summary::before { transform: rotate(45deg); }
+.key-name { font-weight: 600; }
+.key-fp { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.key-body { display: grid; gap: 14px; padding: 0 0 16px 19px; }
+.key-body > * { margin: 0; }
 .center-logout { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 14px; }
 .card.attention { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }

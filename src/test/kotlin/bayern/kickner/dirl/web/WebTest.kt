@@ -464,6 +464,48 @@ class WebTest {
     }
 
     @Test
+    fun `the keys page puts generate on top and folds every key, opening only the new one`(): Unit = testApplication {
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
+        val used = bayern.kickner.dirl.ssh.generateEd25519Key("used", now = 1000)
+        val spare = bayern.kickner.dirl.ssh.generateEd25519Key("spare", now = 2000)
+        val host = bayern.kickner.dirl.vault.Host(id = "h", name = "web", address = "10.0.0.5", username = "root", keyId = used.id)
+        dirl.vault.update { it.copy(keys = listOf(used, spare), hosts = listOf(host)) }
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        val rowPattern = Regex("""<details class="key-row"( open="open")?>(.*?)</details>""", RegexOption.DOT_MATCHES_ALL)
+        suspend fun page(url: String) = client.get(url) { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+
+        val plain = page("/keys")
+        assertTrue(plain.indexOf("action=\"/keys/generate\"") < plain.indexOf("class=\"key-row\""), "generate comes before the keys")
+        assertTrue(Regex("""<details class="import">.*?action="/keys/import"""", RegexOption.DOT_MATCHES_ALL).containsMatchIn(plain), "import is folded")
+        val rows = rowPattern.findAll(plain).toList()
+        assertEquals(2, rows.size)
+        assertTrue(rows.none { it.groupValues[1].isNotEmpty() }, "a normal visit opens no key")
+        val (spareRow, usedRow) = rows.map { it.groupValues[2] }
+        assertTrue(spareRow.contains("unused") && spareRow.contains("/keys/${spare.id}/delete"), "an unused key is marked and can be deleted")
+        assertTrue(usedRow.contains("1 host") && usedRow.contains("web") && usedRow.contains("/keys/${used.id}/delete").not())
+        assertTrue(usedRow.contains("/keys/${used.id}/rename") && usedRow.contains("/keys/${used.id}/export"))
+        assertTrue(usedRow.contains("${used.publicKey} dirl"), "the authorized_keys line is in the row")
+
+        val generated = client.submitForm("/keys/generate", parameters { append("name", "fresh") }) {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        assertEquals("/keys?done=key-generated", generated.headers[HttpHeaders.Location])
+        val opened = rowPattern.findAll(page("/keys?done=key-generated")).filter { it.groupValues[1].isNotEmpty() }.toList()
+        assertEquals(1, opened.size, "only the new key is open")
+        assertTrue(opened.single().groupValues[2].contains("fresh"))
+
+        val failed = client.submitForm("/keys/import", parameters { append("name", "bad"); append("privateKey", "garbage") }) {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        assertEquals(HttpStatusCode.BadRequest, failed.status)
+        assertTrue(failed.bodyAsText().contains("<details class=\"import\" open=\"open\">"), "a failed import keeps the form open")
+    }
+
+    @Test
     fun `the example config from the quick start is valid`() {
         val loaded = bayern.kickner.dirl.config.loadConfig(java.io.File("config.example.json"))
         assertIs<kotnexlib.ResultOf2.Success<AppConfig>>(loaded, "config.example.json: $loaded")

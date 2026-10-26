@@ -25,7 +25,6 @@ import kotlinx.html.FormMethod
 import kotlinx.html.details
 import kotlinx.html.div
 import kotlinx.html.form
-import kotlinx.html.h2
 import kotlinx.html.p
 import kotlinx.html.span
 import kotlinx.html.summary
@@ -55,7 +54,7 @@ fun Route.keyRoutes(dirl: Dirl) {
         val form = call.receiveParameters()
         val name = form["name"].orEmpty().trim().take(64).ifEmpty { "imported" }
         when (val imported = importPrivateKey(name, form["privateKey"].orEmpty())) {
-            is ResultOf2.Failure -> call.keysPage(dirl, imported.value)
+            is ResultOf2.Failure -> call.keysPage(dirl, imported.value, importOpen = true)
             is ResultOf2.Success -> {
                 dirl.vault.update { it.copy(keys = it.keys + imported.value) }
                 dirl.audit.record(call.session.actor, AuditAction.KEY_IMPORTED, detail = name)
@@ -107,32 +106,63 @@ fun Route.keyRoutes(dirl: Dirl) {
     }
 }
 
-private suspend fun ApplicationCall.keysPage(dirl: Dirl, error: String?) {
+/**
+ * The keys page: adding a key on top, the existing keys below as folded rows. Right after a generate or import
+ * redirect the newest key is open, so its public key can be copied at once.
+ *
+ * @param error Shown above the page, `null` for none.
+ * @param importOpen Opens the import form, for an import that failed.
+ */
+private suspend fun ApplicationCall.keysPage(dirl: Dirl, error: String?, importOpen: Boolean = false) {
     val content = dirl.vault.content ?: return
     val from = content.settings.sshSourceAddress ?: "<DIRL-IP>"
+    val justAdded = request.queryParameters["done"]
+        ?.takeIf { it == "key-generated" || it == "key-imported" }
+        ?.let { content.keys.maxByOrNull(SshKey::createdAt)?.id }
     page("Keys", session, Nav.KEYS, status = if (error == null) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
         pageHeader("Keys", "Use keys that exist only for Dirl, never your personal key.")
         if (error != null) notice("error", error)
         div("stack") {
-            if (content.keys.isEmpty()) notice("info", "No keys yet. Generate one below, then add your first host.")
-            content.keys.sortedBy { it.name.lowercase() }.forEach { key ->
-                val users = content.hosts.filter { it.keyId == key.id }
-                card {
-                    div("card-header") {
-                        h2 { +key.name }
-                        span("pill") { +"${users.size} host(s)" }
+            card("Add a key") {
+                form(action = "/keys/generate", method = FormMethod.post, classes = "btn-row key-add") {
+                    textField("Name", "name", "dirl")
+                    submit("Generate key")
+                }
+                p("muted small") { +"Ed25519, generated on this server. The private key never leaves the vault unless you export it." }
+                details("import") {
+                    if (importOpen) attributes["open"] = "open"
+                    summary { +"Import existing key" }
+                    form(action = "/keys/import", method = FormMethod.post, classes = "form") {
+                        textField("Name", "name", "", placeholder = "legacy-key")
+                        textAreaField(
+                            "Private key", "privateKey", rows = 6,
+                            hint = "Unencrypted OpenSSH or PEM. Remove a passphrase first with ssh-keygen -p -N \"\" -f <file>.",
+                        )
+                        div("btn-row") { submit("Import", "") }
                     }
-                    keyValues(
-                        "Fingerprint" to fingerprintOfLine(key.publicKey),
-                        "Created" to formatTimestamp(key.createdAt),
-                        "Used by" to users.joinToString { it.name }.ifEmpty { "nobody" },
-                    )
-                    p("muted small") { +"Public key, for a normal target (each host page shows the exact line for that host):" }
-                    copyBlock("restrict,pty,from=\"$from\" ${key.publicKey} $KEY_COMMENT")
-                    details {
-                        summary { +"Manage" }
-                        div("stack") {
-                            form(action = "/keys/${key.id}/rename", method = FormMethod.post, classes = "btn-row") {
+                }
+            }
+
+            if (content.keys.isEmpty()) notice("info", "No keys yet. Generate one above, then add your first host.")
+            else card(classes = "key-list") {
+                content.keys.sortedBy { it.name.lowercase() }.forEach { key ->
+                    val users = content.hosts.filter { it.keyId == key.id }
+                    details("key-row") {
+                        if (key.id == justAdded) attributes["open"] = "open"
+                        summary {
+                            span("key-name") { +key.name }
+                            span("key-fp mono") { +fingerprintOfLine(key.publicKey) }
+                            if (users.isEmpty()) pill("", "unused")
+                            else pill("ok", if (users.size == 1) "1 host" else "${users.size} hosts")
+                        }
+                        div("key-body") {
+                            keyValues(
+                                "Created" to formatTimestamp(key.createdAt),
+                                "Used by" to users.joinToString { it.name }.ifEmpty { "nobody" },
+                            )
+                            p("muted small") { +"Public key, for a normal target (each host page shows the exact line for that host):" }
+                            copyBlock("restrict,pty,from=\"$from\" ${key.publicKey} $KEY_COMMENT")
+                            form(action = "/keys/${key.id}/rename", method = FormMethod.post, classes = "btn-row key-add") {
                                 textField("Name", "name", key.name)
                                 submit("Rename", "")
                             }
@@ -142,26 +172,6 @@ private suspend fun ApplicationCall.keysPage(dirl: Dirl, error: String?) {
                                 else span("muted small") { +"In use, cannot be deleted." }
                             }
                         }
-                    }
-                }
-            }
-
-            div("columns") {
-                card("Generate key") {
-                    form(action = "/keys/generate", method = FormMethod.post, classes = "form") {
-                        textField("Name", "name", "dirl")
-                        p("muted small") { +"Ed25519, generated on this server. The private key never leaves the vault unless you export it." }
-                        div("btn-row") { submit("Generate") }
-                    }
-                }
-                card("Import key") {
-                    form(action = "/keys/import", method = FormMethod.post, classes = "form") {
-                        textField("Name", "name", "", placeholder = "legacy-key")
-                        textAreaField(
-                            "Private key", "privateKey", rows = 6,
-                            hint = "Unencrypted OpenSSH or PEM. Remove a passphrase first with ssh-keygen -p -N \"\" -f <file>.",
-                        )
-                        div("btn-row") { submit("Import") }
                     }
                 }
             }
