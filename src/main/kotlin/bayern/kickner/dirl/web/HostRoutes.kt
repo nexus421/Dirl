@@ -6,10 +6,10 @@ import bayern.kickner.dirl.newId
 import bayern.kickner.dirl.ssh.ConnectionState
 import bayern.kickner.dirl.ssh.MAX_FAILED_UNITS
 import bayern.kickner.dirl.ssh.MetricsSample
-import bayern.kickner.dirl.ssh.SOURCE_ADDRESS_PATTERN
 import bayern.kickner.dirl.ssh.ZramUsage
 import bayern.kickner.dirl.ssh.authorizedKeysLine
 import bayern.kickner.dirl.ssh.describe
+import bayern.kickner.dirl.ssh.normalizeSourceAddress
 import bayern.kickner.dirl.ssh.resolveRoute
 import bayern.kickner.dirl.vault.DEFAULT_OVERVIEW
 import bayern.kickner.dirl.vault.Host
@@ -177,13 +177,18 @@ fun Route.hostRoutes(dirl: Dirl) {
                     p("muted") {
                         +"Put this line into ~/.ssh/authorized_keys of ${host.username} on ${host.name}. It limits what a stolen Dirl key can do on this host."
                     }
-                    copyBlock(authorizedKeysLine(host, key, content.hosts, content.settings.sshSourceAddress))
+                    val restricted = content.settings.sshSourceUnrestricted.not()
+                    copyBlock(authorizedKeysLine(host, key, content.hosts, content.settings.sshSourceAddress, restricted))
                     val jump = host.jumpHostId?.let { content.host(it) }
-                    if (jump != null && jump.sourceAddressForTargets == null) p("muted small") {
+                    if (restricted.not()) p("muted small") {
+                        style = "margin-top:10px"
+                        +"Without from=\"...\", because Settings turn the source restriction off. The key then works from anywhere that reaches the SSH port of ${host.name}."
+                    }
+                    if (restricted && jump != null && jump.sourceAddressForTargets == null) p("muted small") {
                         style = "margin-top:10px"
                         +"${host.name} sees the connection coming from ${jump.name}, not from Dirl. Set \"Address seen by hosts behind it\" on ${jump.name} to fill in from=\"...\"."
                     }
-                    if (jump == null && content.settings.sshSourceAddress == null) p("muted small") {
+                    if (restricted && jump == null && content.settings.sshSourceAddress == null) p("muted small") {
                         style = "margin-top:10px"
                         +"Set Dirl's source address under Settings to fill in from=\"...\"."
                     }
@@ -309,7 +314,10 @@ fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): Res
     val keyId = form["keyId"].orEmpty()
     val jumpHostId = form["jumpHostId"].orEmpty().ifBlank { null }
     val tags = form["tags"].orEmpty().split(',', ' ').map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }.distinct()
-    val sourceAddressForTargets = form["sourceAddressForTargets"].orEmpty().trim().ifEmpty { null }
+    val sourceAddressForTargets = when (val result = normalizeSourceAddress(form["sourceAddressForTargets"].orEmpty())) {
+        is ResultOf2.Success -> result.value
+        is ResultOf2.Failure -> null.also { errors += "Address seen by hosts behind it: ${result.value}" }
+    }
     // The choice only counts when the form showed it, any other form keeps what the host had. Unknown values are
     // dropped, nothing ticked is a valid choice.
     val overview = if (form["overviewShown"] == "1") {
@@ -324,8 +332,6 @@ fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): Res
     if (content.key(keyId) == null) errors += "Choose a key, or create one under Keys first"
     if (jumpHostId != null && content.host(jumpHostId) == null) errors += "Unknown jump host"
     if (tags.any { tagPattern.matches(it).not() }) errors += "Tags may only contain letters, digits, dots, dashes and underscores"
-    if (sourceAddressForTargets != null && SOURCE_ADDRESS_PATTERN.matches(sourceAddressForTargets).not())
-        errors += "The address seen by hosts behind it may only contain addresses, host names, CIDR ranges and wildcards"
     if (errors.isNotEmpty()) return ResultOf2.Failure(errors)
 
     val endpointChanged = existing != null &&
@@ -640,7 +646,8 @@ private suspend fun ApplicationCall.hostFormPage(content: VaultContent, host: Ho
                 )
                 textField(
                     "Address seen by hosts behind it", "sourceAddressForTargets", value("sourceAddressForTargets", host?.sourceAddressForTargets.orEmpty()),
-                    hint = "Only for jump hosts. The address the hosts behind this one see it connecting from, often its address in their network. Fills from=\"...\" in their authorized_keys lines.",
+                    hint = "Only for jump hosts. The address the hosts behind this one see it connecting from, often its address in their network. Fills from=\"...\" in their authorized_keys lines. " +
+                        "Several addresses or CIDR ranges are separated by commas. Not used while Settings turn the source restriction off.",
                     required = false, placeholder = "e.g. 10.0.0.1",
                 )
                 div("field") {

@@ -84,9 +84,52 @@ class SshTest {
         ), null, content)
         assertEquals(null, (parse(" ") as ResultOf2.Success).value.sourceAddressForTargets)
         assertEquals("10.0.0.1", (parse(" 10.0.0.1 ") as ResultOf2.Success).value.sourceAddressForTargets)
-        assertEquals("10.0.0.0/24,fd00::1", (parse("10.0.0.0/24,fd00::1") as ResultOf2.Success).value.sourceAddressForTargets)
+        assertEquals("10.0.0.0/24,fd00::1", (parse("10.0.0.0/24, fd00::1") as ResultOf2.Success).value.sourceAddressForTargets)
         // A quote would end from="..." and could append options such as command= to the line.
-        for (bad in listOf("10.0.0.1\",command=\"sh", "10.0.0.1 x", "a\nb")) assertIs<ResultOf2.Failure<List<String>>>(parse(bad), bad)
+        for (bad in listOf("10.0.0.1\",command=\"sh", "10.0.0.1/24")) assertIs<ResultOf2.Failure<List<String>>>(parse(bad), bad)
+    }
+
+    @Test
+    fun `source addresses are normalized to a list OpenSSH accepts`() {
+        fun ok(input: String) = (normalizeSourceAddress(input) as ResultOf2.Success).value
+        fun bad(input: String) = (normalizeSourceAddress(input) as ResultOf2.Failure).value
+        assertNull(ok(""))
+        assertNull(ok(" , "))
+        // OpenSSH refuses the whole line for a space after a comma or an empty entry, see SshIntegrationTest.
+        assertEquals("192.168.1.10,203.0.113.5", ok(" 192.168.1.10, 203.0.113.5 "))
+        assertEquals("192.168.1.10,203.0.113.5", ok("192.168.1.10 203.0.113.5"))
+        assertEquals("192.168.1.10,203.0.113.5", ok("192.168.1.10,,203.0.113.5,"))
+        assertEquals("10.0.0.0/8,fd00::/8,!10.0.0.9,10.1.*,host-?.lan", ok("10.0.0.0/8, fd00::/8, !10.0.0.9, 10.1.*, host-?.lan"))
+        assertEquals("fd00::1,!fd00::2", ok("[fd00::1], ![fd00::2]"))
+        assertEquals("0.0.0.0/0", ok("0.0.0.0/0"))
+
+        // A quote or a newline would end from="..." and could append options such as command= to the line.
+        assertTrue(bad("10.0.0.1\",command=\"sh").contains("is not an address"))
+        assertTrue(bad("10.0.0.1\nx\"").contains("is not an address"))
+        assertTrue(bad("10.0.0.1/24").contains("Did you mean 10.0.0.0/24?"), bad("10.0.0.1/24"))
+        assertTrue(bad("!10.0.0.1/24").contains("Did you mean !10.0.0.0/24?"))
+        assertTrue(bad("fd00::1/64").contains("Did you mean fd00:0:0:0:0:0:0:0/64?"), bad("fd00::1/64"))
+        assertTrue(bad("10.0.0.0/33").contains("between 0 and 32"))
+        assertTrue(bad("fd00::/129").contains("between 0 and 128"))
+        assertTrue(bad("10.0.0.256/32").contains("does not start with an IP address"))
+        assertTrue(bad("10.0.0/24").contains("does not start with an IP address"))
+        assertTrue(bad("10.0.0.*/24").contains("is not an address"))
+        assertTrue(bad("!10.0.0.1, !10.0.0.2").contains("matches nothing"))
+        assertTrue(bad("1.2.3.4,".repeat(70)).contains("at most 500"))
+    }
+
+    @Test
+    fun `without the source restriction the authorized_keys lines have no from=`() {
+        val key = generateEd25519Key("k")
+        val jump = Host(id = "j", name = "jump", address = "203.0.113.1", username = "u", keyId = key.id, jumpOnly = true, sourceAddressForTargets = "10.0.0.1")
+        val target = Host(id = "t", name = "db", address = "10.0.0.5", username = "u", keyId = key.id, jumpHostId = "j")
+        val hosts = listOf(jump, target)
+        assertEquals("restrict,pty ${key.publicKey} dirl", authorizedKeysLine(target, key, hosts, "192.0.2.9", restrictSource = false))
+        assertEquals(
+            "restrict,port-forwarding,permitopen=\"10.0.0.5:22\",permitlisten=\"127.0.0.1:1\",command=\"/bin/false\" ${key.publicKey} dirl",
+            authorizedKeysLine(jump, key, hosts, "192.0.2.9", restrictSource = false),
+        )
+        assertEquals("restrict,command=\"/bin/false\" ${key.publicKey} dirl", authorizedKeysLine(jump, key, listOf(jump), null, restrictSource = false))
     }
 
     @Test

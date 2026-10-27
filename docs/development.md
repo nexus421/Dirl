@@ -64,8 +64,10 @@ size, symlinks in listing, overwrite and delete, upload overwrite protection and
 onto an existing entry or a dangling symlink, a hostile SFTP server announcing a 1 GiB packet, the terminal WebSocket
 including resize, a refused terminal not using up the sessions of a connection and the explanation beyond the session
 limit, closing all connections while a connect is still running (a held back handshake through `GatedProxy`), closing
-for absence without losing a stop, and the status poll only while somebody is present and never twice at once for a
-host.
+for absence without losing a stop, the status poll only while somebody is present and never twice at once for a
+host, and `from="..."` lists: which entries OpenSSH refuses (a space after a comma, an empty entry, a bad CIDR range),
+that the normalized form works, and that the line the host page shows for several source addresses, or for none, lets
+Dirl in.
 [PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt) starts Dirl on a real CIO server and
 checks that an open presence WebSocket holds the presence, the engine detail the connection model rests on.
 [LoginFlowTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/LoginFlowTest.kt) runs the complete OIDC login against the
@@ -174,15 +176,15 @@ Verified:
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines before `permitlisten`, jump host forwarding,
   `PerSourcePenalties`. Against 9.2: the current lines and the `Match` block against Unix socket forwarding.
 - Login against a real Pocket ID instance as confidential client with PKCE.
-- 123 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
+- 127 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
   opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC
   (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous
   logins, a failing and a slow provider), backup restore through the UI up to the unlock, access control (including
   revokes at the same moment), idle timeout with automatic reloads, security headers, origin checks and path tricks,
-  config validation including `config.example.json`, the keys page layout, presence (on a real CIO server), snippet folders, metrics (real
+  config validation including `config.example.json`, the keys page layout, source address lists for `from="..."` (normalizing, rejected entries, the switch to leave it out), presence (on a real CIO server), snippet folders, metrics (real
   output, missing parts, text from the server, the reboot rule, the choice per host and what each card shows), the
   update check (version rules, answer limit, at most once an hour, the switch, the footer), SSH integration as listed
-  above and the limits on data read from servers. Without an `sshd` the 22 SSH integration tests are skipped.
+  above and the limits on data read from servers. Without an `sshd` the 24 SSH integration tests are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
   provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
   target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all

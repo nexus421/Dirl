@@ -5,7 +5,7 @@ import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.auth.RevokeError
 import bayern.kickner.dirl.config.UnlockMode
 import bayern.kickner.dirl.formatTimestamp
-import bayern.kickner.dirl.ssh.SOURCE_ADDRESS_PATTERN
+import bayern.kickner.dirl.ssh.normalizeSourceAddress
 import bayern.kickner.dirl.vault.ChangePassphraseError
 import bayern.kickner.dirl.vault.MIN_PASSPHRASE_LENGTH
 import bayern.kickner.dirl.vault.MIN_PASSPHRASE_WORDS
@@ -13,6 +13,7 @@ import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.Parameters
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.header
@@ -46,7 +47,7 @@ import java.time.LocalDate
  * - `GET /settings`: allowed users and access requests, active sessions, SSH defaults, passphrase, backup, seal.
  * - `POST /settings/users/allow`, `/settings/users/revoke`, `/settings/requests/dismiss`.
  * - `POST /settings/sessions/revoke`.
- * - `POST /settings/ssh` for the source address used in the `authorized_keys` lines.
+ * - `POST /settings/ssh` for the source address used in the `authorized_keys` lines, or none at all.
  * - `POST /settings/updates` turns the update check on or off, see [bayern.kickner.dirl.UpdateCheck].
  * - `POST /settings/passphrase`, `GET /settings/backup`, `POST /vault/seal`.
  * - `GET /audit?q=` latest audit entries, filterable.
@@ -102,12 +103,18 @@ fun Route.settingsRoutes(dirl: Dirl) {
     }
 
     post("/settings/ssh") {
-        val value = call.receiveParameters()["sshSourceAddress"].orEmpty().trim()
-        if (value.isNotEmpty() && SOURCE_ADDRESS_PATTERN.matches(value).not()) {
-            return@post call.settingsPage(dirl, "The source address may only contain addresses, host names, CIDR ranges and wildcards.")
+        val form = call.receiveParameters()
+        val address = when (val result = normalizeSourceAddress(form["sshSourceAddress"].orEmpty())) {
+            is ResultOf2.Success -> result.value
+            is ResultOf2.Failure -> return@post call.settingsPage(dirl, "Dirl's source address: ${result.value}", sshForm = form)
         }
-        dirl.vault.update { it.copy(settings = it.settings.copy(sshSourceAddress = value.ifEmpty { null })) }
-        dirl.audit.record(call.session.actor, AuditAction.SETTINGS_CHANGED, detail = "sshSourceAddress=${value.ifEmpty { "none" }}")
+        // An unticked checkbox is not sent at all, so a missing field means restricted.
+        val unrestricted = form["sshSourceUnrestricted"] == "on"
+        dirl.vault.update { it.copy(settings = it.settings.copy(sshSourceAddress = address, sshSourceUnrestricted = unrestricted)) }
+        dirl.audit.record(
+            call.session.actor, AuditAction.SETTINGS_CHANGED,
+            detail = "sshSourceAddress=${address ?: "none"} sshSourceUnrestricted=${if (unrestricted) "on" else "off"}",
+        )
         call.respondRedirect("/settings?done=settings-saved")
     }
 
@@ -203,7 +210,13 @@ private fun auditKind(action: AuditAction): String = when (action) {
     else -> ""
 }
 
-private suspend fun ApplicationCall.settingsPage(dirl: Dirl, error: String?) {
+/**
+ * The settings page.
+ *
+ * @param error Shown above the page, `null` for none.
+ * @param sshForm The rejected SSH form, so its fields show what was typed instead of what is stored.
+ */
+private suspend fun ApplicationCall.settingsPage(dirl: Dirl, error: String?, sshForm: Parameters? = null) {
     val content = dirl.vault.content ?: return respondRedirect("/unlock")
     val me = session
     page("Settings", me, Nav.SETTINGS, status = if (error == null) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
@@ -285,10 +298,19 @@ private suspend fun ApplicationCall.settingsPage(dirl: Dirl, error: String?) {
                 card("SSH") {
                     form(action = "/settings/ssh", method = FormMethod.post, classes = "form") {
                         textField(
-                            "Dirl's source address", "sshSourceAddress", content.settings.sshSourceAddress.orEmpty(),
-                            hint = "The address your servers see Dirl connecting from. Fills from=\"...\" in the authorized_keys lines, so a stolen key is useless elsewhere.",
-                            required = false, placeholder = "e.g. 192.0.2.10",
+                            "Dirl's source address", "sshSourceAddress", sshForm?.get("sshSourceAddress") ?: content.settings.sshSourceAddress.orEmpty(),
+                            hint = "The address your servers see Dirl connecting from. Fills from=\"...\" in the authorized_keys lines, so a stolen key is useless elsewhere. " +
+                                "Several addresses or CIDR ranges are separated by commas, e.g. the LAN address and the public one. Host names only work with UseDNS yes in sshd_config.",
+                            required = false, placeholder = "e.g. 192.168.1.10, 203.0.113.5",
                         )
+                        checkField(
+                            "No source restriction: leave from=\"...\" out of all authorized_keys lines, also behind jump hosts",
+                            "sshSourceUnrestricted", sshForm?.let { it["sshSourceUnrestricted"] == "on" } ?: content.settings.sshSourceUnrestricted,
+                        )
+                        p("muted small") {
+                            +"Not recommended. A stolen Dirl key then works from anywhere that reaches the SSH port of your servers. "
+                            +"A firewall limits who reaches the port, from=\"...\" limits where this one key works, including other machines in your network."
+                        }
                         div("btn-row") { submit("Save") }
                     }
                 }

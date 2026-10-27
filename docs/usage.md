@@ -11,7 +11,7 @@
 | Keys      | Generate Ed25519 or import on top, below one folded row per key with fingerprint and use (a new key opens right after it was added). Rename, export after entering the passphrase again, delete unused keys |
 | Snippets  | Add, edit, delete, "run immediately" or "insert only", optional folder: each folder is a menu above the terminal |
 | Audit     | The latest entries, filterable                                                                                           |
-| Settings  | Access requests, allowed users, active sessions (end any), Dirl's source address, update check (on or off, latest release, a newer one shows in the footer of every page), passphrase change, encrypted backup download, seal now |
+| Settings  | Access requests, allowed users, active sessions (end any), Dirl's source address (several separated by commas, or no restriction at all), update check (on or off, latest release, a newer one shows in the footer of every page), passphrase change, encrypted backup download, seal now |
 | Setup     | Create the vault, or restore an encrypted backup                                                                         |
 
 [Back to the README](../README.md)

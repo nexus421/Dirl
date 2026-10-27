@@ -152,6 +152,20 @@ restrict,pty,from="10.0.0.1" ssh-ed25519 AAAA... dirl
 Without that address the line shows `<JUMP-HOST-IP>` and the host page says where to set it. In a chain every host is
 limited to the host right before it.
 
+Both fields take a list, for example when some servers see Dirl's LAN address and others its public one:
+`192.168.1.10, 203.0.113.5`. Entries are addresses, CIDR ranges, wildcards (`10.1.*`) and exclusions (`!10.0.0.9`),
+separated by commas or spaces. Dirl stores them comma separated without spaces, because OpenSSH refuses the whole line
+for a space after a comma or an empty entry, without telling the client why. For the same reason Dirl rejects a CIDR
+range with host bits set (`10.0.0.1/24` instead of `10.0.0.0/24`), a prefix that is too long and a list that only
+excludes. Host names are accepted but only match with `UseDNS yes` in `sshd_config`, which is off by default. All of
+this was verified against OpenSSH 10.2 in the integration tests.
+
+Settings can also turn the restriction off, then no line gets `from=` at all, also behind jump hosts. That is meant for
+setups where a firewall already decides who reaches SSH. It is not the same protection: a firewall opens the SSH port
+for every key, also for your own logins from elsewhere, while `from=` limits this one key, including against other
+machines inside the network. A stolen Dirl key without `from=` works from anywhere that reaches the port. The address
+is kept, so turning the restriction back on restores the lines.
+
 A "jump host only" without any host behind it gets no forwarding at all, because `port-forwarding` without `permitopen`
 would allow every destination. `port-forwarding` also allows remote forwarding (`ssh -R`), which `permitopen` does not
 limit. For TCP both jump variants get `permitlisten="127.0.0.1:1"`, so a holder of the key can at most listen on port 1

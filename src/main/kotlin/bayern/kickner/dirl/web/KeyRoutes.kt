@@ -115,7 +115,7 @@ fun Route.keyRoutes(dirl: Dirl) {
  */
 private suspend fun ApplicationCall.keysPage(dirl: Dirl, error: String?, importOpen: Boolean = false) {
     val content = dirl.vault.content ?: return
-    val from = content.settings.sshSourceAddress ?: "<DIRL-IP>"
+    val from = if (content.settings.sshSourceUnrestricted) "" else ",from=\"${content.settings.sshSourceAddress ?: "<DIRL-IP>"}\""
     val justAdded = request.queryParameters["done"]
         ?.takeIf { it == "key-generated" || it == "key-imported" }
         ?.let { content.keys.maxByOrNull(SshKey::createdAt)?.id }
@@ -161,7 +161,7 @@ private suspend fun ApplicationCall.keysPage(dirl: Dirl, error: String?, importO
                                 "Used by" to users.joinToString { it.name }.ifEmpty { "nobody" },
                             )
                             p("muted small") { +"Public key, for a normal target (each host page shows the exact line for that host):" }
-                            copyBlock("restrict,pty,from=\"$from\" ${key.publicKey} $KEY_COMMENT")
+                            copyBlock("restrict,pty$from ${key.publicKey} $KEY_COMMENT")
                             form(action = "/keys/${key.id}/rename", method = FormMethod.post, classes = "btn-row key-add") {
                                 textField("Name", "name", key.name)
                                 submit("Rename", "")

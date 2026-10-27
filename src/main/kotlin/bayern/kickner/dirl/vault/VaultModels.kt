@@ -70,8 +70,8 @@ data class VaultContent(
  *   `command="/bin/false"`. A jump host that is also a terminal target leaves this off.
  * @property pinnedHostKey The host key accepted on first contact (TOFU). `null` until confirmed in the UI.
  * @property sourceAddressForTargets Only for jump hosts: the address the hosts behind this one see it connecting
- *   from, often its address in their network. Only used to fill `from=` in their `authorized_keys` lines, like
- *   [VaultSettings.sshSourceAddress] for hosts Dirl reaches directly.
+ *   from, often its address in their network, as comma separated `from="..."` list. Only used to fill `from=` in
+ *   their `authorized_keys` lines, like [VaultSettings.sshSourceAddress] for hosts Dirl reaches directly.
  * @property overview What the overview card shows, the host page always shows everything. Dirl asks every host for
  *   all values anyway, the choice is only about display. [DEFAULT_OVERVIEW] is what the overview showed before the
  *   choice existed. Only written to the file when it differs, older versions of Dirl cannot read a vault where it does.
@@ -194,8 +194,12 @@ data class Snippet(
  * Settings managed in the UI. They live in the vault, so they are authenticated by GCM like everything else.
  *
  * @property allowedUsers Who may use Dirl. Checked on every request while the vault is unlocked.
- * @property sshSourceAddress The address target servers see Dirl connecting from. Only used to prefill the
- *   `from="..."` restriction in the `authorized_keys` lines. `null` shows a placeholder.
+ * @property sshSourceAddress The addresses target servers see Dirl connecting from, as comma separated `from="..."`
+ *   list (see [bayern.kickner.dirl.ssh.normalizeSourceAddress]). Only used to prefill the `from="..."` restriction in
+ *   the `authorized_keys` lines. `null` shows a placeholder.
+ * @property sshSourceUnrestricted Leaves `from="..."` out of all `authorized_keys` lines, also for hosts behind a jump
+ *   host, for setups where a firewall already limits who reaches SSH. [sshSourceAddress] is kept for when it is
+ *   turned off again. Off by default and only written to the file when on.
  * @property updateCheck Whether Dirl asks GitHub at most once an hour for a newer release, see
  *   [bayern.kickner.dirl.UpdateCheck]. On by default. Only written to the file when off, older versions of Dirl
  *   cannot read a vault where it is off.
@@ -204,6 +208,7 @@ data class Snippet(
 data class VaultSettings(
     val allowedUsers: List<AllowedUser> = emptyList(),
     val sshSourceAddress: String? = null,
+    val sshSourceUnrestricted: Boolean = false,
     val updateCheck: Boolean = true,
 )
 

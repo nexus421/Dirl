@@ -7,6 +7,7 @@ import bayern.kickner.dirl.config.OidcConfig
 import bayern.kickner.dirl.createDirl
 import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.PinnedHostKey
+import bayern.kickner.dirl.vault.SshKey
 import bayern.kickner.dirl.web.Dirl
 import bayern.kickner.dirl.web.SESSION_COOKIE
 import bayern.kickner.dirl.web.dirlModule
@@ -52,6 +53,7 @@ import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -704,5 +706,105 @@ class SshIntegrationTest {
         assertTrue(output.contains("DIRL-ws-MARK"), "shell output missing: $output")
         assertTrue(output.contains("40 120"), "resize did not reach the PTY: $output")
         assertTrue(dirl.audit.tail().any { it.action == AuditAction.TERMINAL_OPENED && it.host == host.name })
+    }
+
+    /** Whether [key] logs in on [server] with [line] as its only `authorized_keys` line, straight through sshj. */
+    private fun logsIn(server: LocalSshd, key: SshKey, line: String): Boolean {
+        server.authorize(line)
+        return runCatching {
+            SSHClient().use { client ->
+                client.addHostKeyVerifier(server.hostKeyFingerprint)
+                client.connect("127.0.0.1", server.port)
+                client.authPublickey(user, client.loadKeys(key.privateKeyPem, null, null))
+                exec(client, "echo ok").trim() == "ok"
+            }
+        }.getOrDefault(false)
+    }
+
+    @Test
+    fun `OpenSSH refuses the whole line for source entries Dirl normalizes or rejects`(): Unit = runBlocking {
+        val server = sshd()
+        val key = newKey()
+        fun line(from: String) = "restrict,pty,from=\"$from\" ${key.publicKey} dirl"
+        assertTrue(logsIn(server, key, line("127.0.0.1")), server.log())
+        assertTrue(logsIn(server, key, line("192.0.2.9,127.0.0.1")), "Dirl's address second in a list")
+        assertTrue(logsIn(server, key, line("127.0.0.1,192.0.2.9")), "Dirl's address first in a list")
+        assertFalse(logsIn(server, key, line("192.0.2.9,198.51.100.7")), "no entry matches")
+
+        for (raw in listOf("192.0.2.9, 127.0.0.1", "127.0.0.1,", "127.0.0.1,,192.0.2.9")) {
+            assertFalse(logsIn(server, key, line(raw)), "OpenSSH accepted \"$raw\", the normalization may no longer be needed")
+            val normalized = assertIs<ResultOf2.Success<String?>>(normalizeSourceAddress(raw)).value!!
+            assertTrue(logsIn(server, key, line(normalized)), "\"$raw\" normalized to \"$normalized\"")
+        }
+        for (raw in listOf("127.0.0.1/8", "127.0.0.1,192.0.2.0/33")) {
+            assertFalse(logsIn(server, key, line(raw)), "OpenSSH accepted \"$raw\"")
+            assertIs<ResultOf2.Failure<String>>(normalizeSourceAddress(raw), raw)
+        }
+        for (accepted in listOf("127.0.0.0/8", "192.0.2.0/24,127.0.0.1", "127.0.0.*", "!192.0.2.9,127.0.0.1")) {
+            assertTrue(logsIn(server, key, line(accepted)), accepted)
+            assertEquals(accepted, assertIs<ResultOf2.Success<String?>>(normalizeSourceAddress(accepted)).value)
+        }
+        // Host names only match with UseDNS yes, which is off by default.
+        assertFalse(logsIn(server, key, line("localhost")))
+    }
+
+    @Test
+    fun `the line the host page shows for several source addresses lets Dirl in`(): Unit = testApplication {
+        val server = sshd()
+        val key = newKey()
+        val host = addHost("multi", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        application { dirlModule(dirl) }
+        val client = createClient { followRedirects = false }
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(actor).token}"
+        suspend fun save(address: String, unrestricted: Boolean = false) = client.submitForm(
+            "/settings/ssh",
+            parameters { append("sshSourceAddress", address); if (unrestricted) append("sshSourceUnrestricted", "on") },
+        ) {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        suspend fun pageLine(): String {
+            val page = client.get("/hosts/${host.id}") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+            return Regex("restrict,[^<]* dirl").find(page)!!.value.replace("&quot;", "\"").replace("&#34;", "\"")
+        }
+        suspend fun connects(): Boolean {
+            dirl.connections.disconnectAll()
+            // Past any backoff from an earlier refused attempt.
+            now += 3_600_000
+            return dirl.connections.connection(host.id) is ResultOf2.Success
+        }
+
+        // A LAN address and a public one, typed with a space after the comma, Dirl's address is the second.
+        assertEquals("/settings?done=settings-saved", save("192.0.2.9, 127.0.0.1").headers[HttpHeaders.Location])
+        val line = pageLine()
+        assertEquals("restrict,pty,from=\"192.0.2.9,127.0.0.1\" ${key.publicKey} dirl", line)
+        server.authorize(line)
+        assertTrue(connects(), server.log())
+        assertEquals("ok", exec((dirl.connections.connection(host.id) as ResultOf2.Success).value, "echo ok").trim())
+
+        save("127.0.0.1 192.0.2.9")
+        server.authorize(pageLine())
+        assertTrue(connects(), "Dirl's address first, separated by a space")
+
+        save("192.0.2.9, 198.51.100.7")
+        server.authorize(pageLine())
+        assertFalse(connects(), "neither address is Dirl's")
+
+        // A rejected input changes nothing.
+        val rejected = save("127.0.0.1/8")
+        assertEquals(HttpStatusCode.BadRequest, rejected.status)
+        val rejectedPage = rejected.bodyAsText()
+        assertTrue(rejectedPage.contains("Did you mean 127.0.0.0/8?"))
+        assertTrue(rejectedPage.contains("value=\"127.0.0.1/8\""), "the field keeps what was typed")
+        assertEquals("192.0.2.9,198.51.100.7", dirl.vault.content!!.settings.sshSourceAddress)
+
+        // Without the restriction the line has no from= and the address is kept for later.
+        save("192.0.2.9", unrestricted = true)
+        val unrestricted = pageLine()
+        assertEquals("restrict,pty ${key.publicKey} dirl", unrestricted)
+        server.authorize(unrestricted)
+        assertTrue(connects())
+        assertEquals("192.0.2.9", dirl.vault.content!!.settings.sshSourceAddress)
+        assertEquals("sshSourceAddress=192.0.2.9 sshSourceUnrestricted=on", dirl.audit.tail().first { it.action == AuditAction.SETTINGS_CHANGED }.detail)
     }
 }
