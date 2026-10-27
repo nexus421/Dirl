@@ -245,9 +245,10 @@ the check is off. Dirl 0.2.0 and older cannot read a vault where it is off.
 
 `dataDir/audit.jsonl` (`0600`), one JSON object per line, appended and synced per entry: logins, rejected logins,
 access granted and removed, sessions ended, vault setup, restore, backup download, unlocks, failures and lockouts,
-passphrase and settings changes, host and key changes, key exports, host key pins and mismatches, terminal open and
-close, every SFTP change and download. Reading files in a terminal is not visible there, only that the terminal was
-opened. Never terminal contents, passphrases or keys. The Audit page shows and filters the latest entries and only
-reads the last MiB of the file, so a log that grows for years stays cheap to view.
+passphrase and settings changes, host, key and snippet changes, key exports, snippet exports and imports, host key
+pins and mismatches, terminal open and close, every SFTP change and download. Reading files in a terminal is not
+visible there, only that the terminal was opened. Never terminal contents, passphrases or keys. The Audit page shows
+and filters the latest entries and only reads the last MiB of the file, so a log that grows for years stays cheap to
+view.
 
 [Back to the README](../README.md)

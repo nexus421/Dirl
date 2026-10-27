@@ -153,8 +153,8 @@ vault is sealed only `/unlock`, `/setup`, `/setup/restore` and `/logout` work.
 | POST   | `/hosts/{id}/files/upload`, `/mkdir`, `/delete`, `/rename`   | File operations                                 |
 | GET    | `/keys`, `/keys/{id}/export`                                 | Keys                                            |
 | POST   | `/keys/generate`, `/keys/import`, `/keys/{id}/rename`, `/keys/{id}/export`, `/keys/{id}/delete` | Key actions  |
-| GET    | `/snippets`, `/snippets/{id}/edit`                           | Snippets                                        |
-| POST   | `/snippets`, `/snippets/{id}`, `/snippets/{id}/delete`       | Snippet actions                                 |
+| GET    | `/snippets`, `/snippets/{id}/edit`, `/snippets/export`       | Snippets, export of all as JSON                 |
+| POST   | `/snippets`, `/snippets/{id}`, `/snippets/{id}/delete`, `/snippets/import` (preview), `/snippets/import/apply` | Snippet actions |
 | GET    | `/audit?q=`                                                  | Audit log                                       |
 | GET    | `/settings`, `/settings/backup`                              | Settings, encrypted vault download              |
 | POST   | `/settings/users/allow`, `/settings/users/revoke`, `/settings/requests/dismiss`, `/settings/sessions/revoke`, `/settings/ssh`, `/settings/updates`, `/settings/passphrase`, `/vault/seal` | Settings actions |
@@ -176,12 +176,12 @@ Verified:
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines before `permitlisten`, jump host forwarding,
   `PerSourcePenalties`. Against 9.2: the current lines and the `Match` block against Unix socket forwarding.
 - Login against a real Pocket ID instance as confidential client with PKCE.
-- 127 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
+- 148 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
   opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC
   (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous
   logins, a failing and a slow provider), backup restore through the UI up to the unlock, access control (including
   revokes at the same moment), idle timeout with automatic reloads, security headers, origin checks and path tricks,
-  config validation including `config.example.json`, the keys page layout, source address lists for `from="..."` (normalizing, rejected entries, the switch to leave it out), presence (on a real CIO server), snippet folders, metrics (real
+  config validation including `config.example.json`, the keys page layout, source address lists for `from="..."` (normalizing, rejected entries, the switch to leave it out), presence (on a real CIO server), snippet folders, snippet export and import (round trip between two instances, the file format and its problems, preview states, all four ways to import, refused and oversized input, session and origin), metrics (real
   output, missing parts, text from the server, the reboot rule, the choice per host and what each card shows), the
   update check (version rules, answer limit, at most once an hour, the switch, the footer), SSH integration as listed
   above and the limits on data read from servers. Without an `sshd` the 24 SSH integration tests are skipped.

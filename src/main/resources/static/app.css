@@ -353,6 +353,17 @@ details.import:not([open]) > summary { margin-bottom: 0; }
 
 /* Keys page: one folded row per key. The fingerprint shortens with an ellipsis on narrow screens. */
 .key-add { align-items: flex-end; }
+/* Snippet import preview: one row per snippet in the file, checkbox left. */
+.import-rows { padding-top: 4px; padding-bottom: 4px; }
+.import-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.import-row:last-child { border-bottom: 0; }
+.import-row > input { margin-top: 5px; flex: none; }
+.import-body { flex: 1; min-width: 0; }
+.import-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 8px; }
+.import-name { font-weight: 600; cursor: pointer; }
+.import-body .muted.small { margin: 8px 0 4px; }
+.import-problems ul { margin: 0; padding-left: 18px; }
+
 .key-list { padding-top: 4px; padding-bottom: 4px; }
 details.key-row { margin: 0; padding: 0; border-top: 0; border-bottom: 1px solid var(--border); }
 details.key-row:last-child { border-bottom: 0; }

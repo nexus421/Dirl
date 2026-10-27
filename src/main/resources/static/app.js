@@ -30,6 +30,14 @@
     });
   });
 
+  // Snippet import preview: the choice for existing snippets ticks or unticks every row that would replace one.
+  document.querySelectorAll('input[data-import-conflicts]').forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      const replace = radio.dataset.importConflicts === 'replace';
+      document.querySelectorAll('input[data-conflict]').forEach(function (box) { box.checked = replace; });
+    });
+  });
+
   // Copy buttons: <button data-copy="id-of-element">
   document.querySelectorAll('[data-copy]').forEach(function (button) {
     button.addEventListener('click', function () {

@@ -79,6 +79,7 @@ private val flashMessages = mapOf(
     "snippet-added" to "Snippet added.",
     "snippet-saved" to "Snippet saved.",
     "snippet-deleted" to "Snippet deleted.",
+    "snippets-imported" to "Snippets imported.",
     "passphrase-changed" to "Passphrase changed.",
     "user-allowed" to "Access granted.",
     "user-revoked" to "Access removed and sessions of that user ended.",
@@ -291,11 +292,11 @@ fun FlowContent.passwordField(label: String, name: String, autocomplete: String,
 }
 
 /** A labeled multi-line input. */
-fun FlowContent.textAreaField(label: String, name: String, value: String = "", rows: Int = 4, hint: String? = null) = label("field") {
+fun FlowContent.textAreaField(label: String, name: String, value: String = "", rows: Int = 4, hint: String? = null, required: Boolean = true) = label("field") {
     span { +label }
     textArea(rows = rows.toString()) {
         this.name = name
-        required = true
+        this.required = required
         attributes["aria-label"] = label
         attributes["spellcheck"] = "false"
         attributes["autocomplete"] = "off"
