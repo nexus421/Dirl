@@ -176,6 +176,8 @@ Verified:
 - Against OpenSSH 10.2: the restricted `authorized_keys` lines before `permitlisten`, jump host forwarding,
   `PerSourcePenalties`. Against 9.2: the current lines and the `Match` block against Unix socket forwarding.
 - Login against a real Pocket ID instance as confidential client with PKCE.
+- In production in an Incus LXC (1 GiB, autostart) behind Zoraxy: a terminal idle for ten minutes stays usable, the
+  hardened unit runs without sandboxing errors, `memory.swap.max` is `0` with `limits.memory.swap false`.
 - 148 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
   opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC
   (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous
@@ -201,8 +203,8 @@ Verified:
 
 Still open:
 
-- Ten minutes idle behind Zoraxy.
-- Incus: LXCFS values in `/proc/meminfo`, `memory.swap.max`, systemd sandboxing.
+- Incus: LXCFS values in `/proc/meminfo` when a container is a monitored host, so far only VMs and physical servers
+  were monitored.
 - vim was not installed on the test machine.
 
 [Back to the README](../README.md)
