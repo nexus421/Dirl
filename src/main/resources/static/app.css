@@ -429,7 +429,27 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
 .progress > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
 
 /* Terminal */
-.term-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.term-page { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+/* The values a snippet with placeholders asks for, over the top left of the terminal. */
+.snippet-ask {
+  position: absolute;
+  z-index: 30;
+  left: 8px;
+  display: grid;
+  gap: 10px;
+  width: min(440px, calc(100% - 16px));
+  padding: 14px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 16px 40px rgb(0 0 0 / .35);
+}
+.snippet-ask[hidden] { display: none; }
+.snippet-ask-title { font-weight: 650; }
+.snippet-ask-fields { display: grid; gap: 8px; }
+.snippet-ask-fields .field { margin: 0; }
+.snippet-ask-preview { margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--code); font-size: 12.5px; white-space: pre-wrap; word-break: break-all; max-height: 140px; overflow: auto; }
+.snippet-asks { color: var(--muted); font-size: 12.5px; }
 .term-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
 .term-bar .name { font-weight: 650; margin-right: 6px; }
 .term-bar .spacer { flex: 1; }

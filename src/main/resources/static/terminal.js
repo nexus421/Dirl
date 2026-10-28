@@ -101,10 +101,117 @@
     if (event.key === 'Escape') closeMenus(null);
   });
 
+  // Placeholders: {{Name}} or {{Name:default}}, the same pattern as PLACEHOLDER_PATTERN in SnippetPlaceholders.kt.
+  // A snippet with placeholders first asks for their values above the terminal, then sends the filled command.
+  const placeholderPattern = /\{\{([A-Z][A-Za-z0-9_-]{0,31})(?::([^{}\r\n]{0,200}))?\}\}/g;
+  function placeholdersOf(command) {
+    const byName = new Map();
+    command.replace(placeholderPattern, function (all, name, value) {
+      if (!byName.has(name) || (byName.get(name) === undefined && value !== undefined)) byName.set(name, value);
+      return all;
+    });
+    return byName;
+  }
+  // A value is typed into the shell as it is. Line breaks and other control characters are dropped, so a value
+  // can never run the command early or send keys of its own.
+  function cleanValue(value) {
+    return value.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 500);
+  }
+  function fillPlaceholders(command, values) {
+    return command.replace(placeholderPattern, function (all, name) { return values[name]; });
+  }
+
+  const ask = document.createElement('form');
+  ask.className = 'snippet-ask';
+  ask.hidden = true;
+  ask.setAttribute('aria-label', 'Values for the snippet');
+  const askTitle = document.createElement('div');
+  askTitle.className = 'snippet-ask-title';
+  const askFields = document.createElement('div');
+  askFields.className = 'snippet-ask-fields';
+  const askPreview = document.createElement('pre');
+  askPreview.className = 'snippet-ask-preview';
+  const askButtons = document.createElement('div');
+  askButtons.className = 'btn-row';
+  const askSend = document.createElement('button');
+  askSend.type = 'submit';
+  askSend.className = 'btn primary sm';
+  const askCancel = document.createElement('button');
+  askCancel.type = 'button';
+  askCancel.className = 'btn ghost sm';
+  askCancel.textContent = 'Cancel';
+  askButtons.append(askSend, askCancel);
+  ask.append(askTitle, askFields, askPreview, askButtons);
+  el.parentNode.insertBefore(ask, el);
+  let asking = null;
+
+  function askValues() {
+    const values = {};
+    askFields.querySelectorAll('input').forEach(function (input) { values[input.name] = cleanValue(input.value); });
+    return values;
+  }
+  function updatePreview() {
+    askPreview.textContent = fillPlaceholders(asking.command, askValues()).replace(/\n$/, '');
+  }
+  function closeAsk() {
+    ask.hidden = true;
+    asking = null;
+    askFields.replaceChildren();
+    term.focus();
+  }
+  function openAsk(button, placeholders) {
+    asking = { command: button.dataset.send };
+    askTitle.textContent = button.textContent;
+    askSend.textContent = button.dataset.send.endsWith('\n') ? 'Run' : 'Insert';
+    askFields.replaceChildren();
+    placeholders.forEach(function (value, name) {
+      const label = document.createElement('label');
+      label.className = 'field';
+      const caption = document.createElement('span');
+      caption.textContent = name;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.name = name;
+      input.value = value === undefined ? '' : value;
+      input.required = true;
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.addEventListener('input', updatePreview);
+      label.append(caption, input);
+      askFields.append(label);
+    });
+    // Right at the top of the terminal, wherever the bar above it ends (it wraps on a phone).
+    ask.style.top = (el.offsetTop + 8) + 'px';
+    ask.hidden = false;
+    updatePreview();
+    const first = askFields.querySelector('input');
+    first.focus();
+    first.select();
+  }
+  ask.addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (!asking) return;
+    const command = fillPlaceholders(asking.command, askValues());
+    closeAsk();
+    send(command);
+  });
+  askCancel.addEventListener('click', closeAsk);
+  ask.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      closeAsk();
+    }
+  });
+
   document.querySelectorAll('[data-send]').forEach(function (button) {
     button.addEventListener('click', function () {
-      send(button.dataset.send);
       closeMenus(null);
+      const placeholders = placeholdersOf(button.dataset.send);
+      if (placeholders.size > 0 && button.closest('.keybar') === null) {
+        openAsk(button, placeholders);
+        return;
+      }
+      send(button.dataset.send);
       term.focus();
     });
   });

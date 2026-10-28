@@ -9,11 +9,23 @@
 | Terminal  | xterm.js with resize, snippet buttons, a key bar with Ctrl, Esc, Tab, arrows on touch devices, Enter reloads after a disconnect. While connected, the browser asks before leaving the page (also on Ctrl+W), because leaving ends the shell. Run long jobs in `tmux` or `screen` |
 | Files     | Breadcrumbs, path input, download, upload with progress (existing files only with "Overwrite existing files"), new directory, rename or move, delete. There is no editor, files are changed in the terminal. Symlinks are marked with →, they open, download and get overwritten like their target, deleting one removes only the link |
 | Keys      | Generate Ed25519 or import on top, below one folded row per key with fingerprint and use (a new key opens right after it was added). Rename, export after entering the passphrase again, delete unused keys |
-| Snippets  | Add, edit, delete, "run immediately" or "insert only", optional folder: each folder is a menu above the terminal and a folded group on this page, the one just changed opens. Export all as JSON, import a dropped, chosen or pasted file with a preview, see below |
+| Snippets  | Add, edit, delete, "run immediately" or "insert only", optional folder: each folder is a menu above the terminal and a folded group on this page, the one just changed opens. Placeholders like `{{Container}}` are asked for before sending, see below. Export all as JSON, import a dropped, chosen or pasted file with a preview, see below |
 | Audit     | The latest entries, filterable                                                                                           |
 | Settings  | Access requests, allowed users, active sessions (end any), Dirl's source address (several separated by commas, or no restriction at all), update check (on or off, latest release, a newer one shows in the footer of every page), passphrase change, encrypted backup download, seal now |
 | Login     | A terminal that types `dirl scan` and lists what Dirl does, next to the sign in through the identity provider. The motion runs once and stops with the system setting for reduced motion |
 | Setup     | Create the vault, or restore an encrypted backup                                                                         |
+
+## Placeholders in snippets
+
+A snippet can ask for values before it is sent: `{{Name}}`, or `{{Name:default}}` with a prefilled value. For example
+`docker logs --tail {{Lines:100}} -f {{Container}}`. A click on the snippet in the terminal opens a small form above
+the terminal with one field per name and a preview of the finished command. Enter sends it, Escape cancels. A name that
+appears several times is asked for once, at most 10 different names per snippet.
+
+Names start with a capital letter and hold letters, digits, `_` and `-`. That keeps Go templates of Docker, kubectl
+and Helm such as `{{.Names}}`, `{{ .Status }}` or `{{end}}` as they are, they are sent unchanged. A value is typed
+into the shell as given, like typing it yourself, without quoting. Line breaks and other control characters are
+removed from it, so a value cannot run the command early. The Snippets page shows which values a snippet asks for.
 
 ## Sharing snippets
 

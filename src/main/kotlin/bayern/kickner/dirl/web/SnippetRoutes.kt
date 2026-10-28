@@ -196,7 +196,7 @@ fun parseSnippet(form: Parameters, id: String): ResultOf2<Snippet, String> {
 
 /**
  * The rules every snippet follows, from the form or from an import: name and command are required, both have a
- * maximum length, the folder a fixed set of characters. [name] and [folder] are expected trimmed, [command] without
+ * maximum length, at most [MAX_PLACEHOLDERS] placeholders, the folder a fixed set of characters. [name] and [folder] are expected trimmed, [command] without
  * a trailing newline.
  *
  * @return The reason the snippet is refused, `null` if it is fine.
@@ -205,6 +205,7 @@ fun snippetProblem(name: String, command: String, folder: String?): String? = wh
     name.isEmpty() || command.isBlank() -> "Name and command are required."
     name.length > MAX_SNIPPET_NAME -> "Name is longer than $MAX_SNIPPET_NAME characters."
     command.length > MAX_SNIPPET_LENGTH -> "Command is longer than $MAX_SNIPPET_LENGTH characters."
+    placeholdersOf(command).size > MAX_PLACEHOLDERS -> "At most $MAX_PLACEHOLDERS different placeholders like {{Name}} per snippet."
     folder != null && folderPattern.matches(folder).not() ->
         "Folder may only contain letters, digits, spaces, dots, dashes and underscores, at most 32 characters."
     else -> null
@@ -418,6 +419,8 @@ private fun kotlinx.html.FlowContent.snippetRow(snippet: Snippet) = div("snippet
         div("snippet-title") {
             span("snippet-name") { +snippet.name }
             if (snippet.command.endsWith("\n")) pill("error", "runs immediately") else pill("", "inserts only")
+            val asks = placeholdersOf(snippet.command)
+            if (asks.isNotEmpty()) span("snippet-asks") { +"asks for ${asks.joinToString { it.name }}" }
         }
         div("snippet-command") {
             title = command
@@ -445,7 +448,10 @@ private fun kotlinx.html.FlowContent.snippetForm(action: String, snippet: Snippe
             id = "snippet-folders"
             groupSnippets(all).folders.forEach { (folder, _) -> option { value = folder } }
         }
-        textAreaField("Command", "command", form?.get("command") ?: snippet?.command?.trimEnd('\n').orEmpty(), rows = 3)
+        textAreaField(
+            "Command", "command", form?.get("command") ?: snippet?.command?.trimEnd('\n').orEmpty(), rows = 3,
+            hint = "{{Name}} or {{Name:default}}, starting with a capital letter, is asked for when the snippet is clicked, e.g. docker logs --tail {{Lines:100}} {{Container}}.",
+        )
         val run = if (form != null) form["run"] == "on" else snippet?.command?.endsWith("\n") ?: true
         checkField("Run immediately (send Enter after the command)", "run", run)
         p("muted small") { +"Snippets are sent as typed text into the terminal of whatever host is open." }

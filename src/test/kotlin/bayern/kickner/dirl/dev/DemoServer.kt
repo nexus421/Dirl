@@ -230,6 +230,10 @@ private fun demoSnippets(): List<Snippet> = listOf(
     Snippet("s5", "Disk usage", "docker system df\n", "Docker"),
     Snippet("s6", "Update stack", "docker compose pull && docker compose up -d\n", "Docker"),
     Snippet("s7", "Follow journal", "journalctl -f -n 50", "System"),
+    // Placeholders: asked for before sending. The Go template of docker ps is no placeholder and goes out as it is.
+    Snippet("s8", "Logs of a container", "docker logs --tail {{Lines:100}} -f {{Container}}", "Docker"),
+    Snippet("s9", "Container names", "docker ps --format '{{.Names}}'\n", "Docker"),
+    Snippet("s10", "Say hello", "echo \"Hello {{Name:World}}, nice to see you {{Name}}\"\n"),
 )
 
 /**
