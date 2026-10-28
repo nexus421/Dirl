@@ -93,12 +93,14 @@ fun main() {
         Host("backup", "backup", "127.0.0.1", offlinePort, user, key.id, tags = listOf("home")),
         Host("fresh", "new-box", "127.0.0.1", fresh.port, user, key.id, tags = listOf("home")),
     )
+    // Every host but the jump host gets the demo shell, so its terminal shows its own name in a plain bash.
     fun line(host: Host, profile: String? = null): String {
         val base = authorizedKeysLine(host, key, hosts, "127.0.0.1")
-        return if (profile == null) base else "command=\"${shell.absolutePath} ${File(dir, profile).absolutePath}\"," + base
+        val profilePath = profile?.let { File(dir, it).absolutePath } ?: "-"
+        return "command=\"${shell.absolutePath} $profilePath ${host.name}\"," + base
     }
     web.authorize(line(hosts[0]))
-    bastion.authorize(line(hosts[1]))
+    bastion.authorize(authorizedKeysLine(hosts[1], key, hosts, "127.0.0.1"))
     app.authorize(line(hosts[2]))
     db.authorize(line(hosts[3], "db.profile"))
     staging.authorize(line(hosts[4], "staging.profile"))
@@ -138,9 +140,9 @@ fun main() {
 }
 
 /**
- * The forced command of the demo hosts with a profile: the metrics command gets some of its parts replaced by the
- * profile, a terminal gets a normal login shell, SFTP the real `sftp-server`. A profile is a file of `@@name` blocks
- * like the metrics output itself.
+ * The forced command of the demo hosts, called with a profile (or `-`) and the host name: the metrics command gets
+ * some of its parts replaced by the profile, a terminal gets a plain bash with the host name in its prompt and no
+ * history file, SFTP the real `sftp-server`. A profile is a file of `@@name` blocks like the metrics output itself.
  */
 private fun demoShell(dir: File, root: File): File {
     val sftp = listOf("usr/lib/openssh/sftp-server", "usr/libexec/openssh/sftp-server", "usr/libexec/sftp-server")
@@ -150,13 +152,15 @@ private fun demoShell(dir: File, root: File): File {
         """
         #!/bin/sh
         profile="${'$'}1"
+        name="${'$'}2"
         case "${'$'}SSH_ORIGINAL_COMMAND" in
-          *@@uptime*) sh -c "${'$'}SSH_ORIGINAL_COMMAND" | awk -v profile="${'$'}profile" '
+          *@@uptime*) if [ "${'$'}profile" = "-" ]; then exec sh -c "${'$'}SSH_ORIGINAL_COMMAND"; fi
+            sh -c "${'$'}SSH_ORIGINAL_COMMAND" | awk -v profile="${'$'}profile" '
               BEGIN { while ((getline line < profile) > 0) { if (line ~ /^@@/) { name = line; seen[name] = 1 } else over[name] = over[name] line "\n" } }
               /^@@/ { skip = ($0 in seen); printf "%s\n", $0; if (skip) printf "%s", over[$0]; next }
               !skip { print }' ;;
           sftp|internal-sftp|*sftp-server*) exec $sftp ;;
-          "") exec bash -l ;;
+          "") cd "${'$'}HOME"; exec env HISTFILE= PS1="\\u@${'$'}name:\\w\\$ " bash --norc --noprofile -i ;;
           *) exec sh -c "${'$'}SSH_ORIGINAL_COMMAND" ;;
         esac
         """.trimIndent() + "\n"

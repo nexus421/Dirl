@@ -92,4 +92,5 @@ Deliberate deviations from DemoAiProject, decided in the concept: Shadow instead
 fat JAR, Klogger's SLF4J provider instead of `slf4j-simple`, server-rendered kotlinx.html instead of Compose.
 
 Keep the README short: no implementation details there, they belong into docs/. Update docs/ and KDoc in the same
-change as the code. Screenshots in docs/images come from the dev instance (`./gradlew devRun`) at 1280x800, scale 2.
+change as the code. Screenshots in docs/images come from the demo instance (`./gradlew demoRun`) at 1280x800, scale 2,
+dark.
