@@ -12,6 +12,7 @@
 | Snippets  | Add, edit, delete, "run immediately" or "insert only", optional folder: each folder is a menu above the terminal and a folded group on this page, the one just changed opens. Export all as JSON, import a dropped, chosen or pasted file with a preview, see below |
 | Audit     | The latest entries, filterable                                                                                           |
 | Settings  | Access requests, allowed users, active sessions (end any), Dirl's source address (several separated by commas, or no restriction at all), update check (on or off, latest release, a newer one shows in the footer of every page), passphrase change, encrypted backup download, seal now |
+| Login     | A terminal that types `dirl scan` and lists what Dirl does, next to the sign in through the identity provider. The motion runs once and stops with the system setting for reduced motion |
 | Setup     | Create the vault, or restore an encrypted backup                                                                         |
 
 ## Sharing snippets

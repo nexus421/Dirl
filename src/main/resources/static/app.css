@@ -20,6 +20,9 @@
   --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .06);
   --radius: 12px;
   --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  /* Strength of the glow in the corners of every page, see body::before. */
+  --glow: .05;
+  --sparkle: 0;
   color-scheme: light dark;
 }
 
@@ -43,6 +46,8 @@
     --error-soft: #331716;
     --code: #11141a;
     --shadow: none;
+    --glow: .16;
+    --sparkle: .75;
   }
 }
 
@@ -576,3 +581,160 @@ details.key-row:last-child { border-bottom: 0; }
 .key-body > * { margin: 0; }
 .center-logout { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 14px; }
 .card.attention { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+
+/* A faint glow in the corners of every page, in Dirl's blue, cyan and violet. Fixed behind everything, static,
+   stronger in dark mode. Green, yellow and red stay free for the status of hosts. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(42rem 32rem at 0% 0%, rgb(91 141 255 / var(--glow)), transparent 70%),
+    radial-gradient(42rem 32rem at 100% 0%, rgb(167 139 250 / calc(var(--glow) * .85)), transparent 70%),
+    radial-gradient(42rem 32rem at 0% 100%, rgb(34 211 238 / calc(var(--glow) * .7)), transparent 70%),
+    radial-gradient(42rem 32rem at 100% 100%, rgb(91 141 255 / calc(var(--glow) * .7)), transparent 70%);
+}
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* The logo as a tile with a gradient frame, on the pages before the work. */
+.center-card .brand .logo {
+  position: relative;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 0 24px rgb(91 141 255 / .35);
+}
+.center-card .brand .logo::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 10px;
+  padding: 2px;
+  background: linear-gradient(135deg, #22d3ee, var(--accent), #a78bfa);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+/* The card of unlock and setup and the sign in panel get a light edge running along their top. */
+.center-card > .card { position: relative; overflow: hidden; }
+.center-card > .card::before, .login-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #22d3ee, var(--accent), #a78bfa, #22d3ee) 0 0 / 200% 100%;
+  animation: edge-run 8s linear infinite;
+}
+@keyframes edge-run { to { background-position: 200% 0; } }
+
+/* Login: a terminal that scans what Dirl does on the left, the sign in on the right. */
+.split-wrap { flex: 1; display: grid; place-items: center; padding: 32px 20px; }
+.login {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 1fr);
+  width: 100%;
+  max-width: 980px;
+  min-height: 460px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  box-shadow: 0 24px 70px rgb(0 0 0 / .35);
+}
+/* Fine stars that twinkle slowly, only in dark mode (--sparkle). */
+.login::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--sparkle);
+  background-image:
+    radial-gradient(1.5px 1.5px at 23px 31px, #fff, transparent),
+    radial-gradient(1px 1px at 141px 87px, rgb(255 255 255 / .7), transparent),
+    radial-gradient(2px 2px at 211px 163px, #22d3ee, transparent),
+    radial-gradient(1px 1px at 67px 197px, rgb(255 255 255 / .6), transparent),
+    radial-gradient(2px 2px at 263px 47px, #a78bfa, transparent),
+    radial-gradient(1.5px 1.5px at 179px 233px, var(--accent), transparent);
+  background-size: 290px 260px;
+  animation: twinkle 6s ease-in-out infinite alternate;
+}
+@keyframes twinkle { from { opacity: calc(var(--sparkle) * .2); } to { opacity: var(--sparkle); } }
+.login-intro {
+  position: relative;
+  display: grid;
+  align-items: center;
+  padding: 32px;
+  background:
+    linear-gradient(rgb(91 141 255 / .07) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(90deg, rgb(91 141 255 / .07) 1px, transparent 1px) 0 0 / 28px 28px;
+}
+.login-term {
+  position: relative;
+  padding: 18px 20px;
+  border: 1px solid #272c35;
+  border-radius: 14px;
+  background: rgb(13 16 22 / .92);
+  color: #e7e9ee;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.85;
+  overflow-x: auto;
+}
+.login-logo {
+  margin: 0 0 12px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: #5b8dff;
+  font-size: 13.5px;
+  line-height: 1.12;
+  text-shadow: 0 0 10px rgb(91 141 255 / .55);
+  white-space: pre;
+}
+.term-line { white-space: nowrap; }
+.term-ok { color: #3ccf8e; }
+.term-accent { color: #5b8dff; }
+.term-muted { color: #9aa2b1; }
+.term-name { display: inline-block; width: 9ch; margin-left: 1ch; }
+/* Top aligned: an inline block with overflow hidden would put its baseline at the bottom and shift the line. */
+.term-type, .term-bar { display: inline-block; overflow: hidden; vertical-align: top; white-space: nowrap; }
+.term-type { width: 0; animation: term-type .8s steps(9) .25s forwards; }
+.term-bar { width: 0; color: #22d3ee; animation: term-bar 1.4s steps(24) 1.2s forwards; }
+.term-scan, .term-found { opacity: 0; animation: term-show .2s ease forwards; }
+.term-scan { animation-delay: 1.1s; }
+.term-found { animation-delay: calc(2.7s + var(--i) * .3s); }
+.term-cursor { display: inline-block; width: 8px; height: 15px; margin-left: 8px; background: #5b8dff; vertical-align: -2px; animation: term-blink 1s steps(1) infinite; }
+@keyframes term-type { to { width: 9ch; } }
+@keyframes term-bar { to { width: 24ch; } }
+@keyframes term-show { to { opacity: 1; } }
+@keyframes term-blink { 50% { opacity: 0; } }
+.login-panel { position: relative; display: grid; place-items: center; padding: 32px; border-left: 1px solid var(--border); background: var(--surface); overflow: hidden; }
+.login-card { width: 100%; max-width: 280px; text-align: center; }
+.login-card h2 { font-size: 22px; margin-bottom: 6px; }
+.login-card .muted { margin-bottom: 22px; }
+.login-card .notice { text-align: left; }
+.login-button { padding: 11px 20px; font-size: 15px; background: linear-gradient(135deg, var(--accent), #7c6cf6); border: 0; box-shadow: 0 6px 24px rgb(91 141 255 / .35); }
+.login-button:hover { filter: brightness(1.08); text-decoration: none; }
+
+@media (max-width: 760px) {
+  .split-wrap { padding: 16px 12px; place-items: start center; }
+  .login { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  /* The sign in first, the terminal below it. */
+  .login-panel { order: -1; border-left: 0; border-bottom: 1px solid var(--border); padding: 28px 20px; }
+  .login-intro { padding: 16px; }
+  .login-term { font-size: 12px; padding: 14px; }
+  .login-logo { font-size: 11px; }
+}
+
+/* No motion when the system asks for it: everything is there right away. */
+@media (prefers-reduced-motion: reduce) {
+  .login::before, .center-card > .card::before, .login-panel::before, .term-cursor { animation: none; }
+  .term-type, .term-bar, .term-scan, .term-found { animation: none; opacity: 1; }
+  .term-type { width: 9ch; }
+  .term-bar { width: 24ch; }
+}
+

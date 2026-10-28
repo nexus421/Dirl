@@ -86,7 +86,9 @@ stays German.
 
 UI: page building blocks (`page`, `pageHeader`, `card`, `postButton`, `copyBlock`, form fields) are in
 `web/Layout.kt`, styles in `static/app.css` (light and dark through CSS variables, tables stack on phones). Check new
-pages in the browser at desktop and phone width.
+pages in the browser at desktop and phone width. Every page has a faint static glow in blue, cyan and violet, motion
+(the login scan, stars, light edges) only on the pages before the work and always off with `prefers-reduced-motion`.
+Green, yellow and red are kept for status.
 
 Deliberate deviations from DemoAiProject, decided in the concept: Shadow instead of the Ktor Gradle plugin for the
 fat JAR, Klogger's SLF4J provider instead of `slf4j-simple`, server-rendered kotlinx.html instead of Compose.

@@ -194,20 +194,21 @@ Verified:
 - Login against a real Pocket ID instance as confidential client with PKCE.
 - In production in an Incus LXC (1 GiB, autostart) behind Zoraxy: a terminal idle for ten minutes stays usable, the
   hardened unit runs without sandboxing errors, `memory.swap.max` is `0` with `limits.memory.swap false`.
-- 157 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
+- 159 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
   opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC
   (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous
   logins, a failing and a slow provider), backup restore through the UI up to the unlock, access control (including
   revokes at the same moment), idle timeout with automatic reloads, security headers, origin checks and path tricks,
-  config validation including `config.example.json`, the keys page layout, the host overview (pins, the order of the
-  vault, the arrange page and its form, warnings, critical values, an offline host, the health rules, round trip text,
-  tag colors), source address lists for `from="..."` (normalizing, rejected entries, the switch to leave it out),
-  presence (on a real CIO server), snippet folders (folded, the changed one open), the import drop zone, snippet
-  export and import (round trip between two instances, the file format and its problems, preview states, all four ways
-  to import, refused and oversized input, session and origin), metrics (real output, missing parts, text from the
-  server, the reboot rule, the choice per host and what each card shows), the update check (version rules, answer
-  limit, at most once an hour, the switch, the footer), SSH integration as listed above and the limits on data read
-  from servers. Without an `sshd` the 25 SSH integration tests are skipped.
+  config validation including `config.example.json`, the keys page layout, the login page (the scan, one sign in, no
+  app bar, an unreachable provider), the host overview (pins, the order of the vault, the arrange page and its form,
+  warnings, critical values, an offline host, the health rules, round trip text, tag colors), source address lists for
+  `from="..."` (normalizing, rejected entries, the switch to leave it out), presence (on a real CIO server), snippet
+  folders (folded, the changed one open), the import drop zone, snippet export and import (round trip between two
+  instances, the file format and its problems, preview states, all four ways to import, refused and oversized input,
+  session and origin), metrics (real output, missing parts, text from the server, the reboot rule, the choice per host
+  and what each card shows), the update check (version rules, answer limit, at most once an hour, the switch, the
+  footer), SSH integration as listed above and the limits on data read from servers. Without an `sshd` the 25 SSH
+  integration tests are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
   provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
   target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all

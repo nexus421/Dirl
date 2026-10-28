@@ -16,8 +16,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.html.a
 import kotlinx.html.div
+import kotlinx.html.h1
+import kotlinx.html.h2
 import kotlinx.html.p
+import kotlinx.html.pre
 import kotlinx.html.span
+import kotlinx.html.style
 import kotnexlib.ResultOf2
 import kotlin.time.Duration.Companion.hours
 
@@ -111,12 +115,75 @@ fun Route.authRoutes(dirl: Dirl) {
 /** The card of a [PageFrame.CENTER] page (login, unlock, setup). The page frame adds the brand above it. */
 fun kotlinx.html.FlowContent.centerCard(content: kotlinx.html.DIV.() -> Unit) = card { content() }
 
+/** `>_ Dirl` in the style of figlet's standard font, the logo of the login page. */
+private val LOGIN_LOGO = listOf(
+    "__             ____  _      _",
+    "\\ \\           |  _ \\(_)_ __| |",
+    " \\ \\          | | | | | '__| |",
+    " / /  _____   | |_| | | |  | |",
+    "/_/  |_____|  |____/|_|_|  |_|",
+).joinToString("\n")
+
+/** What the scan on the login page finds, name and a few words. */
+private val LOGIN_FEATURES = listOf(
+    "terminal" to "xterm, snippets, jump hosts",
+    "files" to "SFTP up and down",
+    "status" to "bars, warnings, round trip",
+    "vault" to "sealed, AES-256-GCM",
+)
+
+/**
+ * The login page: on the left a terminal that types `dirl scan` and finds, line by line, what Dirl does, on the right
+ * the sign in. Every motion is CSS (`app.css`), runs once and stops with `prefers-reduced-motion`. On a phone the
+ * sign in comes first.
+ */
 private suspend fun ApplicationCall.loginPage(error: String?, status: HttpStatusCode) =
-    page("Sign in", null, frame = PageFrame.CENTER, status = status) {
-        centerCard {
-            if (error != null) notice("error", error)
-            p("muted") { +"Web SSH for your servers. Sign in with your identity provider to continue." }
-            linkButton("/auth/start", "Sign in", "primary block")
+    page("Sign in", null, frame = PageFrame.SPLIT, status = status) {
+        div("login") {
+            div("login-intro") {
+                div("login-term") {
+                    pre("login-logo") {
+                        attributes["aria-hidden"] = "true"
+                        +LOGIN_LOGO
+                    }
+                    h1("sr-only") { +"Dirl, web SSH for your servers" }
+                    div("term-line") {
+                        attributes["aria-hidden"] = "true"
+                        span("term-ok") { +"$" }
+                        +" "
+                        span("term-type") { +"dirl scan" }
+                    }
+                    div("term-line term-scan") {
+                        attributes["aria-hidden"] = "true"
+                        span("term-muted") { +"[" }
+                        span("term-bar") { +"#".repeat(24) }
+                        span("term-muted") { +"]" }
+                    }
+                    LOGIN_FEATURES.forEachIndexed { index, (name, words) ->
+                        div("term-line term-found") {
+                            style = "--i:$index"
+                            span("term-ok") { +"◆" }
+                            span("term-name") { +name }
+                            span("term-muted") { +words }
+                        }
+                    }
+                    div("term-line term-found") {
+                        style = "--i:${LOGIN_FEATURES.size}"
+                        span("term-accent") { +"◆" }
+                        span("term-name") { +"you" }
+                        span("term-muted") { +"not signed in yet" }
+                        span("term-cursor") { attributes["aria-hidden"] = "true" }
+                    }
+                }
+            }
+            div("login-panel") {
+                div("login-card") {
+                    h2 { +"Sign in" }
+                    p("muted") { +"with your identity provider" }
+                    if (error != null) notice("error", error)
+                    linkButton("/auth/start", "Continue", "primary block login-button")
+                }
+            }
         }
     }
 

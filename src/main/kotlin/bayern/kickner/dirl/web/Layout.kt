@@ -58,8 +58,11 @@ enum class PageFrame {
     /** App bar with navigation and full width content, for the terminal. */
     WIDE,
 
-    /** Only a centered card, for login and unlock. */
+    /** Only a centered card, for unlock and setup. */
     CENTER,
+
+    /** No app bar, the page lays out the whole width itself, for the login. */
+    SPLIT,
 }
 
 /**
@@ -140,8 +143,10 @@ suspend fun ApplicationCall.page(
         body(if (frame == PageFrame.WIDE) "fill" else null) {
             // App pages keep the presence WebSocket open (app.js), so the SSH connections stay while they are open.
             // Login, unlock and setup do not: there is nothing to keep connected.
-            if (session != null && frame != PageFrame.CENTER) attributes["data-presence"] = PRESENCE_PATH
-            if (frame != PageFrame.CENTER) header("appbar") {
+            // Pages before the work (login, unlock, setup) have no app bar.
+            val bare = frame == PageFrame.CENTER || frame == PageFrame.SPLIT
+            if (session != null && bare.not()) attributes["data-presence"] = PRESENCE_PATH
+            if (bare.not()) header("appbar") {
                 a(href = "/", classes = "brand") {
                     span("logo") { +">_" }
                     +"Dirl"
@@ -164,9 +169,10 @@ suspend fun ApplicationCall.page(
                 PageFrame.APP -> "container"
                 PageFrame.WIDE -> "container wide"
                 PageFrame.CENTER -> "center-wrap"
+                PageFrame.SPLIT -> "split-wrap"
             }
             main(containerClass) {
-                if (flash != null && frame != PageFrame.CENTER) notice("success", flash)
+                if (flash != null && bare.not()) notice("success", flash)
                 if (frame == PageFrame.CENTER) div("center-card") {
                     a(href = "/", classes = "brand") {
                         span("logo") { +">_" }
