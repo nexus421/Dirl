@@ -37,7 +37,8 @@ sealed interface RevokeError {
 }
 
 /**
- * Decides who may use Dirl. Pocket ID's group restriction is the first gate, this is the second one.
+ * Decides who may use Dirl. The provider's restriction of the client (e.g. a user group) is the first gate, this is
+ * the second one.
  *
  * - While the vault is unlocked, the list in the vault ([bayern.kickner.dirl.vault.VaultSettings.allowedUsers]) is
  *   authoritative. It is authenticated by GCM, nobody can add themselves by editing a file.

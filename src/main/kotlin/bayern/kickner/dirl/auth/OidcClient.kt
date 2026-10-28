@@ -78,7 +78,8 @@ sealed interface LoginError {
 }
 
 /**
- * OpenID Connect Authorization Code Flow with PKCE (S256) against Pocket ID, without an OIDC or JWT library.
+ * OpenID Connect Authorization Code Flow with PKCE (S256) against any provider with a discovery document, without an
+ * OIDC or JWT library.
  *
  * HTTP goes through the JDK's [HttpClient]. All calls are blocking and must run off the request thread.
  *

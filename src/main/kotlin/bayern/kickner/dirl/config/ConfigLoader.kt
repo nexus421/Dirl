@@ -81,7 +81,7 @@ private fun originProblems(publicUrl: String): List<String> {
 /** Returns an error message if [value] is not an absolute `https` URL (or `http` on a loopback host). */
 private fun checkUrl(name: String, value: String): String? {
     val uri = runCatching { URI(value) }.getOrNull()
-    val valid = uri != null && uri.host != null && (uri.scheme == "https" || (uri.scheme == "http" && isLoopback(uri.host)))
+    val valid = uri?.host != null && (uri.scheme == "https" || (uri.scheme == "http" && isLoopback(uri.host)))
     return if (valid) null else "$name must be an absolute https URL (http only for localhost), is \"$value\""
 }
 

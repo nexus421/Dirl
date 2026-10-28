@@ -40,10 +40,10 @@ except the OIDC client secret, so `0400` and owned by the service user.
 | Field             | Type     | Default                 | Description                                                                      |
 |-------------------|----------|-------------------------|----------------------------------------------------------------------------------|
 | `issuer`          | string   | required                | Issuer exactly as in the discovery document. `https` (or `http` on localhost)    |
-| `clientId`        | string   | required                | Client ID in Pocket ID                                                           |
+| `clientId`        | string   | required                | Client ID at the provider                                                        |
 | `clientSecret`    | string   | required                | Secret of the confidential client, sent to the token endpoint with HTTP Basic    |
 | `allowedSubjects` | string[] | `[]`                    | Break-glass list, always allowed. Only needed if nobody in the UI list can log in |
-| `forceReauth`     | bool     | `true`                  | Sends `prompt=login`, so every login needs a fresh passkey                       |
+| `forceReauth`     | bool     | `true`                  | Sends `prompt=login`, so every login needs a fresh sign-in at the provider       |
 | `scopes`          | string[] | `["openid", "profile"]` | Must contain `openid`                                                            |
 
 `session`:
@@ -53,9 +53,25 @@ except the OIDC client secret, so `0400` and owned by the service user.
 | `idleTimeoutMinutes` | int  | `60`    | Session expires after this much idle time |
 | `maxAgeHours`        | int  | `12`    | Session expires this long after the login |
 
-Pocket ID client setup: callback URL `<publicUrl>/auth/callback`, PKCE enabled, **not** a public client (Dirl
-authenticates with the client secret in addition to PKCE), under Access "Selected user groups" a group like `dirl`.
-Optionally "Requires Re-Authentication".
+## OIDC provider
+
+Any OpenID Connect provider works if it offers:
+
+- a discovery document at `<issuer>/.well-known/openid-configuration`
+- the Authorization Code Flow with PKCE (S256) for a confidential client with `client_secret_basic`
+- `sub`, `aud`, `exp`, `iat` and `nonce` in the ID token, and `name` or `preferred_username` for the display name
+- a token endpoint over `https`. Dirl takes the ID token straight from it and relies on TLS instead of the token
+  signature, see [Security](security.md#login-and-web-hardening)
+
+Client setup at the provider: callback URL `<publicUrl>/auth/callback`, PKCE enabled, **not** a public client (Dirl
+authenticates with the client secret in addition to PKCE). Copy `issuer` from the discovery document, a missing or
+extra trailing slash fails every login. Restrict the client to a group like `dirl` if the provider can do that, see
+[Security](security.md#access).
+
+Only Pocket ID is tested so far. There: under Access "Selected user groups" a group like `dirl`, optionally
+"Requires Re-Authentication". The issuer is the base URL, e.g. `https://id.example.com`. Other providers use longer
+issuers, e.g. `https://auth.example.com/application/o/dirl/` in Authentik or `https://kc.example.com/realms/home` in
+Keycloak.
 
 ## Unlocking
 

@@ -7,8 +7,8 @@
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
 A lean, self-hosted web SSH client. Terminal, SFTP, jump hosts and server status in your browser, shipped as one
-Kotlin fat JAR with OIDC login (Pocket ID) and an encrypted vault for hosts and keys. Small enough to review alone,
-managed entirely in the UI.
+Kotlin fat JAR with login through any OpenID Connect provider and an encrypted vault for hosts and keys. Small enough
+to review alone, managed entirely in the UI.
 
 ![Host overview](docs/images/overview.png)
 
@@ -63,7 +63,7 @@ maintained image is a welcome contribution.
 ## Documentation
 
 - [Usage](docs/usage.md): what each page does
-- [Configuration](docs/configuration.md): config file, command line, unlock modes, Pocket ID setup
+- [Configuration](docs/configuration.md): config file, command line, unlock modes, OIDC provider setup
 - [Deployment](docs/deployment.md): systemd, Incus, reverse proxy, backups
 - [Security](docs/security.md): vault, access control, SSH restrictions, web hardening
 - [Development](docs/development.md): tests, dev server, dependencies, project layout, endpoints

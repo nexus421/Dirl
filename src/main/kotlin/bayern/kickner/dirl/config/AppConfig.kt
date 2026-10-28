@@ -17,7 +17,7 @@ import kotlinx.serialization.Serializable
  * @property dataDir Directory holding `vault.json`, its backups, `audit.jsonl` and the log files.
  * @property unlockMode How the vault is unlocked after a restart, see [UnlockMode].
  * @property keyFile Path of the 32 byte key file, only read in [UnlockMode.KEYFILE].
- * @property oidc Login through the OpenID Connect provider (Pocket ID).
+ * @property oidc Login through the OpenID Connect provider.
  * @property session Lifetime of browser sessions.
  */
 @Serializable
@@ -59,7 +59,7 @@ enum class UnlockMode {
  * @property allowedSubjects Break-glass list of `sub` claims that are always allowed, in addition to the users
  *   managed in the UI. Normally empty: the user who creates the vault is allowed automatically and grants access
  *   to others under Settings. Only needed when nobody in the UI list can log in any more.
- * @property forceReauth Sends `prompt=login` so the provider asks for a fresh passkey on every login, even with an
+ * @property forceReauth Sends `prompt=login` so the provider asks for a fresh sign-in on every login, even with an
  *   existing provider session.
  * @property scopes Requested scopes. `openid` is mandatory, `profile` provides the display name.
  */

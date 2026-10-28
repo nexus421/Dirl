@@ -8,7 +8,7 @@
   "oidc": {
     "issuer": "https://id.example.com",
     "clientId": "00000000-0000-0000-0000-000000000000",
-    "clientSecret": "client secret from Pocket ID",
+    "clientSecret": "client secret from the OIDC provider",
     "allowedSubjects": [],
     "forceReauth": true,
     "scopes": ["openid", "profile"]

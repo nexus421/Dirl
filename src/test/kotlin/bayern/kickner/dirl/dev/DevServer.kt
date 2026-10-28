@@ -12,7 +12,7 @@ const val DEV_OIDC_PORT = 18081
 const val DEV_PASSPHRASE = "dirl dev vault passphrase only"
 
 /**
- * Starts Dirl for local UI development with the [MockOidcProvider] instead of Pocket ID. Run it with
+ * Starts Dirl for local UI development with the [MockOidcProvider] instead of a real provider. Run it with
  * `./gradlew devRun` and open `http://localhost:18080`. Data lives in `build/dev/data`, delete it to start over.
  */
 fun main() {

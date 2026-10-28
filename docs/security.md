@@ -34,7 +34,9 @@ be decrypted again. Dirl always creates the nonce itself and stores it next to t
 
 ## Access
 
-Two gates: the group restriction in Pocket ID, then Dirl's own list of allowed users.
+Two gates: the provider's restriction of the client (in Pocket ID a user group), then Dirl's own list of allowed
+users. Providers without such a restriction let every account through to the second gate, where it ends up as an
+access request.
 
 - While the vault is unlocked, the list in the vault decides, checked on every request. Removing a user ends their
   sessions and open terminals.

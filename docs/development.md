@@ -26,7 +26,7 @@ Node.js 24. `gradle/actions/setup-gradle` v6 keeps its caching in a closed-sourc
 Use (https://gradle.com/legal/terms-of-use/), using it means accepting them. `cache-provider: basic` would switch to an
 open-source cache instead.
 
-## Run locally without Pocket ID
+## Run locally without an OIDC provider
 
 ```bash
 ./gradlew devRun
