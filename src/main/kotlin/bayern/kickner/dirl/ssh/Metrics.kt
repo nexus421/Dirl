@@ -15,7 +15,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeoutOrNull
 import kotnexlib.ResultOf2
+import net.schmizz.sshj.SSHClient
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -298,9 +300,31 @@ fun cpuPercent(previous: CpuTimes, current: CpuTimes): Double? {
     return busy * 100.0 / total
 }
 
+/** How long [roundTripMillis] waits for the answer. */
+private val ROUND_TRIP_TIMEOUT = 5.seconds
+
 /**
- * Polls every host once per [interval] while somebody uses Dirl ([Presence]) and keeps the latest sample per host in
- * memory. There is no history and nothing is persisted.
+ * The time an SSH request to the server and its answer take, in milliseconds, or `null` without an answer within
+ * [ROUND_TRIP_TIMEOUT]. It goes through the existing connection, through the jump hosts as well, so it is what the
+ * host feels like from Dirl, not from the browser. Needs no rights, unlike ICMP ping.
+ *
+ * The request is OpenSSH's `keepalive@openssh.com`, which sshj also sends to keep connections alive. OpenSSH answers
+ * it with a failure, any answer counts.
+ */
+suspend fun roundTripMillis(client: SSHClient): Double? = runCatching {
+    runInterruptible {
+        val start = System.nanoTime()
+        val promise = client.connection.sendGlobalRequest("keepalive@openssh.com", true, ByteArray(0))
+        runCatching { promise.tryRetrieve(ROUND_TRIP_TIMEOUT.inWholeMilliseconds, TimeUnit.MILLISECONDS) }
+        val millis = (System.nanoTime() - start) / 1_000_000.0
+        // A lost connection fulfills the promise with an error as well, that is no answer.
+        millis.takeIf { promise.isFulfilled && client.isConnected }
+    }
+}.getOrNull()
+
+/**
+ * Polls every host once per [interval] while somebody uses Dirl ([Presence]) and keeps the latest sample and the round
+ * trip ([roundTripMillis]) per host in memory. There is no history and nothing is persisted.
  *
  * The poll goes through [ConnectionManager.connection], so it also connects every host when somebody arrives and
  * triggers the reconnects with backoff. Once nobody uses Dirl any more, the next round closes all connections with
@@ -324,6 +348,7 @@ class MetricsPoller(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val latest = ConcurrentHashMap<String, MetricsSample>()
+    private val latency = ConcurrentHashMap<String, Double>()
     private val polled = ConcurrentHashMap.newKeySet<String>()
     private val running = ConcurrentHashMap.newKeySet<String>()
     private val trigger = Channel<Unit>(Channel.CONFLATED)
@@ -363,8 +388,9 @@ class MetricsPoller(
                 try {
                     // An unexpected error of one host must not end the loop: no more polls and no more closing.
                     runCatching {
-                        // Pure jump hosts run no commands, the poll only keeps their connection alive.
-                        if (host.jumpOnly) connections.connection(host.id) else pollHost(host.id)
+                        // Pure jump hosts run no commands, the poll only keeps their connection alive and measures it.
+                        if (host.jumpOnly) measure(host.id, (connections.connection(host.id) as? ResultOf2.Success)?.value)
+                        else pollHost(host.id)
                     }.onFailure { if (it !is CancellationException) warnLog { "Status poll of ${host.name} failed: ${it.message}" } }
                 } finally {
                     running.remove(host.id)
@@ -382,6 +408,9 @@ class MetricsPoller(
     /** The most recent sample of [hostId], if any. */
     fun latest(hostId: String): MetricsSample? = latest[hostId]
 
+    /** The round trip of the latest poll of [hostId] in milliseconds, see [roundTripMillis]. `null` if unknown. */
+    fun latencyMillis(hostId: String): Double? = latency[hostId]
+
     /**
      * True once a poll of [hostId] finished since the host was last forgotten, with or without a usable sample. A host
      * whose output never parses (no `/proc`, `command="/bin/false"`) must not look like it is still loading forever.
@@ -391,16 +420,27 @@ class MetricsPoller(
     /** Forgets everything about [hostId], e.g. after it was deleted. */
     fun forget(hostId: String) {
         latest.remove(hostId)
+        latency.remove(hostId)
         polled.remove(hostId)
     }
 
     private fun forgetAll() {
         latest.clear()
+        latency.clear()
         polled.clear()
     }
 
+    /** Measures the round trip of [client], forgets the old value if there is no connection or no answer. */
+    private suspend fun measure(hostId: String, client: SSHClient?) {
+        val millis = client?.let { roundTripMillis(it) }
+        if (presence.present.not()) return
+        if (millis == null) latency.remove(hostId) else latency[hostId] = millis
+    }
+
     private suspend fun pollHost(hostId: String) {
-        val client = (connections.connection(hostId) as? ResultOf2.Success)?.value ?: return
+        val client = (connections.connection(hostId) as? ResultOf2.Success)?.value
+        measure(hostId, client)
+        if (client == null) return
         val output = withTimeoutOrNull(20.seconds) {
             runCatching {
                 client.startSession().use { session ->
@@ -419,6 +459,11 @@ class MetricsPoller(
             is ResultOf2.Failure -> debugLog { "No metrics for host $hostId: ${parsed.value}" }
             is ResultOf2.Success -> record(hostId, parsed.value)
         }
+    }
+
+    /** Keeps [millis] as the latest round trip of [hostId]. Internal so web tests can show one without a server. */
+    internal fun recordLatency(hostId: String, millis: Double) {
+        latency[hostId] = millis
     }
 
     /** Keeps [raw] as the latest sample of [hostId]. Internal so web tests can show a sample without a server. */

@@ -26,10 +26,10 @@ import kotlinx.html.FormEncType
 import kotlinx.html.FormMethod
 import kotlinx.html.checkBoxInput
 import kotlinx.html.dataList
+import kotlinx.html.details
 import kotlinx.html.div
 import kotlinx.html.fileInput
 import kotlinx.html.form
-import kotlinx.html.h2
 import kotlinx.html.hiddenInput
 import kotlinx.html.id
 import kotlinx.html.label
@@ -40,6 +40,8 @@ import kotlinx.html.pre
 import kotlinx.html.radioInput
 import kotlinx.html.span
 import kotlinx.html.style
+import kotlinx.html.summary
+import kotlinx.html.title
 import kotlinx.html.ul
 import kotnexlib.ResultOf2
 import java.time.LocalDate
@@ -121,7 +123,7 @@ fun Route.snippetRoutes(dirl: Dirl) {
         }
         dirl.vault.update { it.copy(snippets = it.snippets + snippet) }
         dirl.audit.record(call.session.actor, AuditAction.SNIPPET_ADDED, detail = snippet.label)
-        call.respondRedirect("/snippets?done=snippet-added")
+        call.respondRedirect("/snippets?done=snippet-added&$OPEN_PARAM=${snippet.id}")
     }
 
     get("/snippets/{id}/edit") {
@@ -141,7 +143,7 @@ fun Route.snippetRoutes(dirl: Dirl) {
         }
         dirl.vault.update { c -> c.copy(snippets = c.snippets.map { if (it.id == id) snippet else it }) }
         dirl.audit.record(call.session.actor, AuditAction.SNIPPET_UPDATED, detail = snippet.label)
-        call.respondRedirect("/snippets?done=snippet-saved")
+        call.respondRedirect("/snippets?done=snippet-saved&$OPEN_PARAM=${snippet.id}")
     }
 
     post("/snippets/{id}/delete") {
@@ -216,6 +218,9 @@ private suspend fun ApplicationCall.editSnippetPage(snippet: Snippet, all: List<
         card { snippetForm("/snippets/${snippet.id}", snippet, "Save", form, all) }
     }
 
+/** Query parameter naming the snippet just added or saved, its folder opens on the snippets page. */
+private const val OPEN_PARAM = "open"
+
 /** Longest pasted import that comes back into the text field after a refusal. */
 private const val MAX_ECHOED_IMPORT = 64 * 1024
 
@@ -267,12 +272,16 @@ private suspend fun ApplicationCall.snippetsPage(dirl: Dirl, error: String?, for
         div("stack") {
             if (content.snippets.isEmpty()) notice("info", "No snippets yet.")
             val groups = groupSnippets(content.snippets)
-            // Without folders the page stays a plain list, headings only appear once there is something to tell apart.
-            if (groups.folders.isNotEmpty() && groups.loose.isNotEmpty()) groupTitle("No folder", groups.loose.size)
-            groups.loose.forEach { snippetCard(it) }
-            groups.folders.forEach { (folder, inFolder) ->
-                groupTitle(folder, inFolder.size)
-                inFolder.forEach { snippetCard(it) }
+            // The folder of the snippet just added or saved opens, the others stay folded.
+            val open = request.queryParameters[OPEN_PARAM]?.let { id -> content.snippets.firstOrNull { it.id == id } }
+            // Without folders the page stays a plain list, folding only starts once there is something to tell apart.
+            if (groups.folders.isEmpty()) {
+                if (groups.loose.isNotEmpty()) div("card snippet-list") { groups.loose.forEach { snippetRow(it) } }
+            } else {
+                div("snippet-folders") {
+                    if (groups.loose.isNotEmpty()) snippetFolder("No folder", groups.loose, open != null && open.folder == null)
+                    groups.folders.forEach { (folder, inFolder) -> snippetFolder(folder, inFolder, open?.folder == folder) }
+                }
             }
             card("Add snippet") { snippetForm("/snippets", null, "Add", form, content.snippets) }
             importCard(content.snippets.size, import)
@@ -294,9 +303,21 @@ private fun kotlinx.html.FlowContent.importCard(count: Int, import: ImportInput?
         ul { import.problems.forEach { li { +it } } }
     }
     form(action = "/snippets/import", method = FormMethod.post, encType = FormEncType.multipartFormData, classes = "form") {
-        label("field") {
-            span { +"File" }
-            fileInput(name = "file") { accept = ".json,application/json" }
+        // The whole area is the label of the hidden file input, a click opens the file chooser without JavaScript.
+        // Dropping a file and showing its name is app.js.
+        label("drop-zone") {
+            attributes["data-drop"] = ""
+            fileInput(name = "file", classes = "drop-input") {
+                accept = ".json,application/json"
+                attributes["aria-label"] = "Snippet file"
+            }
+            span("icon icon-upload") { }
+            span("drop-main") { +"Drop a JSON file here" }
+            span("drop-sub") {
+                +"or "
+                span("drop-link") { +"choose one" }
+                +", at most ${MAX_SNIPPET_FILE_LENGTH / 1024 / 1024} MiB"
+            }
         }
         textAreaField("Or paste the JSON", "json", import?.text.orEmpty(), rows = 5, required = false)
         p("muted small") { +"Nothing is saved yet, the next page shows what the import would change." }
@@ -380,19 +401,30 @@ private fun kotlinx.html.FlowContent.importRow(row: ImportRow) = div("import-row
     }
 }
 
-private fun kotlinx.html.FlowContent.groupTitle(title: String, count: Int) = h2("group-title") {
-    +title
-    span("muted") { +" $count" }
+/** A folded folder of the snippets page with the number of its snippets, [open] for the one just changed. */
+private fun kotlinx.html.FlowContent.snippetFolder(title: String, snippets: List<Snippet>, open: Boolean) = details("snippet-folder") {
+    if (open) attributes["open"] = "open"
+    summary {
+        span("snippet-folder-name") { +title }
+        span("muted") { +snippets.size.toString() }
+    }
+    div("snippet-list") { snippets.forEach { snippetRow(it) } }
 }
 
-private fun kotlinx.html.FlowContent.snippetCard(snippet: Snippet) = card {
-    div("card-header") {
-        h2 { +snippet.name }
-        span("pill") { +if (snippet.command.endsWith("\n")) "runs immediately" else "inserts only" }
+/** One snippet as a compact row: name, whether it runs, the command on one line (complete as tooltip), actions. */
+private fun kotlinx.html.FlowContent.snippetRow(snippet: Snippet) = div("snippet-row") {
+    val command = snippet.command.trimEnd('\n')
+    div("snippet-main") {
+        div("snippet-title") {
+            span("snippet-name") { +snippet.name }
+            if (snippet.command.endsWith("\n")) pill("error", "runs immediately") else pill("", "inserts only")
+        }
+        div("snippet-command") {
+            title = command
+            +command.lineSequence().first().let { if (command.contains('\n')) "$it …" else it }
+        }
     }
-    copyBlock(snippet.command.trimEnd('\n'))
     div("btn-row") {
-        style = "margin-top:12px"
         linkButton("/snippets/${snippet.id}/edit", "Edit", "sm")
         postButton("/snippets/${snippet.id}/delete", "Delete", "danger sm", confirm = "Delete snippet ${snippet.name}?")
     }

@@ -181,7 +181,7 @@ form.inline { display: inline; }
 .field { display: grid; gap: 6px; }
 .field > span { font-weight: 550; font-size: 14px; }
 .field .hint { color: var(--muted); font-size: 12.5px; }
-input[type=text], input[type=password], input[type=search], select, textarea {
+input[type=text], input[type=password], input[type=search], input[type=number], select, textarea {
   width: 100%;
   padding: 8px 11px;
   font: inherit;
@@ -235,12 +235,139 @@ input[type=file] { font: inherit; }
 }
 .chip.active, .chip:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
 
-/* Host cards */
-.host-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
-.host-card { display: grid; gap: 12px; align-content: start; }
-.host-card .title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.host-card .title a { color: var(--fg); font-weight: 650; font-size: 16px; overflow: hidden; text-overflow: ellipsis; }
-.host-card .addr { color: var(--muted); font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+/* Icons: small SVGs from /static/icons as mask, so they take the text color. */
+.icon {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+  vertical-align: -3px;
+}
+.icon-pin { --icon: url(/static/icons/pin.svg); }
+.icon-ok { --icon: url(/static/icons/check.svg); }
+.icon-warn { --icon: url(/static/icons/alert.svg); }
+.icon-error { --icon: url(/static/icons/offline.svg); }
+.icon-pending { --icon: url(/static/icons/pending.svg); }
+.icon-upload { --icon: url(/static/icons/upload.svg); }
+
+/* Host overview: one row per host. The status color runs from the bar on the left into the row. The name is the
+   link, its ::after covers the whole row, the pin and the action buttons lie on top. */
+.host-group { display: flex; align-items: center; gap: 8px; margin: 4px 2px 8px; color: var(--muted); font-size: 12.5px; font-weight: 550; }
+.host-group::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.host-group .icon { width: 14px; height: 14px; color: var(--accent); }
+.host-list + .host-group { margin-top: 18px; }
+.host-list { display: grid; gap: 8px; }
+.host-row {
+  --state: var(--muted);
+  --state-soft: var(--surface-2);
+  position: relative;
+  display: grid;
+  grid-template-columns: 38px minmax(150px, 1.2fr) minmax(150px, 210px) minmax(0, 1.4fr) 84px minmax(88px, max-content);
+  grid-template-areas: "status main meters facts ping actions";
+  gap: 16px;
+  align-items: center;
+  padding: 10px 14px 10px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--state-soft) 0%, var(--surface) 45%);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: border-color .12s;
+}
+.host-row.ok { --state: var(--ok); --state-soft: var(--ok-soft); }
+.host-row.warn { --state: var(--warn); --state-soft: var(--warn-soft); }
+.host-row.error { --state: var(--error); --state-soft: var(--error-soft); }
+.host-row:hover { border-color: var(--border-strong); }
+.host-status {
+  grid-area: status;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: -10px 0;
+  background: var(--state-soft);
+  border-right: 1px solid var(--border);
+}
+.status-icon { color: var(--state); }
+.pin-form { position: relative; z-index: 1; margin: 0; }
+.pin-toggle { display: flex; padding: 3px; border: 0; border-radius: 6px; background: transparent; color: var(--border-strong); cursor: pointer; }
+.pin-toggle:hover, .pin-toggle:focus-visible { color: var(--accent); background: var(--surface); }
+.pin-toggle.on { color: var(--accent); }
+.host-main { grid-area: main; display: grid; gap: 5px; min-width: 0; }
+.host-name { color: var(--fg); font-weight: 650; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-name::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
+.host-name:hover, .host-row:hover .host-name { color: var(--accent); text-decoration: none; }
+.host-name:focus-visible { outline: none; }
+.host-name:focus-visible::after { outline: 2px solid var(--accent); outline-offset: -2px; }
+.host-warnings { display: flex; flex-wrap: wrap; gap: 4px; }
+.host-warnings .pill { padding: 1px 8px; font-size: 11.5px; }
+.host-tags { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.tag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--tag-h, 220) 62% 56%); }
+.tag.plain::before { background: var(--muted); }
+.host-meters { grid-area: meters; min-width: 0; }
+.host-facts { grid-area: facts; min-width: 0; }
+.host-row .meters { gap: 5px; }
+.host-row .meter { grid-template-columns: 34px 1fr 34px; gap: 6px; font-size: 11.5px; }
+.host-row .meter.wide { grid-template-columns: minmax(34px, 40%) 1fr 34px; }
+.host-row .meter .bar { height: 6px; border: 0; background: var(--border); }
+/* One fixed green to red gradient, scaled by --p: the end of a bar has the color of its value. High and critical
+   bars are named as well, so the plain colors of .meter .bar.high and .critical further down do not win. */
+.host-row .meter .bar > span, .host-row .meter .bar.high > span, .host-row .meter .bar.critical > span {
+  background: linear-gradient(90deg, var(--ok) 0, var(--ok) 60%, var(--warn) 80%, var(--error) 100%);
+  background-size: calc(100% * 100 / var(--p, 100)) 100%;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--ok) 35%, transparent);
+}
+.host-row .meter .bar.high > span { box-shadow: 0 0 6px color-mix(in srgb, var(--warn) 45%, transparent); }
+.host-row .meter .bar.critical > span { box-shadow: 0 0 6px color-mix(in srgb, var(--error) 50%, transparent); }
+.host-row .meter .val { color: var(--muted); }
+.host-row .meter:has(.bar.high) .val { color: var(--warn); }
+.host-row .meter:has(.bar.critical) .val { color: var(--error); }
+.host-row .facts { gap: 2px; font-size: 12px; }
+.host-ping { grid-area: ping; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.host-ping.ok { color: var(--ok); }
+.host-ping.warn { color: var(--warn); }
+.host-ping.error { color: var(--error); }
+.signal { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.signal span { width: 3px; border-radius: 1px; background: var(--border-strong); }
+.signal span:nth-child(1) { height: 4px; }
+.signal span:nth-child(2) { height: 7px; }
+.signal span:nth-child(3) { height: 10px; }
+.signal span:nth-child(4) { height: 14px; }
+.signal.lvl-1 span:nth-child(-n+1), .signal.lvl-2 span:nth-child(-n+2), .signal.lvl-3 span:nth-child(-n+3), .signal.lvl-4 span { background: currentColor; }
+.host-actions { grid-area: actions; position: relative; z-index: 1; display: grid; gap: 5px; }
+.host-actions .btn { justify-content: center; white-space: nowrap; }
+.host-actions form { display: block; }
+.host-actions form .btn { width: 100%; }
+
+/* Narrow windows and phones: the row becomes a tile, the status bar stays on the left. */
+@media (max-width: 900px) {
+  .host-row {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    grid-template-areas: "status main ping" "status meters meters" "status facts facts" "status actions actions";
+    gap: 10px 12px;
+    background: linear-gradient(180deg, var(--state-soft) 0%, var(--surface) 70%);
+  }
+  .host-status { grid-row: 1 / -1; }
+  .host-actions { display: flex; gap: 6px; }
+  .host-actions .btn { flex: 1; }
+  .host-facts:empty, .host-meters:has(> .muted) { display: none; }
+}
+
+/* Arrange hosts: number fields, arrows with JavaScript. */
+.arrange-list { padding-top: 4px; padding-bottom: 4px; }
+.arrange-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.arrange-row:last-child { border-bottom: 0; }
+.arrange-row input { width: 72px; text-align: center; }
+.arrange-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.arrange-name .icon { width: 14px; height: 14px; color: var(--accent); }
+.arrange-moves { display: flex; gap: 4px; }
+
 .meters { display: grid; gap: 8px; }
 .meter { display: grid; grid-template-columns: 44px 1fr 46px; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
 .meter .bar { height: 6px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
@@ -363,6 +490,70 @@ details.import:not([open]) > summary { margin-bottom: 0; }
 .import-name { font-weight: 600; cursor: pointer; }
 .import-body .muted.small { margin: 8px 0 4px; }
 .import-problems ul { margin: 0; padding-left: 18px; }
+
+/* Drop zone of the snippet import: the label of a hidden file input. */
+.drop-zone {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 22px 16px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.drop-zone:hover, .drop-zone.over, .drop-zone:focus-within { border-color: var(--accent); background: var(--accent-soft); }
+.drop-zone.has { border-style: solid; border-color: var(--ok); background: var(--ok-soft); }
+.drop-zone .icon { width: 24px; height: 24px; color: var(--accent); }
+.drop-zone.has .icon { --icon: url(/static/icons/check.svg); color: var(--ok); }
+.drop-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.drop-main { font-weight: 600; overflow-wrap: anywhere; }
+.drop-sub { color: var(--muted); font-size: 12.5px; }
+.drop-link { color: var(--accent); }
+
+/* Snippets page: folded folders, one compact row per snippet. */
+.snippet-folders { display: grid; gap: 8px; }
+details.snippet-folder { margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+.snippet-folder > summary { display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px 18px; color: var(--fg); list-style: none; }
+.snippet-folder > summary::-webkit-details-marker { display: none; }
+.snippet-folder > summary::before {
+  content: "";
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform .15s;
+}
+.snippet-folder[open] > summary::before { transform: rotate(45deg); }
+.snippet-folder > summary:hover { background: var(--surface-2); }
+.snippet-folder-name { font-weight: 600; }
+.snippet-folder .snippet-list { border-top: 1px solid var(--border); padding: 0 18px; }
+.snippet-list.card { padding-top: 4px; padding-bottom: 4px; }
+.snippet-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.snippet-row:last-child { border-bottom: 0; }
+.snippet-main { min-width: 0; }
+.snippet-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.snippet-name { font-weight: 600; }
+.snippet-command {
+  margin-top: 6px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: var(--code);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .snippet-row { grid-template-columns: minmax(0, 1fr); }
+}
 
 .key-list { padding-top: 4px; padding-bottom: 4px; }
 details.key-row { margin: 0; padding: 0; border-top: 0; border-bottom: 1px solid var(--border); }

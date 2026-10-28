@@ -140,9 +140,9 @@ class WebTest {
     /** A number as Dirl prints it, in the JVM's locale like the pages (`0,54` with a German one). */
     private fun num(pattern: String, value: Double) = pattern.format(value)
 
-    /** The overview card of the host named [name] in [page]. */
+    /** The overview row of the host named [name] in [page]. */
     private fun cardOf(page: String, name: String): String =
-        page.split("class=\"card host-card\"").drop(1).first { it.contains(">$name</a>") }
+        page.split("class=\"host-row ").drop(1).first { it.contains(">$name</a>") }
 
     @Test
     fun `the overview shows exactly the metrics chosen per host`(): Unit = testApplication {
@@ -172,7 +172,7 @@ class WebTest {
 
         val nothing = cardOf(page, "nothing")
         assertFalse(nothing.contains("class=\"meters\"") || nothing.contains("class=\"facts\""), "nothing chosen shows no metrics")
-        assertTrue(nothing.contains("class=\"pill"), "the connection state stays")
+        assertTrue(nothing.contains("status-icon"), "the connection state stays")
     }
 
     @Test

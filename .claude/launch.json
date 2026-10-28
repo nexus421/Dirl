@@ -4,8 +4,20 @@
     {
       "name": "dirl-dev",
       "runtimeExecutable": "./gradlew",
-      "runtimeArgs": ["devRun", "--console=plain"],
+      "runtimeArgs": [
+        "devRun",
+        "--console=plain"
+      ],
       "port": 18080
+    },
+    {
+      "name": "dirl-demo",
+      "runtimeExecutable": "./gradlew",
+      "runtimeArgs": [
+        "demoRun",
+        "--console=plain"
+      ],
+      "port": 18090
     }
   ]
 }

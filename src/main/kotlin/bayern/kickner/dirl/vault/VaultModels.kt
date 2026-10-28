@@ -72,6 +72,8 @@ data class VaultContent(
  * @property sourceAddressForTargets Only for jump hosts: the address the hosts behind this one see it connecting
  *   from, often its address in their network, as comma separated `from="..."` list. Only used to fill `from=` in
  *   their `authorized_keys` lines, like [VaultSettings.sshSourceAddress] for hosts Dirl reaches directly.
+ * @property pinned Shown in the group on top of the overview. The order of [VaultContent.hosts] is the order of the
+ *   overview, within the pinned group and below it.
  * @property overview What the overview card shows, the host page always shows everything. Dirl asks every host for
  *   all values anyway, the choice is only about display. [DEFAULT_OVERVIEW] is what the overview showed before the
  *   choice existed. Only written to the file when it differs, older versions of Dirl cannot read a vault where it does.
@@ -89,6 +91,7 @@ data class Host(
     val jumpOnly: Boolean = false,
     val pinnedHostKey: PinnedHostKey? = null,
     val sourceAddressForTargets: String? = null,
+    val pinned: Boolean = false,
     val overview: Set<OverviewMetric> = DEFAULT_OVERVIEW,
 )
 

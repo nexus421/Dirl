@@ -101,18 +101,42 @@ class SnippetFolderTest {
     }
 
     @Test
-    fun `the snippets page only shows group headings once there are folders`(): Unit = testApplication {
+    fun `the snippets page folds folders, opens the one just changed and stays a plain list without folders`(): Unit = testApplication {
         val (client, cookie) = loggedIn()
-        suspend fun page() = client.get("/snippets") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        suspend fun page(query: String = "") = client.get("/snippets$query") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        fun folders(page: String) = Regex("<details class=\"snippet-folder\"( open=\"open\")?><summary><span class=\"snippet-folder-name\">([^<]+)</span><span class=\"muted\">(\\d+)</span>")
+            .findAll(page).map { "${it.groupValues[2]} ${it.groupValues[3]}" + if (it.groupValues[1].isEmpty()) "" else " open" }.toList()
 
         dirl.vault.update { it.copy(snippets = listOf(Snippet("1", "df", "df -h"))) }
-        assertTrue(page().contains("group-title").not(), "without folders the page stays a plain list")
+        val plain = page()
+        assertTrue(plain.contains("<details").not() && plain.contains("class=\"snippet-row\""), "without folders the page stays a plain list")
 
-        dirl.vault.update { it.copy(snippets = it.snippets + Snippet("2", "ps", "docker ps", "Docker")) }
-        val grouped = page()
-        val noFolder = grouped.indexOf("No folder")
-        val docker = grouped.indexOf("<h2 class=\"group-title\">Docker")
-        assertTrue(noFolder in 0 until docker, "No folder comes first, then the folders")
+        dirl.vault.update { it.copy(snippets = it.snippets + Snippet("2", "ps", "docker ps\n", "Docker") + Snippet("3", "logs", "docker logs -f\nmore", "Docker")) }
+        assertEquals(listOf("No folder 1", "Docker 2"), folders(page()), "all folded, No folder first, with the number of snippets")
+        assertEquals(listOf("No folder 1", "Docker 2 open"), folders(page("?done=snippet-saved&open=2")), "the folder of the saved snippet opens")
+        assertEquals(listOf("No folder 1 open", "Docker 2"), folders(page("?open=1")))
+        assertEquals(listOf("No folder 1", "Docker 2"), folders(page("?open=nope")), "an unknown snippet opens nothing")
+
+        val rows = page()
+        assertTrue(rows.contains("<span class=\"pill error\">runs immediately</span>") && rows.contains("<span class=\"pill\">inserts only</span>"))
+        assertTrue(rows.contains("title=\"docker logs -f\nmore\">docker logs -f …</div>"), "a command of several lines shows its first line, all of it as tooltip")
+
+        // Adding and saving lead back with the folder open.
+        val added = client.submitForm("/snippets", parameters { append("name", "top"); append("command", "htop"); append("folder", "Docker") }) {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        val id = dirl.vault.content!!.snippets.first { it.name == "top" }.id
+        assertEquals("/snippets?done=snippet-added&open=$id", added.headers[HttpHeaders.Location])
+    }
+
+    @Test
+    fun `the import is a drop zone around the file input`(): Unit = testApplication {
+        val (client, cookie) = loggedIn()
+        val page = client.get("/snippets") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        val zone = page.substringAfter("<label class=\"drop-zone\" data-drop=\"\">").substringBefore("</label>")
+        assertTrue(zone.contains("<input type=\"file\" name=\"file\" class=\"drop-input\" accept=\".json,application/json\""), zone)
+        assertTrue(zone.contains("Drop a JSON file here") && zone.contains("choose one"))
     }
 
     @Test

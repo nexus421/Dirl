@@ -146,3 +146,11 @@ tasks.register<JavaExec>("devRun") {
     mainClass.set("bayern.kickner.dirl.dev.DevServerKt")
     workingDir = projectDir
 }
+
+tasks.register<JavaExec>("demoRun") {
+    group = "application"
+    description = "Runs Dirl with demo hosts on http://localhost:18090, needs an sshd (system, DIRL_SSHD_ROOT or build/sshd-root), data in build/demo."
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("bayern.kickner.dirl.dev.DemoServerKt")
+    workingDir = projectDir
+}

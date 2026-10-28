@@ -22,8 +22,9 @@ to review alone, managed entirely in the UI.
 - SFTP file manager with upload, rename and download
 - Up to two jump hosts, with restricted `authorized_keys` lines generated for every host
 - Host key pinning (trust on first use), hard block on changes
-- Status per host: reachability, CPU, RAM, swap, disks, load, uptime, failed services, reboot needed, zram, system,
-  each host chooses what its overview card shows
+- Status per host: reachability, SSH round trip, CPU, RAM, swap, disks, load, uptime, failed services, reboot
+  needed, zram, system, each host chooses what its overview row shows
+- Hosts pinned to the top and in your own order
 - A note in the footer when a newer release is out, can be turned off
 - SSH connections only while Dirl is open in a browser, nothing runs in the background
 - Encrypted vault (AES-256-GCM, Argon2id), audit log, OIDC login with PKCE

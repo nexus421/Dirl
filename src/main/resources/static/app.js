@@ -30,6 +30,73 @@
     });
   });
 
+  // Arrange hosts: the arrows move a row and renumber every position, a typed number moves the row there. Saving
+  // stays one form post. Without JavaScript the arrows stay hidden and the numbers are typed.
+  const arrange = document.querySelector('form[data-arrange]');
+  if (arrange) {
+    const list = arrange.querySelector('.arrange-list');
+    const state = arrange.querySelector('[data-arrange-state]');
+    const rows = function () { return Array.prototype.slice.call(list.querySelectorAll('[data-arrange-row]')); };
+    const renumber = function () {
+      const all = rows();
+      all.forEach(function (row, i) {
+        row.querySelector('input').value = i + 1;
+        row.querySelector('[data-move=up]').disabled = i === 0;
+        row.querySelector('[data-move=down]').disabled = i === all.length - 1;
+      });
+    };
+    const changed = function () {
+      renumber();
+      if (state) state.textContent = 'Unsaved changes';
+    };
+    list.querySelectorAll('[data-move]').forEach(function (button) {
+      button.hidden = false;
+      button.addEventListener('click', function () {
+        const row = button.closest('[data-arrange-row]');
+        if (button.dataset.move === 'up' && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling);
+        if (button.dataset.move === 'down' && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row);
+        changed();
+        button.focus();
+      });
+    });
+    list.querySelectorAll('[data-arrange-row] input').forEach(function (input) {
+      input.addEventListener('change', function () {
+        const row = input.closest('[data-arrange-row]');
+        const others = rows().filter(function (r) { return r !== row; });
+        const target = Math.min(Math.max(parseInt(input.value, 10) || 1, 1), others.length + 1);
+        list.insertBefore(row, others[target - 1] || null);
+        changed();
+      });
+    });
+    renumber();
+  }
+
+  // Drop zone of the snippet import: a dropped file goes into the hidden file input, the chosen file is named.
+  document.querySelectorAll('[data-drop]').forEach(function (zone) {
+    const input = zone.querySelector('input[type=file]');
+    const main = zone.querySelector('.drop-main');
+    const sub = zone.querySelector('.drop-sub');
+    const show = function () {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      zone.classList.add('has');
+      main.textContent = file.name;
+      sub.textContent = (file.size / 1024).toFixed(1) + ' KiB, click to choose another';
+    };
+    input.addEventListener('change', show);
+    ['dragenter', 'dragover'].forEach(function (name) {
+      zone.addEventListener(name, function (event) { event.preventDefault(); zone.classList.add('over'); });
+    });
+    ['dragleave', 'drop'].forEach(function (name) {
+      zone.addEventListener(name, function (event) { event.preventDefault(); zone.classList.remove('over'); });
+    });
+    zone.addEventListener('drop', function (event) {
+      if (!event.dataTransfer || event.dataTransfer.files.length === 0) return;
+      input.files = event.dataTransfer.files;
+      show();
+    });
+  });
+
   // Snippet import preview: the choice for existing snippets ticks or unticks every row that would replace one.
   document.querySelectorAll('input[data-import-conflicts]').forEach(function (radio) {
     radio.addEventListener('change', function () {

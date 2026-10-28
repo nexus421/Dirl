@@ -5,6 +5,7 @@ import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.config.AppConfig
 import bayern.kickner.dirl.config.OidcConfig
 import bayern.kickner.dirl.createDirl
+import bayern.kickner.dirl.dev.DelayProxy
 import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.PinnedHostKey
 import bayern.kickner.dirl.vault.SshKey
@@ -14,6 +15,7 @@ import bayern.kickner.dirl.web.dirlModule
 import bayern.kickner.dirl.web.deleteEntry
 import bayern.kickner.dirl.web.listDirectory
 import bayern.kickner.dirl.web.listEntries
+import bayern.kickner.dirl.web.roundTripText
 import bayern.kickner.dirl.web.writeAtomically
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
@@ -55,6 +57,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -234,6 +238,48 @@ class SshIntegrationTest {
             assertEquals(ConnectionState.Idle, dirl.connections.state(host.id))
             assertTrue(dirl.metrics.latest(host.id) == null && dirl.metrics.polled(host.id).not(), "stale values are forgotten")
             assertTrue(proxy.awaitIdle(), "nobody is present, the connection must be closed")
+        }
+    }
+
+    @Test
+    fun `every poll measures the round trip, of a pure jump host too, and the overview row shows it`(): Unit = testApplication {
+        val near = sshd()
+        val far = sshd()
+        val key = newKey()
+        // 60 ms each way, so the round trip is at least 120 ms and the row turns yellow.
+        DelayProxy(far.port, delayMillis = 60).use { slow ->
+            val jump = addHost("near", near.port, key.id, pin = PinnedHostKey("ssh-ed25519", near.hostKeyFingerprint, now), jumpOnly = true)
+            val remote = addHost("far", slow.port, key.id, pin = PinnedHostKey("ssh-ed25519", far.hostKeyFingerprint, now))
+            near.authorize(authorizedKeysLine(jump, key, dirl.vault.content!!.hosts, "127.0.0.1"))
+            far.authorize("restrict,pty,from=\"127.0.0.1\" ${key.publicKey} dirl")
+            application { dirlModule(dirl) }
+            val cookie = "$SESSION_COOKIE=${dirl.sessions.create(actor).token}"
+            val client = createClient { followRedirects = false }
+
+            val page = dirl.presence.hold {
+                withContext(Dispatchers.IO) { dirl.metrics.round(this) }
+                client.get("/") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+            }
+            val local = assertNotNull(dirl.metrics.latencyMillis(jump.id), "a pure jump host is measured as well")
+            assertTrue(local < 50, "loopback: $local ms")
+            val delayed = assertNotNull(dirl.metrics.latencyMillis(remote.id))
+            assertTrue(delayed >= 120 && delayed < 2_000, "through the delay: $delayed ms")
+
+            fun row(name: String) = page.split("class=\"host-row ").drop(1).first { it.contains(">$name</a>") }
+            assertTrue(row("far").startsWith("warn") && row("far").contains("<div class=\"host-ping warn\"") && row("far").contains(">${roundTripText(delayed)}<"), row("far"))
+            assertTrue(row("near").startsWith("ok") && row("near").contains("<div class=\"host-ping ok\""), row("near"))
+            assertTrue(row("far").contains(">CPU<"), "the slow host still has its metrics")
+
+            // A closed connection answers nothing.
+            val connection = (dirl.connections.connection(remote.id) as ResultOf2.Success).value
+            connection.disconnect()
+            assertNull(roundTripMillis(connection))
+
+            // Nobody is there any more: the round trips are forgotten like the samples.
+            now += 31_000
+            withContext(Dispatchers.IO) { dirl.metrics.round(this) }
+            assertNull(dirl.metrics.latencyMillis(jump.id))
+            assertNull(dirl.metrics.latencyMillis(remote.id))
         }
     }
 

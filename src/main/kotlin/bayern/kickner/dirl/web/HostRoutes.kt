@@ -25,9 +25,11 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import kotlinx.html.ButtonType
 import kotlinx.html.FlowContent
 import kotlinx.html.FormMethod
 import kotlinx.html.a
+import kotlinx.html.button
 import kotlinx.html.checkBoxInput
 import kotlinx.html.code
 import kotlinx.html.div
@@ -74,20 +76,25 @@ private const val FAST_PARAM = "wait"
 /**
  * Host overview, detail page and editing.
  *
- * - `GET /?tag=` overview as cards with connection state and the latest metrics, reloaded every minute, every
+ * - `GET /?tag=` overview as rows with connection state, round trip and the latest metrics, pinned hosts on top,
+ *   in the order of the vault, reloaded every minute, every
  *   [FAST_REFRESH_SECONDS] while hosts are still connecting (see [waitingForStatus]).
  * - `GET /hosts/new`, `POST /hosts` add a host.
  * - `GET /hosts/{id}` details: connection, host key, `authorized_keys` line, latest metrics, disks.
  * - `GET /hosts/{id}/edit`, `POST /hosts/{id}` edit, `POST /hosts/{id}/delete` delete.
  * - `POST /hosts/{id}/connect` resets the backoff and connects now.
  * - `POST /hosts/{id}/pin` confirms the offered host key, `POST /hosts/{id}/forget-key` removes the pin.
+ * - `POST /hosts/{id}/pinned` pins a host to the top of the overview or takes it off again.
+ * - `GET /hosts/arrange`, `POST /hosts/arrange` change the order of the overview.
  */
 fun Route.hostRoutes(dirl: Dirl) {
     get("/") {
         val content = dirl.vault.content ?: return@get call.respondRedirect("/unlock")
         val tag = call.request.queryParameters["tag"]?.takeIf { it.isNotBlank() }
         val allTags = content.hosts.flatMap { it.tags }.distinct().sorted()
-        val hosts = content.hosts.filter { tag == null || tag in it.tags }.sortedBy { it.name.lowercase() }
+        // The order of the vault is the order of the overview, "Arrange hosts" changes it.
+        val hosts = content.hosts.filter { tag == null || tag in it.tags }
+        val (pinned, others) = hosts.partition { it.pinned }
 
         // The automatic reload carries AUTO_REFRESH_PARAM, so it does not count as activity for the idle timeout.
         // While hosts are still connecting it comes faster, at most MAX_FAST_REFRESHES times in a row: a host that
@@ -102,6 +109,7 @@ fun Route.hostRoutes(dirl: Dirl) {
         val seconds = if (fast) FAST_REFRESH_SECONDS else 60
         call.page("Hosts", call.session, Nav.HOSTS, refresh = "$seconds; url=$reloadUrl") {
             pageHeader("Hosts", if (content.hosts.isEmpty()) null else "${content.hosts.size} host(s), status refreshes every minute") {
+                if (content.hosts.size > 1) linkButton("/hosts/arrange", "Arrange")
                 linkButton("/hosts/new", "Add host", "primary")
             }
             if (content.hosts.isEmpty()) return@page gettingStarted(content)
@@ -111,9 +119,14 @@ fun Route.hostRoutes(dirl: Dirl) {
                 a(href = "/", classes = if (tag == null) "chip active" else "chip") { +"All" }
                 allTags.forEach { t -> a(href = "/?tag=${URLEncoder.encode(t, Charsets.UTF_8)}", classes = if (t == tag) "chip active" else "chip") { +"#$t" } }
             }
-            div("host-grid") {
-                hosts.forEach { host -> hostCard(dirl, content, host) }
+            if (pinned.isNotEmpty()) {
+                div("host-group") { span("icon icon-pin") { }; +"Pinned" }
+                div("host-list") { pinned.forEach { hostRow(dirl, content, it, tag) } }
             }
+            // The divider only appears when there is something to tell apart.
+            if (pinned.isNotEmpty() && others.isNotEmpty()) div("host-group") { +"Other hosts" }
+            if (others.isNotEmpty()) div("host-list") { others.forEach { hostRow(dirl, content, it, tag) } }
+            if (hosts.isEmpty()) notice("info", "No host has this tag.")
         }
     }
 
@@ -134,6 +147,35 @@ fun Route.hostRoutes(dirl: Dirl) {
                 call.respondRedirect("/hosts/${parsed.value.id}?done=host-added")
             }
         }
+    }
+
+    get("/hosts/arrange") {
+        val content = dirl.vault.content ?: return@get
+        call.arrangePage(content.hosts, null)
+    }
+
+    post("/hosts/arrange") {
+        val content = dirl.vault.content ?: return@post
+        val form = call.receiveParameters()
+        val order = when (val parsed = parseArrangeForm(form, content.hosts)) {
+            is ResultOf2.Success -> parsed.value
+            is ResultOf2.Failure -> return@post call.arrangePage(content.hosts, parsed.value)
+        }
+        // Applied to the hosts at this moment: one added in between keeps its place relative to the others.
+        dirl.vault.update { c -> c.copy(hosts = arrangeHosts(c.hosts, order)) }
+        dirl.audit.record(call.session.actor, AuditAction.HOSTS_ARRANGED, detail = "${order.size} hosts")
+        call.respondRedirect("/?done=hosts-arranged")
+    }
+
+    post("/hosts/{id}/pinned") {
+        val (_, host) = hostOr404(dirl) ?: return@post
+        val form = call.receiveParameters()
+        val pinned = form["pinned"] == "true"
+        dirl.vault.update { c -> c.copy(hosts = c.hosts.map { if (it.id == host.id) it.copy(pinned = pinned) else it }) }
+        dirl.audit.record(call.session.actor, AuditAction.HOST_UPDATED, host.name, if (pinned) "pinned" else "unpinned")
+        // Back to the overview as it was, with its tag filter. Only a tag that exists goes into the URL.
+        val tag = form["tag"]?.takeIf { t -> dirl.vault.content?.hosts?.any { t in it.tags } == true }
+        call.respondRedirect(if (tag == null) "/" else "/?tag=" + URLEncoder.encode(tag, Charsets.UTF_8))
     }
 
     get("/hosts/{id}") {
@@ -348,6 +390,7 @@ fun parseHostForm(form: Parameters, existing: Host?, content: VaultContent): Res
         jumpOnly = form["jumpOnly"] == "on",
         pinnedHostKey = if (endpointChanged) null else existing?.pinnedHostKey,
         sourceAddressForTargets = sourceAddressForTargets,
+        pinned = existing?.pinned ?: false,
         overview = overview,
     )
 
@@ -380,52 +423,170 @@ private fun FlowContent.gettingStarted(content: VaultContent) = card {
     }
 }
 
-private fun FlowContent.hostCard(dirl: Dirl, content: VaultContent, host: Host) = div("card host-card") {
+/**
+ * How a host row looks: the color of its status bar and its icon.
+ *
+ * @property css The class of the row and the name of the icon.
+ */
+enum class Health(val css: String) { OK("ok"), WARN("warn"), ERROR("error"), PENDING("pending") }
+
+/**
+ * The health of a host row. Red without a connection, grey while connecting, yellow when [attention] is needed (a
+ * warning or a critical value), the round trip is [SLOW_ROUND_TRIP_MILLIS] or more, or a host key waits for its
+ * confirmation. Green otherwise.
+ */
+fun healthOf(state: ConnectionState, attention: Boolean, latency: Double?): Health = when (state) {
+    is ConnectionState.Failed, is ConnectionState.AuthFailed, is ConnectionState.Stopped, is ConnectionState.HostKeyMismatch -> Health.ERROR
+    ConnectionState.Idle, ConnectionState.Connecting -> Health.PENDING
+    is ConnectionState.HostKeyUnknown -> Health.WARN
+    is ConnectionState.Connected -> if (attention || (latency ?: 0.0) >= SLOW_ROUND_TRIP_MILLIS) Health.WARN else Health.OK
+}
+
+/** Round trip in milliseconds from which the ping turns yellow. */
+const val SLOW_ROUND_TRIP_MILLIS = 100.0
+
+/** Metric value in percent from which a host row turns yellow. */
+private const val CRITICAL_PERCENT = 90.0
+
+/**
+ * One row of the overview: status bar with pin button, name with warnings and tags, bars, further values, round trip
+ * and actions. The name is the link to the host page, its click area covers the whole row (CSS), the buttons lie on
+ * top of it.
+ *
+ * The color comes from [healthOf]: a warning chosen for the overview or a bar at [CRITICAL_PERCENT] or more needs
+ * attention.
+ */
+private fun FlowContent.hostRow(dirl: Dirl, content: VaultContent, host: Host, tag: String?) {
     val state = dirl.connections.state(host.id)
-    val sample = dirl.metrics.latest(host.id)
-    div("title") {
-        a(href = "/hosts/${host.id}") { +host.name }
-        statePill(state)
-    }
-    div("addr") {
-        +"${host.username}@${host.address}:${host.port}"
-        host.jumpHostId?.let { content.host(it) }?.let { +" via ${it.name}" }
-    }
-    if (host.tags.isNotEmpty() || host.jumpOnly) div("chips") {
-        if (host.jumpOnly) span("chip") { +"jump host" }
-        host.tags.forEach { span("chip") { +"#$it" } }
-    }
-    if (sample != null && host.jumpOnly.not()) overviewMetrics(host.overview, sample)
-    div("btn-row") {
-        if (host.jumpOnly.not()) {
-            linkButton("/hosts/${host.id}/terminal", "Terminal", "primary sm")
-            linkButton("/hosts/${host.id}/files", "Files", "sm")
+    val sample = dirl.metrics.latest(host.id)?.takeIf { host.jumpOnly.not() }
+    val latency = dirl.metrics.latencyMillis(host.id)?.takeIf { state is ConnectionState.Connected }
+    val warnings = buildList {
+        when (state) {
+            is ConnectionState.AuthFailed, is ConnectionState.Stopped, is ConnectionState.HostKeyMismatch -> add("error" to stateLabel(state))
+            is ConnectionState.HostKeyUnknown -> add("warn" to stateLabel(state))
+            else -> Unit
         }
-        linkButton("/hosts/${host.id}", "Details", "ghost sm")
+        if (sample != null) overviewWarnings(host.overview, sample).forEach { add("warn" to it) }
+    }
+    val critical = sample != null && overviewPercents(host.overview, sample).any { it >= CRITICAL_PERCENT }
+    val health = healthOf(state, warnings.isNotEmpty() || critical, latency)
+
+    div("host-row ${health.css}") {
+        div("host-status") {
+            span("icon status-icon icon-${health.css}") {
+                attributes["role"] = "img"
+                attributes["aria-label"] = stateLabel(state)
+                title = stateLabel(state)
+            }
+            form(action = "/hosts/${host.id}/pinned", method = FormMethod.post, classes = "pin-form") {
+                hiddenInput(name = "pinned") { value = host.pinned.not().toString() }
+                if (tag != null) hiddenInput(name = "tag") { value = tag }
+                button(type = ButtonType.submit, classes = if (host.pinned) "pin-toggle on" else "pin-toggle") {
+                    val label = if (host.pinned) "Unpin ${host.name}" else "Pin ${host.name} to the top"
+                    title = label
+                    attributes["aria-label"] = label
+                    span("icon icon-pin") { }
+                }
+            }
+        }
+        div("host-main") {
+            a(href = "/hosts/${host.id}", classes = "host-name") { +host.name }
+            if (warnings.isNotEmpty()) div("host-warnings") { warnings.forEach { (kind, text) -> span("pill $kind") { +text } } }
+            if (host.tags.isNotEmpty() || host.jumpOnly) div("host-tags") {
+                if (host.jumpOnly) span("tag plain") { +"jump host" }
+                host.tags.forEach { t -> span("tag") { style = "--tag-h:${tagHue(t)}"; +t } }
+            }
+        }
+        div("host-meters") { if (sample != null) overviewBars(host.overview, sample) else span("muted") { +"–" } }
+        div("host-facts") {
+            val facts = when {
+                host.jumpOnly -> listOf(content.hosts.filter { it.jumpHostId == host.id }.joinToString { it.name }.let { if (it.isEmpty()) "Jump host, nothing behind it yet" else "Jump host for $it" })
+                state is ConnectionState.Failed -> listOf(describe(state), "Next try ${formatTimestamp(state.retryAt)}")
+                state is ConnectionState.AuthFailed -> listOf("Next try ${formatTimestamp(state.retryAt)}")
+                sample != null -> overviewFacts(host.overview, sample)
+                else -> emptyList()
+            }
+            if (facts.isNotEmpty()) div("facts") { facts.forEach { span { +it } } }
+        }
+        pingCell(state, latency)
+        div("host-actions") {
+            when {
+                health == Health.ERROR -> postButton("/hosts/${host.id}/connect", "Connect now", "sm")
+                state is ConnectionState.HostKeyUnknown -> linkButton("/hosts/${host.id}", "Confirm key", "primary sm")
+                host.jumpOnly -> Unit
+                else -> {
+                    linkButton("/hosts/${host.id}/terminal", "Terminal", "primary sm")
+                    linkButton("/hosts/${host.id}/files", "Files", "sm")
+                }
+            }
+        }
     }
 }
 
-/** The values of [sample] that [chosen] asks for: warnings, then bars, then short facts. */
-private fun FlowContent.overviewMetrics(chosen: Set<OverviewMetric>, sample: MetricsSample) {
-    val raw = sample.raw
-    val warnings = buildList {
-        // An unknown reboot status is not shown: it is unknown in every container, it would be on every such card.
-        // The host page says it.
-        if (OverviewMetric.REBOOT in chosen && raw.reboot?.needed == true) add("Reboot needed")
-        val failed = raw.failedUnits.orEmpty()
-        if (OverviewMetric.FAILED_SERVICES in chosen && failed.isNotEmpty()) add(
+/** Signal bars and the round trip, green below [SLOW_ROUND_TRIP_MILLIS], then yellow, red without connection. */
+private fun FlowContent.pingCell(state: ConnectionState, latency: Double?) {
+    val (level, kind, text) = when {
+        latency != null -> Triple(
             when {
-                failed.size >= MAX_FAILED_UNITS -> "At least $MAX_FAILED_UNITS failed services"
-                failed.size == 1 -> "1 failed service"
-                else -> "${failed.size} failed services"
+                latency < 50 -> 4
+                latency < SLOW_ROUND_TRIP_MILLIS -> 3
+                latency < 200 -> 2
+                else -> 1
             },
+            if (latency < SLOW_ROUND_TRIP_MILLIS) "ok" else "warn",
+            roundTripText(latency),
         )
+        // Reachable, only the key is not confirmed yet.
+        state is ConnectionState.Connected || state is ConnectionState.HostKeyUnknown -> Triple(0, "", "–")
+        state == ConnectionState.Idle || state == ConnectionState.Connecting -> Triple(0, "", "connecting")
+        else -> Triple(0, "error", "offline")
     }
-    if (warnings.isNotEmpty()) div("chips") { warnings.forEach { span("pill warn") { +it } } }
+    div("host-ping $kind".trim()) {
+        title = "Round trip from Dirl to the host over SSH"
+        span("signal lvl-$level") { repeat(4) { span { } } }
+        span("ms") { +text }
+    }
+}
 
+/** A round trip for the overview: `<1 ms` on a local network, whole milliseconds from 1 ms on. */
+fun roundTripText(millis: Double): String = if (millis < 1) "<1 ms" else "${millis.roundToInt()} ms"
+
+/**
+ * A stable hue for [tag], so the same tag has the same color everywhere without anybody choosing one.
+ * `String.hashCode` is specified, so the color does not change between versions or machines.
+ */
+fun tagHue(tag: String): Int = Math.floorMod(tag.lowercase().hashCode(), 360)
+
+/** The overview warnings of [sample] that [chosen] asks for. */
+private fun overviewWarnings(chosen: Set<OverviewMetric>, sample: MetricsSample): List<String> = buildList {
+    val raw = sample.raw
+    // An unknown reboot status is not shown: it is unknown in every container, it would be on every such row.
+    // The host page says it.
+    if (OverviewMetric.REBOOT in chosen && raw.reboot?.needed == true) add("Reboot needed")
+    val failed = raw.failedUnits.orEmpty()
+    if (OverviewMetric.FAILED_SERVICES in chosen && failed.isNotEmpty()) add(
+        when {
+            failed.size >= MAX_FAILED_UNITS -> "At least $MAX_FAILED_UNITS failed services"
+            failed.size == 1 -> "1 failed service"
+            else -> "${failed.size} failed services"
+        },
+    )
+}
+
+/** The percentages the bars of [chosen] show, to tell whether one is critical. */
+private fun overviewPercents(chosen: Set<OverviewMetric>, sample: MetricsSample): List<Double> = buildList {
+    val disks = sample.disks.filter { it.totalKiB > 0 }.map { it.usedKiB * 100.0 / it.totalKiB }
+    if (OverviewMetric.CPU in chosen) sample.cpuPercent?.let { add(it) }
+    if (OverviewMetric.RAM in chosen) percentOf(sample.memUsedKiB, sample.memTotalKiB)?.let { add(it) }
+    if (OverviewMetric.SWAP in chosen) percentOf(sample.swapUsedKiB, sample.swapTotalKiB)?.let { add(it) }
+    if (OverviewMetric.DISK in chosen || OverviewMetric.DISKS in chosen) disks.maxOrNull()?.let { add(it) }
+}
+
+/** The bars of [sample] that [chosen] asks for. */
+private fun FlowContent.overviewBars(chosen: Set<OverviewMetric>, sample: MetricsSample) {
     val bars = setOf(OverviewMetric.CPU, OverviewMetric.RAM, OverviewMetric.SWAP, OverviewMetric.DISK, OverviewMetric.DISKS)
     val disks = sample.disks.filter { it.totalKiB > 0 }
-    // With mount points as labels every bar of the card gets the wide label column, so the bars line up.
+    // With mount points as labels every bar of the row gets the wide label column, so the bars line up.
     val wide = OverviewMetric.DISKS in chosen
     if (chosen.any { it in bars }) div("meters") {
         if (OverviewMetric.CPU in chosen) meter("CPU", sample.cpuPercent, wide)
@@ -437,23 +598,24 @@ private fun FlowContent.overviewMetrics(chosen: Set<OverviewMetric>, sample: Met
         }
         if (wide) disks.forEach { meter(it.mount, percentOf(it.usedKiB, it.totalKiB), wide = true) }
     }
+}
 
-    val facts = buildList {
-        if (OverviewMetric.SWAP in chosen && sample.swapTotalKiB == 0L) add("No swap")
-        if (OverviewMetric.LOAD in chosen) add("Load ${loads(raw.load1, raw.load5, raw.load15, " ")}" + (raw.cores?.let { " · ${cores(it)}" } ?: ""))
-        if (OverviewMetric.UPTIME in chosen) add("Up ${uptime(sample.uptimeSeconds)}")
-        if (OverviewMetric.FAILED_SERVICES in chosen && raw.failedUnits == null) add("Services unknown")
-        if (OverviewMetric.ZRAM in chosen) add(
-            when (val z = raw.zram) {
-                null -> "No zram"
-                else -> if (z.origBytes < ZRAM_NEARLY_EMPTY_BYTES) "zram on, nearly empty"
-                else "zram ${bytes(z.origBytes)} in ${bytes(z.memUsedBytes)} RAM" + (zramFactor(z)?.let { " ($it)" } ?: "")
-            },
-        )
-        if (OverviewMetric.SYSTEM in chosen) listOfNotNull(raw.osName, raw.kernel).takeIf { it.isNotEmpty() }?.let { add(it.joinToString(" · ")) }
-        if (OverviewMetric.USERS in chosen) raw.loggedInUsers?.let { add("$it logged in") }
-    }
-    if (facts.isNotEmpty()) div("facts") { facts.forEach { span { +it } } }
+/** The short facts of [sample] that [chosen] asks for. */
+private fun overviewFacts(chosen: Set<OverviewMetric>, sample: MetricsSample): List<String> = buildList {
+    val raw = sample.raw
+    if (OverviewMetric.SWAP in chosen && sample.swapTotalKiB == 0L) add("No swap")
+    if (OverviewMetric.LOAD in chosen) add("Load ${loads(raw.load1, raw.load5, raw.load15, " ")}" + (raw.cores?.let { " · ${cores(it)}" } ?: ""))
+    if (OverviewMetric.UPTIME in chosen) add("Up ${uptime(sample.uptimeSeconds)}")
+    if (OverviewMetric.FAILED_SERVICES in chosen && raw.failedUnits == null) add("Services unknown")
+    if (OverviewMetric.ZRAM in chosen) add(
+        when (val z = raw.zram) {
+            null -> "No zram"
+            else -> if (z.origBytes < ZRAM_NEARLY_EMPTY_BYTES) "zram on, nearly empty"
+            else "zram ${bytes(z.origBytes)} in ${bytes(z.memUsedBytes)} RAM" + (zramFactor(z)?.let { " ($it)" } ?: "")
+        },
+    )
+    if (OverviewMetric.SYSTEM in chosen) listOfNotNull(raw.osName, raw.kernel).takeIf { it.isNotEmpty() }?.let { add(it.joinToString(" · ")) }
+    if (OverviewMetric.USERS in chosen) raw.loggedInUsers?.let { add("$it logged in") }
 }
 
 /** A bar with [label]. [wide] leaves room for a mount point as label, cut with an ellipsis and complete as tooltip. */
@@ -465,8 +627,22 @@ private fun FlowContent.meter(label: String, percent: Double?, wide: Boolean = f
         percent >= 75 -> " high"
         else -> ""
     }
-    div("bar$level") { span { style = "--v:${(percent ?: 0.0).roundToInt()}%" } }
+    // --p scales the fixed green to red gradient, so the end of the bar shows the color of its value.
+    val rounded = (percent ?: 0.0).roundToInt().coerceIn(0, 100)
+    div("bar$level") { span { style = "--v:$rounded%;--p:${rounded.coerceAtLeast(1)}" } }
     span("val") { +(percent?.let { "${it.roundToInt()}%" } ?: "...") }
+}
+
+/** The connection state in a few words, for the status icon and the warnings of a row. */
+private fun stateLabel(state: ConnectionState): String = when (state) {
+    is ConnectionState.Connected -> "online"
+    ConnectionState.Idle -> "idle"
+    ConnectionState.Connecting -> "connecting"
+    is ConnectionState.Failed -> "unreachable"
+    is ConnectionState.AuthFailed -> "login rejected"
+    is ConnectionState.Stopped -> "stopped"
+    is ConnectionState.HostKeyUnknown -> "confirm host key"
+    is ConnectionState.HostKeyMismatch -> "host key changed"
 }
 
 private fun FlowContent.statePill(state: ConnectionState) = pill(
@@ -476,16 +652,7 @@ private fun FlowContent.statePill(state: ConnectionState) = pill(
         is ConnectionState.Failed, is ConnectionState.AuthFailed, is ConnectionState.HostKeyUnknown -> "warn"
         is ConnectionState.Stopped, is ConnectionState.HostKeyMismatch -> "error"
     },
-    when (state) {
-        is ConnectionState.Connected -> "online"
-        ConnectionState.Idle -> "idle"
-        ConnectionState.Connecting -> "connecting"
-        is ConnectionState.Failed -> "unreachable"
-        is ConnectionState.AuthFailed -> "login rejected"
-        is ConnectionState.Stopped -> "stopped"
-        is ConnectionState.HostKeyUnknown -> "confirm host key"
-        is ConnectionState.HostKeyMismatch -> "host key changed"
-    },
+    stateLabel(state),
 )
 
 private fun FlowContent.connectionHint(state: ConnectionState) {
@@ -596,7 +763,9 @@ private fun FlowContent.meterBar(percent: Double?) {
         percent >= 75 -> " high"
         else -> ""
     }
-    div("bar$level") { span { style = "--v:${(percent ?: 0.0).roundToInt()}%" } }
+    // --p scales the fixed green to red gradient, so the end of the bar shows the color of its value.
+    val rounded = (percent ?: 0.0).roundToInt().coerceIn(0, 100)
+    div("bar$level") { span { style = "--v:$rounded%;--p:${rounded.coerceAtLeast(1)}" } }
     span("val") { +(percent?.let { "${it.roundToInt()}%" } ?: "") }
 }
 

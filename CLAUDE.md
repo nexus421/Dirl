@@ -25,7 +25,8 @@ Use the Gradle wrapper.
 ```
 
 `devRun` starts Dirl on `http://localhost:18080` with the mock OIDC provider from the test sources (port 18081),
-data in `build/dev`. `.claude/launch.json` has it as `dirl-dev` for the browser preview.
+data in `build/dev`. `demoRun` starts it on port 18090 with demo hosts on local sshd instances, see
+docs/development.md. `.claude/launch.json` has them as `dirl-dev` and `dirl-demo` for the browser preview.
 
 ```bash
 DIRL_SSHD_ROOT=/path/to/unpacked/openssh-server ./gradlew test

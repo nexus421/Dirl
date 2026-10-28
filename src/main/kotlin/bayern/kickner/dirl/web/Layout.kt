@@ -70,6 +70,7 @@ private val flashMessages = mapOf(
     "host-added" to "Host added. Put the authorized_keys line on the server, then connect.",
     "host-saved" to "Host saved.",
     "host-deleted" to "Host deleted.",
+    "hosts-arranged" to "Order saved.",
     "pinned" to "Host key pinned.",
     "pin-removed" to "Pinned host key removed.",
     "key-generated" to "Key generated.",
