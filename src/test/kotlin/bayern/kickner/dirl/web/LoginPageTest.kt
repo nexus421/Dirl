@@ -51,6 +51,25 @@ class LoginPageTest {
     }
 
     @Test
+    fun `the styles of the scan stay on the login and leave the terminal bar alone`() {
+        val css = javaClass.getResource("/static/app.css")!!.readText().replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
+        // Selector lists of every rule, also inside @media.
+        val rules = Regex("([^{}]+)\\{([^{}]*)\\}").findAll(css).map { it.groupValues[1].trim() to it.groupValues[2] }.toList()
+        val scanClasses = listOf("term-line", "term-ok", "term-accent", "term-muted", "term-name", "term-type", "scan-bar", "term-scan", "term-found", "term-cursor")
+        rules.forEach { (selectors, _) ->
+            selectors.split(',').map { it.trim() }.forEach { selector ->
+                scanClasses.filter { Regex("\\.$it\\b").containsMatchIn(selector) }.forEach { cls ->
+                    assertTrue(selector.startsWith(".login-term "), "$cls outside the login: $selector")
+                }
+            }
+        }
+        // The bar above the terminal: a flex row, never the width or the motion of the scan.
+        val termBar = rules.filter { (selectors, _) -> selectors.split(',').any { it.trim() == ".term-bar" } }
+        assertTrue(termBar.isNotEmpty())
+        termBar.forEach { (_, body) -> assertFalse(body.contains("width") || body.contains("animation") || body.contains("inline-block"), body) }
+    }
+
+    @Test
     fun `an unreachable provider is reported on the login page itself`(): Unit = testApplication {
         application { dirlModule(dirl) }
         val response = createClient { followRedirects = false }.get("/auth/start")

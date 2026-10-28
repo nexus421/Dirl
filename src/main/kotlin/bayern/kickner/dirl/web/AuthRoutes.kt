@@ -156,7 +156,7 @@ private suspend fun ApplicationCall.loginPage(error: String?, status: HttpStatus
                     div("term-line term-scan") {
                         attributes["aria-hidden"] = "true"
                         span("term-muted") { +"[" }
-                        span("term-bar") { +"#".repeat(24) }
+                        span("scan-bar") { +"#".repeat(24) }
                         span("term-muted") { +"]" }
                     }
                     LOGIN_FEATURES.forEachIndexed { index, (name, words) ->

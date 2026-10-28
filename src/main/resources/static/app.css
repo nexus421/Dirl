@@ -695,21 +695,22 @@ body::before {
   text-shadow: 0 0 10px rgb(91 141 255 / .55);
   white-space: pre;
 }
-.term-line { white-space: nowrap; }
-.term-ok { color: #3ccf8e; }
-.term-accent { color: #5b8dff; }
-.term-muted { color: #9aa2b1; }
-.term-name { display: inline-block; width: 9ch; margin-left: 1ch; }
+/* Every rule of the scan sits below .login-term: the terminal page has a .term-bar of its own. */
+.login-term .term-line { white-space: nowrap; }
+.login-term .term-ok { color: #3ccf8e; }
+.login-term .term-accent { color: #5b8dff; }
+.login-term .term-muted { color: #9aa2b1; }
+.login-term .term-name { display: inline-block; width: 9ch; margin-left: 1ch; }
 /* Top aligned: an inline block with overflow hidden would put its baseline at the bottom and shift the line. */
-.term-type, .term-bar { display: inline-block; overflow: hidden; vertical-align: top; white-space: nowrap; }
-.term-type { width: 0; animation: term-type .8s steps(9) .25s forwards; }
-.term-bar { width: 0; color: #22d3ee; animation: term-bar 1.4s steps(24) 1.2s forwards; }
-.term-scan, .term-found { opacity: 0; animation: term-show .2s ease forwards; }
-.term-scan { animation-delay: 1.1s; }
-.term-found { animation-delay: calc(2.7s + var(--i) * .3s); }
-.term-cursor { display: inline-block; width: 8px; height: 15px; margin-left: 8px; background: #5b8dff; vertical-align: -2px; animation: term-blink 1s steps(1) infinite; }
+.login-term .term-type, .login-term .scan-bar { display: inline-block; overflow: hidden; vertical-align: top; white-space: nowrap; }
+.login-term .term-type { width: 0; animation: term-type .8s steps(9) .25s forwards; }
+.login-term .scan-bar { width: 0; color: #22d3ee; animation: scan-bar 1.4s steps(24) 1.2s forwards; }
+.login-term .term-scan, .login-term .term-found { opacity: 0; animation: term-show .2s ease forwards; }
+.login-term .term-scan { animation-delay: 1.1s; }
+.login-term .term-found { animation-delay: calc(2.7s + var(--i) * .3s); }
+.login-term .term-cursor { display: inline-block; width: 8px; height: 15px; margin-left: 8px; background: #5b8dff; vertical-align: -2px; animation: term-blink 1s steps(1) infinite; }
 @keyframes term-type { to { width: 9ch; } }
-@keyframes term-bar { to { width: 24ch; } }
+@keyframes scan-bar { to { width: 24ch; } }
 @keyframes term-show { to { opacity: 1; } }
 @keyframes term-blink { 50% { opacity: 0; } }
 .login-panel { position: relative; display: grid; place-items: center; padding: 32px; border-left: 1px solid var(--border); background: var(--surface); overflow: hidden; }
@@ -732,9 +733,9 @@ body::before {
 
 /* No motion when the system asks for it: everything is there right away. */
 @media (prefers-reduced-motion: reduce) {
-  .login::before, .center-card > .card::before, .login-panel::before, .term-cursor { animation: none; }
-  .term-type, .term-bar, .term-scan, .term-found { animation: none; opacity: 1; }
-  .term-type { width: 9ch; }
-  .term-bar { width: 24ch; }
+  .login::before, .center-card > .card::before, .login-panel::before, .login-term .term-cursor { animation: none; }
+  .login-term .term-type, .login-term .scan-bar, .login-term .term-scan, .login-term .term-found { animation: none; opacity: 1; }
+  .login-term .term-type { width: 9ch; }
+  .login-term .scan-bar { width: 24ch; }
 }
 
