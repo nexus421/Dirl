@@ -137,6 +137,11 @@ suspend fun ApplicationCall.page(
             if (refresh != null) meta { httpEquiv = "refresh"; this.content = refresh }
             title("$title | Dirl")
             link(rel = "icon", href = "/static/favicon.svg") { attributes["type"] = "image/svg+xml" }
+            // Installable as an app from the browser menu, without a service worker and so without any cache.
+            link(rel = "manifest", href = "/static/manifest.json")
+            link(rel = "apple-touch-icon", href = "/static/icons/app-180.png")
+            meta(name = "theme-color", content = "#f4f5f7") { attributes["media"] = "(prefers-color-scheme: light)" }
+            meta(name = "theme-color", content = "#0f1115") { attributes["media"] = "(prefers-color-scheme: dark)" }
             link(rel = "stylesheet", href = "/static/app.css")
             assets.filter { it.endsWith(".css") }.forEach { link(rel = "stylesheet", href = it) }
         }

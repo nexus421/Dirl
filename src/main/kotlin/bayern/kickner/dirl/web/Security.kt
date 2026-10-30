@@ -27,10 +27,12 @@ const val LOGIN_COOKIE = "__Host-login"
  * Content Security Policy for every response.
  *
  * `style-src 'unsafe-inline'` is required: xterm.js 6 creates `<style>` elements for its theme and cell metrics and
- * has no nonce support. `script-src` stays strict, no inline scripts and no `eval`.
+ * has no nonce support. `script-src` stays strict, no inline scripts and no `eval`. `manifest-src 'self'` lets the
+ * browser read `/static/manifest.json`, which makes Dirl installable as an app.
  */
 const val CONTENT_SECURITY_POLICY = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-    "img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    "img-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; " +
+    "form-action 'self'"
 
 /** Paths reachable without a session. Everything else requires a login, so a new route is protected by default. */
 private val publicPrefixes = listOf("/login", "/auth/", "/static/", "/healthz")

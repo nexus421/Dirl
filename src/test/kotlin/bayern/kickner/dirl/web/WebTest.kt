@@ -13,6 +13,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.readRawBytes
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.parameters
@@ -21,6 +22,10 @@ import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
@@ -49,6 +54,50 @@ class WebTest {
         // "no-referrer" makes browsers send "Origin: null" on form posts, which the origin check rejects.
         assertEquals("same-origin", response.headers["Referrer-Policy"])
         assertEquals("max-age=31536000", response.headers["Strict-Transport-Security"])
+        assertTrue(CONTENT_SECURITY_POLICY.contains("manifest-src 'self'"), "the browser may load the app manifest")
+    }
+
+    @Test
+    fun `the app manifest and its icons load without a session`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val response = client.get("/static/manifest.json")
+        assertEquals(HttpStatusCode.OK, response.status, "browsers fetch the manifest without cookies")
+        assertTrue(response.headers[HttpHeaders.ContentType]!!.startsWith("application/json"), response.headers.toString())
+        val manifest = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertEquals("Dirl", manifest["name"]?.jsonPrimitive?.content)
+        assertEquals("standalone", manifest["display"]?.jsonPrimitive?.content)
+        assertEquals("/", manifest["start_url"]?.jsonPrimitive?.content)
+        val icons = manifest["icons"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(setOf("192x192", "512x512"), icons.map { it["sizes"]!!.jsonPrimitive.content }.toSet(), "Chromium needs both")
+        (icons.map { it["src"]!!.jsonPrimitive.content to it["sizes"]!!.jsonPrimitive.content } + ("/static/icons/app-180.png" to "180x180")).forEach { (src, sizes) ->
+            val icon = client.get(src)
+            assertEquals(HttpStatusCode.OK, icon.status, src)
+            assertEquals("image/png", icon.headers[HttpHeaders.ContentType], src)
+            assertEquals(sizes, pngSize(icon.readRawBytes()), src)
+        }
+    }
+
+    /** `WIDTHxHEIGHT` from the header of a PNG file. */
+    private fun pngSize(png: ByteArray): String {
+        assertTrue(png.copyOfRange(1, 4).decodeToString() == "PNG", "not a PNG")
+        fun int(at: Int) = (0..3).fold(0) { acc, i -> (acc shl 8) or (png[at + i].toInt() and 0xff) }
+        return "${int(16)}x${int(20)}"
+    }
+
+    @Test
+    fun `every page links the manifest and the home screen icon`(): Unit = testApplication {
+        val unlocked = dirlWithRelease(null)
+        application { dirlModule(unlocked) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${unlocked.sessions.create(Actor("user-1", "Ada")).token}"
+        listOf(client.get("/login"), client.get("/") { header(HttpHeaders.Cookie, cookie) }).forEach { response ->
+            val page = response.bodyAsText()
+            assertEquals(HttpStatusCode.OK, response.status, page)
+            assertTrue(page.contains("<link href=\"/static/manifest.json\" rel=\"manifest\">"), page)
+            assertTrue(page.contains("<link href=\"/static/icons/app-180.png\" rel=\"apple-touch-icon\">"), page)
+            assertTrue(page.contains("<meta name=\"theme-color\""), page)
+        }
     }
 
     /** A Dirl whose update check answers [latest] instead of asking GitHub, counting the questions in [asked]. */
