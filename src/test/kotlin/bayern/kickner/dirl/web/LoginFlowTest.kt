@@ -112,6 +112,32 @@ class LoginFlowTest {
     }
 
     @Test
+    fun `with allowedSubjects only those users may set up the vault`(): Unit = testApplication {
+        val otherDir = Files.createTempDirectory("dirl-bootstrap").toFile()
+        val restricted = createDirl(
+            AppConfig(
+                publicUrl = "https://ssh.example.com",
+                dataDir = otherDir.absolutePath,
+                oidc = OidcConfig(issuer = mock.issuer, clientId = "dirl", clientSecret = mock.clientSecret, allowedSubjects = listOf(ada.sub)),
+            ),
+            otherDir,
+        )
+        application { dirlModule(restricted) }
+        val client = createClient { followRedirects = false }
+
+        // Bob passes the provider but is not on the list, so he gets no session and cannot reach /setup.
+        val (bobStatus, bobCookie) = login(client, bob)
+        assertEquals(HttpStatusCode.Forbidden, bobStatus)
+        assertEquals(null, bobCookie)
+        assertEquals(listOf(bob.sub), restricted.access.requests.map { it.sub })
+
+        val (adaStatus, adaCookie) = login(client, ada)
+        assertEquals(HttpStatusCode.OK, adaStatus)
+        assertNotNull(adaCookie)
+        assertTrue(client.get("/unlock") { header(HttpHeaders.Cookie, adaCookie) }.bodyAsText().contains("Create vault"))
+    }
+
+    @Test
     fun `a wrong client secret creates no session`(): Unit = testApplication {
         val otherDir = Files.createTempDirectory("dirl-secret").toFile()
         val wrong = createDirl(

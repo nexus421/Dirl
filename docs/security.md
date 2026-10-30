@@ -44,7 +44,10 @@ access request.
   Tampering with it gives access to the passphrase prompt and nothing else. It is rewritten on every unlock.
 - Before a vault exists, everybody the provider lets through may create it or restore a backup (first-run
   bootstrap). Whoever restores a backup may reach the unlock page, after the unlock the restored user list decides.
-- `oidc.allowedSubjects` in the config is a break-glass list for the case that nobody in the UI list can log in.
+  A non-empty `oidc.allowedSubjects` closes this window: then only the users on it may create or restore the vault,
+  everybody else ends up as access request.
+- `oidc.allowedSubjects` in the config is a break-glass list for the case that nobody in the UI list can log in. The
+  users on it are always allowed, removing them in the UI does not lock them out.
 - Rejected logins appear under Settings as access requests (in memory, the latest 20).
 - You cannot remove yourself and the last user cannot be removed.
 - There are no roles. Every allowed user can do everything: use all hosts, change hosts, keys and snippets, export

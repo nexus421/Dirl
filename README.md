@@ -49,8 +49,8 @@ java -jar build/libs/dirl.jar config=config.json
 ```
 
 Open `publicUrl`, sign in and create the vault passphrase. The first user becomes the first allowed user, so do this
-right after deployment. Then generate a key, add a host, put the shown `authorized_keys` line on the server and
-confirm its host key fingerprint.
+right after deployment, or limit it with `oidc.allowedSubjects`. Then generate a key, add a host, put the shown
+`authorized_keys` line on the server and confirm its host key fingerprint.
 
 Try it locally without an identity provider:
 

@@ -46,7 +46,8 @@ sealed interface RevokeError {
  *   page. Tampering with the copy only gives access to the passphrase prompt, nothing else, and the copy is
  *   rewritten from the vault on every unlock.
  * - Before the vault exists, every user the provider lets through may set it up (first-run bootstrap). The user who
- *   creates the vault becomes the first allowed user. Set up the vault right after deployment.
+ *   creates the vault becomes the first allowed user. Set up the vault right after deployment. A non-empty
+ *   `oidc.allowedSubjects` closes this window, then only the users on it may set up or restore the vault.
  * - `oidc.allowedSubjects` in the config is a break-glass list that is always allowed.
  *
  * Rejected logins are kept in memory as [requests] (at most [MAX_REQUESTS]) so they can be allowed in the UI.
@@ -75,14 +76,14 @@ class AccessControl(
     /** Rejected logins, newest first. */
     val requests: List<AccessRequest> get() = pending.sortedByDescending { it.time }
 
-    /** True while no vault exists, any user passing the provider may set it up. */
+    /** True while no vault exists. Any user passing the provider may set it up, or only `oidc.allowedSubjects` if set. */
     val isBootstrap: Boolean get() = vault.state == VaultState.Uninitialized
 
     /** True if [sub] may use Dirl right now. */
     fun isAllowed(sub: String): Boolean {
         if (sub in config.allowedSubjects) return true
         return when (val state = vault.state) {
-            VaultState.Uninitialized -> true
+            VaultState.Uninitialized -> config.allowedSubjects.isEmpty()
             VaultState.Sealed -> readMirror().any { it.sub == sub }
             is VaultState.Unlocked -> state.content.settings.allowedUsers.any { it.sub == sub }
         }

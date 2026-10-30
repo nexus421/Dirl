@@ -71,7 +71,8 @@ fun main(args: Array<String>) {
 
     val dirl = createDirl(config, dataDir, latestRelease = ::fetchLatestRelease)
     if (dirl.access.isBootstrap) {
-        staticLog(KLogger.Level.WARN, TAG) { "No vault yet. The first user the identity provider lets through can create it. Do that now." }
+        val who = if (config.oidc.allowedSubjects.isEmpty()) "The first user the identity provider lets through" else "A user from oidc.allowedSubjects"
+        staticLog(KLogger.Level.WARN, TAG) { "No vault yet. $who can create it. Do that now." }
     }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     dirl.metrics.start(scope)
