@@ -6,14 +6,52 @@
 |-----------|--------------------------------------------------------------------------------------------------------------------------|
 | Hosts     | One row per host: a status bar in green, yellow (a warning, a value at 90 % or more, a round trip of 100 ms or more, a host key to confirm) or red (no connection), warnings and tags below the name, the values chosen per host (CPU, RAM and fullest disk by default, also swap, every disk, load with cores, uptime, reboot needed, failed services, zram, system and kernel, logged in users), the SSH round trip and Terminal and Files. A click on the row opens the host. Pin hosts to the top, change the order under "Arrange", filter by tag. Add, edit, delete, connect now. A host can be marked "jump host only", a jump host takes the address the hosts behind it see it coming from |
 | Host      | Connection details, host key confirmation and pin removal, the restricted `authorized_keys` line with copy button, every value of the latest poll, disks |
-| Terminal  | xterm.js with resize, snippet buttons (`⏎` runs on the click, `{ }` asks for values first, an unmarked one shows its command with Send and Cancel), a key bar with Ctrl, Esc, Tab, arrows on touch devices, Enter reloads after a disconnect. While connected, the browser asks before leaving the page (also on Ctrl+W), because leaving ends the shell. Run long jobs in `tmux` or `screen` |
+| Terminal  | xterm.js with resize, snippet buttons (`⏎` runs on the click, `{ }` asks for values first, an unmarked one shows its command with Send and Cancel), a key bar with Ctrl, Esc, Tab, arrows on touch devices, Enter reloads after a disconnect. While connected, the browser asks before leaving the page (also on Ctrl+W), because leaving ends the shell. An Actions mode for phones without the keyboard, see below. Run long jobs in `tmux` or `screen` |
 | Files     | Breadcrumbs, path input, download, upload with progress (existing files only with "Overwrite existing files"), new directory, rename or move, delete. There is no editor, files are changed in the terminal. Symlinks are marked with →, they open, download and get overwritten like their target, deleting one removes only the link |
 | Keys      | Generate Ed25519 or import on top, below one folded row per key with fingerprint and use (a new key opens right after it was added). Rename, export after entering the passphrase again, delete unused keys |
-| Snippets  | Add, edit, delete, "run immediately" or "asks first" (a click shows the command above the terminal with Send and Cancel, Enter sends), optional folder: each folder is a menu above the terminal and a folded group on this page, the one just changed opens. Placeholders like `{{Container}}` are asked for before sending, see below. Export all as JSON, import a dropped, chosen or pasted file with a preview, see below |
+| Snippets  | Ready-made tmux snippets, see below. Add, edit, delete, "run immediately" or "asks first" (a click shows the command above the terminal with Send and Cancel, Enter sends), optional folder: each folder is a menu above the terminal and a folded group on this page, the one just changed opens. Placeholders like `{{Container}}` are asked for before sending, see below. Export all as JSON, import a dropped, chosen or pasted file with a preview, see below |
 | Audit     | The latest entries, filterable                                                                                           |
 | Settings  | Access requests, allowed users, active sessions (end any), Dirl's source address (several separated by commas, or no restriction at all), update check (on or off, latest release, a newer one shows in the footer of every page), passphrase change, encrypted backup download, seal now |
 | Login     | A terminal that types `dirl scan` and lists what Dirl does, next to the sign in through the identity provider. The motion runs once and stops with the system setting for reduced motion |
 | Setup     | Create the vault, or restore an encrypted backup                                                                         |
+
+## Actions mode
+
+The terminal page has two modes, the button in the terminal bar switches between them without a reload and names
+the other one: "Actions" or "Classic terminal".
+
+- Classic terminal: the keyboard types into the shell, snippets sit in the bar above the terminal.
+- Actions: for a phone or tablet in an emergency, restart a service, install updates, read a log. The terminal only
+  shows output and tapping it does not open the keyboard. Input comes from two buttons below it, Enter and Cancel
+  (Ctrl+C), and from every snippet in a panel below them, folders open in place. On a wide screen the panel is on the
+  left. Snippets behave as in the classic mode, one that does not run immediately shows its command with Send and
+  Cancel first. Fields for variables do open the keyboard. To type anything else, a `sudo` password for example,
+  switch to the classic terminal.
+
+The mode is remembered per device in the browser. A device with a touch screen and no stored mode starts in Actions.
+
+## Long jobs with tmux
+
+The shell ends with the connection, when the phone locks or the network changes for example, and with it a running
+`apt upgrade`. "Add tmux snippets" on the Snippets page adds two ordinary snippets in the folder `tmux`, through the
+import preview:
+
+| Snippet    | Command                     | What it does                                                                      |
+|------------|-----------------------------|-----------------------------------------------------------------------------------|
+| Start tmux | `tmux new -A -s dirl`       | Runs on the tap. Starts the tmux session `dirl` or attaches to it if it runs      |
+| Stop tmux  | `tmux kill-session -t dirl` | Asks first, because it ends a running job. Ends the session, inside or outside it |
+
+Tap Start tmux, then run the long job. After a disconnect, open the terminal again and tap Start tmux: the job is
+still there with its output. Cancel stops the job and leaves the session open. Leaving the page detaches from tmux
+without ending it. tmux must be installed on the host, and inside tmux the output scrolls with tmux itself, not with
+the browser. The snippets can be changed or deleted like any other, Dirl does not treat them differently.
+
+## Install as an app
+
+Dirl can be installed from the browser menu and then opens in its own window without browser bars: in Chrome on
+Android "Add to Home screen" or "Install app", on the desktop the install icon in the address bar, in Safari on iOS
+Share, "Add to Home Screen". There is no service worker and nothing is cached, the app needs the connection to Dirl
+like the browser tab. An app on the iOS home screen keeps its own cookies, so it asks for a login once.
 
 ## Placeholders in snippets
 

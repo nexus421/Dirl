@@ -19,6 +19,8 @@ to review alone, managed entirely in the UI.
 ## Features
 
 - Browser terminal (xterm.js) with resize and snippets
+- Actions mode for phones: snippets, Enter and Cancel instead of the keyboard, tmux snippets for long jobs
+- Installable as an app, without a service worker or any cache
 - SFTP file manager with upload, rename and download
 - Up to two jump hosts, with restricted `authorized_keys` lines generated for every host
 - Host key pinning (trust on first use), hard block on changes

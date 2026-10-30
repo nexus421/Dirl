@@ -133,7 +133,7 @@ One package per concern under `bayern.kickner.dirl`:
 | `auth`             | OIDC client with PKCE, ID token validation, sessions, access control                      |
 | `ssh`              | Keys, routes through jump hosts, connection manager, metrics                              |
 | `web`              | Security guards, layout, error pages, the routes of every page, terminal, presence, SFTP  |
-| `resources/static` | `app.css`, `app.js`, `terminal.js`, icons as SVG masks, vendored xterm.js 6.0.0 and addon-fit 0.11.0 |
+| `resources/static` | `app.css`, `app.js`, `terminal.js`, `manifest.json` with the app icons, icons as SVG masks, vendored xterm.js 6.0.0 and addon-fit 0.11.0 |
 | test `dev`         | Mock OIDC provider, the `devRun` and `demoRun` entry points                               |
 
 xterm.js is vendored, not fetched at build time. The files come from the npm tarballs `@xterm/xterm@6.0.0` and
@@ -169,7 +169,7 @@ vault is sealed only `/unlock`, `/setup`, `/setup/restore` and `/logout` work.
 | POST   | `/hosts/{id}/files/upload`, `/mkdir`, `/delete`, `/rename`   | File operations                                 |
 | GET    | `/keys`, `/keys/{id}/export`                                 | Keys                                            |
 | POST   | `/keys/generate`, `/keys/import`, `/keys/{id}/rename`, `/keys/{id}/export`, `/keys/{id}/delete` | Key actions  |
-| GET    | `/snippets`, `/snippets/{id}/edit`, `/snippets/export`       | Snippets, export of all as JSON                 |
+| GET    | `/snippets`, `/snippets/{id}/edit`, `/snippets/export`, `/snippets/tmux` | Snippets, export of all as JSON, preview of the tmux snippets |
 | POST   | `/snippets`, `/snippets/{id}`, `/snippets/{id}/delete`, `/snippets/import` (preview), `/snippets/import/apply` | Snippet actions |
 | GET    | `/audit?q=`                                                  | Audit log                                       |
 | GET    | `/settings`, `/settings/backup`                              | Settings, encrypted vault download              |

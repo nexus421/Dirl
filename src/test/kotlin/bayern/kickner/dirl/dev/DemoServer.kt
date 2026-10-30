@@ -14,6 +14,7 @@ import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.OverviewMetric
 import bayern.kickner.dirl.vault.PinnedHostKey
 import bayern.kickner.dirl.vault.Snippet
+import bayern.kickner.dirl.web.tmuxSnippets
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -221,7 +222,7 @@ private fun writeProfiles(dir: File) {
     )
 }
 
-/** A few snippets in folders, to look at the folded snippets page. */
+/** A few snippets in folders, to look at the folded snippets page, and the ready-made tmux snippets. */
 private fun demoSnippets(): List<Snippet> = listOf(
     Snippet("s1", "Update", "sudo apt update && sudo apt upgrade -y\n"),
     Snippet("s2", "Edit Caddyfile", "sudo nano /etc/caddy/Caddyfile\n", "Caddy"),
@@ -238,7 +239,7 @@ private fun demoSnippets(): List<Snippet> = listOf(
     Snippet("s11", "Tail a file", "tail -n {{lines:5}} \"{{file:\${HOME}/.profile}}\"\n", "System"),
     // Asks first without variables: the command with Send and Cancel.
     Snippet("s12", "Free memory", "free -h", "System"),
-)
+) + tmuxSnippets.mapIndexed { i, entry -> entry.toSnippet("tmux$i") }
 
 /**
  * A TCP proxy on a free loopback port that forwards to [targetPort] and holds every chunk back for [delayMillis] in
