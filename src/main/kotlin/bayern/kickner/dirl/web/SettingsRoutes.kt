@@ -225,15 +225,26 @@ private suspend fun ApplicationCall.settingsPage(dirl: Dirl, error: String?, ssh
         div("stack") {
             val requests = dirl.access.requests
             if (requests.isNotEmpty()) card("Access requests", "attention") {
-                p("muted") { +"These people signed in successfully but have no access yet. Only allow people you know." }
+                p("muted") {
+                    +"These people signed in successfully but have no access yet. Only allow people you know. Anybody can "
+                    +"pick their name at the identity provider, the subject is the user ID there and cannot be chosen."
+                }
+                // A request under the name of somebody who already has access is almost certainly somebody else.
+                val takenNames = content.settings.allowedUsers.map { it.name.lowercase() }.toSet()
                 div("table-wrap") {
                     table {
-                        thead { tr { th { +"Name" }; th(classes = "hide-sm") { +"Subject" }; th { +"Requested" }; th { } } }
+                        thead { tr { th { +"Name" }; th { +"Subject" }; th { +"Requested" }; th { } } }
                         tbody {
                             requests.forEach { request ->
                                 tr {
-                                    td { +request.name }
-                                    td("mono small muted hide-sm") { +request.sub }
+                                    td {
+                                        +request.name
+                                        if (request.name.lowercase() in takenNames) {
+                                            +" "
+                                            span("pill warn") { +"same name as an allowed user" }
+                                        }
+                                    }
+                                    td("mono small muted break") { +request.sub }
                                     td("nowrap") { +formatTimestamp(request.time) }
                                     td("actions") {
                                         postButton("/settings/users/allow", "Allow", "primary sm", hidden = mapOf("sub" to request.sub))

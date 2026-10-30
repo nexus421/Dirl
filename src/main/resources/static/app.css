@@ -140,6 +140,7 @@ footer { flex-shrink: 0; text-align: center; color: var(--muted); font-size: 12p
 .card.danger { border-color: color-mix(in srgb, var(--error) 35%, var(--border)); }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
+.break { overflow-wrap: anywhere; }
 
 /* Centered pages: login, unlock */
 .center-wrap { min-height: calc(100vh - 120px); display: grid; place-items: center; padding: 24px 16px; }

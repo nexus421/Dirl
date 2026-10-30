@@ -414,6 +414,24 @@ class WebTest {
     }
 
     @Test
+    fun `access requests show the subject and warn about a name that is already taken`(): Unit = testApplication {
+        dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada Lovelace"))
+        dirl.access.recordRequest("sub-of-mallory", "ada lovelace")
+        dirl.access.recordRequest("sub-of-bob", "Bob Builder")
+        application { dirlModule(dirl) }
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada Lovelace")).token}"
+        val page = noRedirects().get("/settings") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+
+        val requests = page.substringAfter("Access requests").substringBefore("</table>")
+        fun row(sub: String) = requests.substringBefore(sub).substringAfterLast("<tr>")
+        // The subject is visible on phones too, the name alone proves nothing.
+        assertTrue(requests.contains("<td class=\"mono small muted break\">sub-of-mallory</td>"), requests)
+        assertFalse(requests.contains("hide-sm"), "no column of the requests is hidden on phones")
+        assertTrue(row("sub-of-mallory").contains("same name as an allowed user"), "same name, any case")
+        assertFalse(row("sub-of-bob").contains("same name as an allowed user"))
+    }
+
+    @Test
     fun `removing a subject that is not in the list keeps its sessions`(): Unit = testApplication {
         // user-1 is break-glass from the config, the vault list only holds user-2.
         dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-2", "Bob"))

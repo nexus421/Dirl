@@ -1,5 +1,6 @@
 package bayern.kickner.dirl.ssh
 
+import bayern.kickner.dirl.cleanText
 import bayern.kickner.dirl.readAtMost
 import bayern.kickner.dirl.vault.Vault
 import bayern.kickner.dirl.vault.VaultState
@@ -162,9 +163,6 @@ data class MetricsSample(val time: Long, val raw: RawMetrics) {
 private val markerLine = Regex("@@([a-z]+)")
 private val whitespace = Regex("\\s+")
 
-/** Terminal escape sequences like colors (`ESC [ 31 m`), dropped as a whole instead of leaving `[31m` behind. */
-private val ansiEscape = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]|\u001B[@-Z\\\\-_]")
-
 /** The lines of each `@@name` part. Lines before the first marker are dropped, a repeated marker wins. */
 private fun sectionsOf(output: String): Map<String, List<String>> {
     val sections = mutableMapOf<String, MutableList<String>>()
@@ -176,15 +174,6 @@ private fun sectionsOf(output: String): Map<String, List<String>> {
     }
     return sections
 }
-
-/**
- * Text from a server as it may be shown: no control or formatting characters (which could hide or reorder text),
- * whitespace collapsed, at most [MAX_METRIC_TEXT] characters. `null` if nothing is left.
- */
-fun cleanText(raw: String): String? = raw
-    .replace(ansiEscape, "")
-    .filter { Character.isISOControl(it).not() && Character.getType(it) != Character.FORMAT.toInt() }
-    .replace(whitespace, " ").trim().take(MAX_METRIC_TEXT).trim().ifEmpty { null }
 
 /**
  * Whether a reboot is needed, the same way an admin script on Debian decides it: the newest installed kernel is the
@@ -240,7 +229,7 @@ fun parseMetrics(output: String): ResultOf2<RawMetrics, String> = runCatching {
         DiskUsage(device = cols[0], mount = cols.drop(6).joinToString(" "), fsType = cols[1], totalKiB = cols[2].toLong(), usedKiB = cols[3].toLong())
     }.let(::dedupeDisks)
 
-    val kernel = single("kernel")?.let(::cleanText)
+    val kernel = single("kernel")?.let { cleanText(it, MAX_METRIC_TEXT) }
     val flagged = when (single("rebootflag")) {
         "yes" -> true
         "no" -> false
@@ -248,7 +237,7 @@ fun parseMetrics(output: String): ResultOf2<RawMetrics, String> = runCatching {
     }
     // Without systemd as init or without systemctl the exit code is not 0, then the list means nothing.
     val failedUnits = if (single("failedrc") != "0") null else sections["failed"].orEmpty()
-        .mapNotNull { line -> cleanText(line)?.substringBefore(' ') }
+        .mapNotNull { line -> cleanText(line, MAX_METRIC_TEXT)?.substringBefore(' ') }
         .take(MAX_FAILED_UNITS)
     val zram = sections["zram"].orEmpty()
         .mapNotNull { line -> line.trim().split(whitespace).take(3).mapNotNull { it.toLongOrNull() }.takeIf { it.size == 3 } }
@@ -267,7 +256,7 @@ fun parseMetrics(output: String): ResultOf2<RawMetrics, String> = runCatching {
         cores = single("cores")?.toIntOrNull()?.takeIf { it in 1..65536 },
         reboot = rebootStatus(kernel, single("vmlinuz"), single("boot"), flagged),
         failedUnits = failedUnits,
-        osName = single("os")?.removePrefix("PRETTY_NAME=")?.trim()?.removeSurrounding("\"")?.let(::cleanText),
+        osName = single("os")?.removePrefix("PRETTY_NAME=")?.trim()?.removeSurrounding("\"")?.let { cleanText(it, MAX_METRIC_TEXT) },
         kernel = kernel,
         loggedInUsers = single("users")?.toIntOrNull()?.takeIf { it >= 0 },
         zram = zram,

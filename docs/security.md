@@ -48,7 +48,10 @@ access request.
   everybody else ends up as access request.
 - `oidc.allowedSubjects` in the config is a break-glass list for the case that nobody in the UI list can log in. The
   users on it are always allowed, removing them in the UI does not lock them out.
-- Rejected logins appear under Settings as access requests (in memory, the latest 20).
+- Rejected logins appear under Settings as access requests (in memory, the latest 20), always with the subject. Anybody
+  can pick their display name at the provider, so a request under the name of an allowed user is marked. Display
+  names lose control and formatting characters (which could reorder text on screen or forge log lines) and are cut
+  to 80 characters.
 - You cannot remove yourself and the last user cannot be removed.
 - There are no roles. Every allowed user can do everything: use all hosts, change hosts, keys and snippets, export
   keys (with the vault passphrase), allow and remove users, end sessions, seal the vault and change the passphrase

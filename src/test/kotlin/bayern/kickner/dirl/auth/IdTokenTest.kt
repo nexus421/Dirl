@@ -46,6 +46,19 @@ class IdTokenTest {
     }
 
     @Test
+    fun `the display name loses control and formatting characters and is cut`() {
+        fun nameOf(names: String) = assertIs<ResultOf2.Success<IdTokenClaims>>(
+            validate(token("""{"iss":"$issuer","aud":"$clientId","exp":${now + 300},"nonce":"$nonce","sub":"user-1"$names}""")),
+        ).value.name
+        // U+202E turns the text around on screen, a line break would forge a second log line.
+        assertEquals("Bob evil Builder", nameOf(""","name":"Bob\u202E evil\n Builder\u200B""""))
+        assertEquals(MAX_NAME_LENGTH, nameOf(""","name":"${"x".repeat(500)}"""").length)
+        // Nothing left of the name: the next claim, then the subject.
+        assertEquals("bob", nameOf(""","name":"\u202E\u0007","preferred_username":"bob""""))
+        assertEquals("user-1", nameOf(""","name":"\n\t""""))
+    }
+
+    @Test
     fun `PKCE challenge matches the RFC 7636 example`() {
         assertEquals("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", pkceChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
     }

@@ -1,5 +1,6 @@
 package bayern.kickner.dirl.auth
 
+import bayern.kickner.dirl.cleanText
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -15,9 +16,15 @@ import java.util.Base64
  * The claims Dirl uses from a validated ID token.
  *
  * @property sub Stable user ID at the provider, checked against `oidc.allowedSubjects`.
- * @property name Display name (`name`, falling back to `preferred_username`, then `sub`).
+ * @property name Display name (`name`, falling back to `preferred_username`, then `sub`), cleaned with [cleanText].
  */
 data class IdTokenClaims(val sub: String, val name: String)
+
+/**
+ * Longest display name Dirl keeps. Users choose their name at the provider, so it is cut and stripped of control and
+ * formatting characters before it reaches pages, the audit log and the app log.
+ */
+const val MAX_NAME_LENGTH = 80
 
 /**
  * Validates an ID token received directly from the token endpoint.
@@ -74,7 +81,7 @@ fun validateIdToken(
     val sub = payload.string("sub")
     if (sub.isNullOrBlank()) return ResultOf2.Failure("ID token has no sub")
 
-    val name = payload.string("name") ?: payload.string("preferred_username") ?: sub
+    val name = listOf("name", "preferred_username").firstNotNullOfOrNull { claim -> payload.string(claim)?.let { cleanText(it, MAX_NAME_LENGTH) } } ?: sub
     return ResultOf2.Success(IdTokenClaims(sub, name))
 }
 
