@@ -62,7 +62,8 @@ private val keyBar = listOf(
  * Terminal page and its WebSocket.
  *
  * - `GET /hosts/{id}/terminal` renders the page: xterm.js, a menu per snippet folder, the other snippet buttons and,
- *   on touch devices, a key bar with Ctrl, Esc, Tab and arrows.
+ *   on touch devices, a key bar with Ctrl, Esc, Tab and arrows. For the Actions mode (`terminal.js`) it also renders
+ *   the mode toggle, an action bar with Enter and Cancel and a panel with every snippet, hidden in the classic mode.
  * - `WS /ws/terminal/{id}` bridges the browser to a PTY shell on the host. Binary frames are terminal bytes in both
  *   directions, text frames are JSON control messages ([TerminalControl]).
  *
@@ -78,6 +79,7 @@ fun Route.terminalRoutes(dirl: Dirl) {
         val (content, host) = hostOr404(dirl) ?: return@get
         if (host.jumpOnly) return@get call.jumpOnlyPage(host)
         val state = dirl.connections.state(host.id)
+        val groups = groupSnippets(content.snippets)
         call.page(
             "${host.name} terminal", call.session, Nav.HOSTS, frame = PageFrame.WIDE,
             assets = listOf("/static/vendor/xterm/xterm.css", "/static/vendor/xterm/xterm.js", "/static/vendor/xterm/addon-fit.js", "/static/terminal.js"),
@@ -88,7 +90,6 @@ fun Route.terminalRoutes(dirl: Dirl) {
                     if (state is ConnectionState.HostKeyUnknown || state is ConnectionState.HostKeyMismatch) {
                         a(href = "/hosts/${host.id}", classes = "pill warn") { +"confirm host key first" }
                     }
-                    val groups = groupSnippets(content.snippets)
                     // The folder menus sit outside the scrolling row: overflow-x would clip a menu opening inside it.
                     groups.folders.forEach { (folder, inFolder) ->
                         details("menu") {
@@ -98,12 +99,34 @@ fun Route.terminalRoutes(dirl: Dirl) {
                     }
                     div("snippets") { groups.loose.forEach { snippetButton(it) } }
                     div("spacer") {}
+                    // terminal.js names the other mode on it, "Actions" or "Classic terminal".
+                    button(type = ButtonType.button, classes = "btn sm primary") {
+                        id = "mode"
+                        +"Actions"
+                    }
                     linkButton("/hosts/${host.id}/files", "Files", "sm")
                     linkButton("/hosts/${host.id}", "Details", "sm ghost")
                 }
                 div("terminal") {
                     id = "terminal"
                     attributes["data-ws"] = "/ws/terminal/${host.id}"
+                }
+                // Actions mode only: the two keys a running command needs and every snippet, folders open in place.
+                div("actionbar") {
+                    button(type = ButtonType.button, classes = "btn") { attributes["data-send"] = "\r"; +"Enter" }
+                    button(type = ButtonType.button, classes = "btn") { attributes["data-send"] = "\u0003"; +"Cancel" }
+                }
+                div("snippet-panel") {
+                    if (groups.loose.isNotEmpty()) div("grid") { groups.loose.forEach { snippetButton(it) } }
+                    groups.folders.forEach { (folder, inFolder) ->
+                        details("panel-folder") {
+                            summary {
+                                +folder
+                                span("muted") { +inFolder.size.toString() }
+                            }
+                            div("grid") { inFolder.forEach { snippetButton(it) } }
+                        }
+                    }
                 }
                 div("keybar") {
                     button(type = ButtonType.button, classes = "btn sm") { id = "ctrl"; +"Ctrl" }

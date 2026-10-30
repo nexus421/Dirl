@@ -62,6 +62,40 @@
     if (ctrlButton) ctrlButton.classList.toggle('active', active);
   }
 
+  // Two modes. Terminal is the classic one with the keyboard. Actions is for touch screens: the terminal only shows
+  // output, input comes from the snippets and from Enter and Cancel below it, so the on-screen keyboard stays closed.
+  // The mode is remembered per device. Without a stored one a touch screen starts in Actions, judged by the pointer and
+  // never by the user agent.
+  const page = el.closest('.term-page');
+  const modeButton = document.getElementById('mode');
+  const modeKey = 'dirl.terminalMode';
+  function storedMode() {
+    try {
+      return localStorage.getItem(modeKey);
+    } catch (ignored) {
+      return null;
+    }
+  }
+  const stored = storedMode();
+  let actionsMode = stored === 'actions' || (stored !== 'terminal' && window.matchMedia('(pointer: coarse)').matches);
+  function focusTerminal() {
+    if (actionsMode === false) term.focus();
+  }
+  function applyMode() {
+    page.classList.toggle('actions', actionsMode);
+    // xterm drops typed input with disableStdin and makes its textarea read-only. inputmode="none" also keeps the
+    // keyboard closed when the terminal is tapped to scroll.
+    term.options.disableStdin = actionsMode;
+    if (actionsMode) term.textarea.setAttribute('inputmode', 'none');
+    else term.textarea.removeAttribute('inputmode');
+    if (modeButton) modeButton.textContent = actionsMode ? 'Classic terminal' : 'Actions';
+    setCtrl(false);
+    fit.fit();
+    placeAsk();
+    if (actionsMode) term.blur();
+    else term.focus();
+  }
+
   function send(text) {
     if (closed) {
       // Enter reloads the page instead of opening only a new terminal socket. That also reopens the presence socket
@@ -86,7 +120,10 @@
   term.onResize(function (size) {
     if (!closed && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
   });
-  window.addEventListener('resize', function () { fit.fit(); });
+  window.addEventListener('resize', function () {
+    fit.fit();
+    placeAsk();
+  });
 
   // Snippet folders are <details class="menu">: close them after a snippet was sent, on a click elsewhere and on
   // Escape. Opening one closes the others. Without JavaScript they still open and close by clicking the folder.
@@ -188,7 +225,13 @@
     ask.hidden = true;
     asking = null;
     askFields.replaceChildren();
-    term.focus();
+    focusTerminal();
+  }
+  // Right at the top left of the terminal, wherever the bar above it ends (it wraps on a phone) and wherever the
+  // snippet panel of the Actions mode puts it.
+  function placeAsk() {
+    ask.style.top = (el.offsetTop + 8) + 'px';
+    ask.style.left = (el.offsetLeft + 8) + 'px';
   }
   function openAsk(button, placeholders) {
     asking = { command: button.dataset.send };
@@ -212,8 +255,7 @@
       label.append(caption, input);
       askFields.append(label);
     });
-    // Right at the top of the terminal, wherever the bar above it ends (it wraps on a phone).
-    ask.style.top = (el.offsetTop + 8) + 'px';
+    placeAsk();
     ask.hidden = false;
     updatePreview();
     // Enter sends: in a field it submits the form, without fields Send has the focus.
@@ -242,22 +284,32 @@
   document.querySelectorAll('[data-send]').forEach(function (button) {
     button.addEventListener('click', function () {
       closeMenus(null);
-      // The keys of the key bar are sent as they are.
+      // The keys of the key bar and of the action bar are sent as they are.
       const placeholders = placeholdersOf(button.dataset.send);
       const asks = placeholders.size > 0 || button.dataset.send.endsWith('\n') === false;
-      if (asks && button.closest('.keybar') === null) {
+      if (asks && button.closest('.keybar, .actionbar') === null) {
         openAsk(button, placeholders);
         return;
       }
       send(button.dataset.send);
-      term.focus();
+      focusTerminal();
     });
   });
   if (ctrlButton) ctrlButton.addEventListener('click', function () {
     setCtrl(!ctrl);
-    term.focus();
+    focusTerminal();
+  });
+  if (modeButton) modeButton.addEventListener('click', function () {
+    actionsMode = actionsMode === false;
+    try {
+      localStorage.setItem(modeKey, actionsMode ? 'actions' : 'terminal');
+    } catch (ignored) {
+      // Without storage the mode still switches, it is just not remembered.
+    }
+    applyMode();
   });
 
+  // Before connecting, so the shell starts with the size of the chosen layout.
+  applyMode();
   connect();
-  term.focus();
 })();

@@ -160,4 +160,30 @@ class SnippetFolderTest {
         assertTrue(snippetsRow.contains("df -h") && snippetsRow.contains("docker").not(), "only snippets without folder in the scrolling row")
         assertTrue(withFolders.indexOf("<details") < withFolders.indexOf("<div class=\"snippets\">"), "menus come before the row, not inside it")
     }
+
+    @Test
+    fun `the terminal page offers the actions mode with Enter, Cancel and every snippet in a panel`(): Unit = testApplication {
+        val (client, cookie) = loggedIn()
+        val key = generateEd25519Key("k")
+        val host = Host(id = "h", name = "web", address = "127.0.0.1", port = 1, username = "u", keyId = key.id)
+        val snippets = listOf(Snippet("1", "df", "df -h\n"), Snippet("2", "ps", "docker ps\n", "Docker"), Snippet("3", "logs", "docker logs ", "Docker"))
+        dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(host), snippets = snippets) }
+        val page = client.get("/hosts/h/terminal") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+
+        val bar = page.substringAfter("<div class=\"term-bar\">").substringBefore("<div class=\"terminal\"")
+        assertTrue(bar.contains("<button type=\"button\" class=\"btn sm primary\" id=\"mode\""), "the mode toggle sits in the bar")
+        assertTrue(bar.indexOf("id=\"mode\"") < bar.indexOf("Files"), "before Files and Details")
+
+        val actionBar = page.substringAfter("<div class=\"actionbar\">").substringBefore("</div>")
+        assertEquals(listOf("\r", "\u0003"), Regex("data-send=\"([^\"]*)\"").findAll(actionBar).map { it.groupValues[1] }.toList(), "Enter and Ctrl+C")
+        assertTrue(actionBar.contains(">Enter") && actionBar.contains(">Cancel"))
+
+        val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("<div class=\"keybar\">")
+        assertTrue(page.indexOf("<div class=\"actionbar\">") < page.indexOf("<div class=\"snippet-panel\">"), "the panel follows the action bar")
+        assertTrue(Regex("<details class=\"panel-folder\"><summary>Docker<span class=\"muted\">2</span></summary>").containsMatchIn(panel), panel)
+        snippets.forEach { s ->
+            assertTrue(panel.contains("data-send=\"${s.command}\""), "${s.name} in the panel")
+            assertEquals(2, Regex(Regex.escape("data-send=\"${s.command}\"")).findAll(page).count(), "${s.name} in the bar and in the panel")
+        }
+    }
 }
