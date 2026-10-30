@@ -58,6 +58,17 @@ data class SnippetEntry(val name: String, val command: String, val folder: Strin
     fun toSnippet(id: String): Snippet = Snippet(id, name, if (run) "$command\n" else command, folder)
 }
 
+/**
+ * Ready-made snippets for tmux, which keeps a job running when the connection drops, for example when a phone locks.
+ * Start attaches to the session `dirl` if it runs, so tapping it again after a disconnect shows the job again. Stop
+ * ends the session from inside and outside of it, and asks first because it ends a running job. Added through the
+ * import preview as ordinary snippets, so they can be changed or deleted like any other.
+ */
+val tmuxSnippets = listOf(
+    SnippetEntry("Start tmux", "tmux new -A -s dirl", "tmux", run = true),
+    SnippetEntry("Stop tmux", "tmux kill-session -t dirl", "tmux", run = false),
+)
+
 /** The entry for [this] snippet. */
 fun Snippet.toEntry(): SnippetEntry = SnippetEntry(name, command.trimEnd('\n'), folder, command.endsWith("\n"))
 
