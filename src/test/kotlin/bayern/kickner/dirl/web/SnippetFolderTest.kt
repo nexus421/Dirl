@@ -175,7 +175,9 @@ class SnippetFolderTest {
         assertTrue(bar.indexOf("id=\"mode\"") < bar.indexOf("Files"), "before Files and Details")
 
         val actionBar = page.substringAfter("<div class=\"actionbar\">").substringBefore("</div>")
-        assertEquals(listOf("\r", "\u0003"), Regex("data-send=\"([^\"]*)\"").findAll(actionBar).map { it.groupValues[1] }.toList(), "Enter and Ctrl+C")
+        // Named keys, not data-send: the HTML parser turns a carriage return in an attribute into a line feed.
+        assertEquals(listOf("enter", "cancel"), Regex("data-key=\"([^\"]*)\"").findAll(actionBar).map { it.groupValues[1] }.toList(), "Enter and Ctrl+C")
+        assertTrue(actionBar.contains("data-send").not(), "the action bar sends no bytes from the page")
         assertTrue(actionBar.contains(">Enter") && actionBar.contains(">Cancel"))
 
         val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("<div class=\"keybar\">")
@@ -196,5 +198,21 @@ class SnippetFolderTest {
         val page = client.get("/hosts/h/terminal") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
         val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("<div class=\"keybar\">")
         assertTrue(panel.contains("No snippets yet.") && panel.contains("href=\"/snippets\""), panel)
+    }
+
+    @Test
+    fun `snippet names and commands are escaped in the panel of the actions mode`(): Unit = testApplication {
+        val (client, cookie) = loggedIn()
+        val key = generateEd25519Key("k")
+        val host = Host(id = "h", name = "web", address = "127.0.0.1", port = 1, username = "u", keyId = key.id)
+        // Written into the vault directly, past the form rules, so only the escaping of the page stands in the way.
+        val hostile = Snippet("1", "<img src=x onerror=alert(1)>", "echo \"<b>\" '&amp;'\n", "<i>x</i>")
+        dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(host), snippets = listOf(hostile)) }
+        val page = client.get("/hosts/h/terminal") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("<div class=\"keybar\">")
+        assertTrue(panel.contains("&lt;img src=x onerror=alert(1)&gt;"), panel)
+        assertTrue(panel.contains("<summary>&lt;i&gt;x&lt;/i&gt;"), panel)
+        assertTrue(panel.contains("data-send=\"echo &quot;&lt;b&gt;&quot; '&amp;amp;'"), panel)
+        assertTrue(listOf("<img", "<i>", "<b>").none { page.contains(it) }, "no markup from a snippet reaches the page")
     }
 }

@@ -112,9 +112,11 @@ fun Route.terminalRoutes(dirl: Dirl) {
                     attributes["data-ws"] = "/ws/terminal/${host.id}"
                 }
                 // Actions mode only: the two keys a running command needs and every snippet, folders open in place.
+                // Named keys that terminal.js maps to bytes: the HTML parser turns a carriage return in an attribute into
+                // a line feed, which is not the Enter a full-screen program or the reload after a disconnect expects.
                 div("actionbar") {
-                    button(type = ButtonType.button, classes = "btn") { attributes["data-send"] = "\r"; +"Enter" }
-                    button(type = ButtonType.button, classes = "btn") { attributes["data-send"] = "\u0003"; +"Cancel" }
+                    button(type = ButtonType.button, classes = "btn") { attributes["data-key"] = "enter"; +"Enter" }
+                    button(type = ButtonType.button, classes = "btn") { attributes["data-key"] = "cancel"; +"Cancel" }
                 }
                 div("snippet-panel") {
                     // Without snippets the Actions mode has nothing to tap, so it says where they come from.

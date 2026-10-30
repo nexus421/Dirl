@@ -293,4 +293,21 @@ class SnippetImportWebTest {
             assertTrue(Regex("<input type=\"checkbox\" name=\"take\"[^>]*checked").containsMatchIn(page).not(), "nothing is ticked")
         }
     }
+
+    @Test
+    fun `the tmux preview needs a login and an unlocked vault and saves nothing by itself`() {
+        val dirl = newDirl()
+        testApplication {
+            application { dirlModule(dirl) }
+            val client = createClient { followRedirects = false }
+            assertEquals("/login", client.get("/snippets/tmux").headers[HttpHeaders.Location], "no session, no preview")
+
+            val cookie = "$SESSION_COOKIE=${dirl.sessions.create(actor).token}"
+            client.get("/snippets/tmux") { header(HttpHeaders.Cookie, cookie) }
+            assertEquals(existing, dirl.snippets(), "the GET only shows the preview")
+
+            dirl.vault.seal(actor)
+            assertEquals("/unlock", client.get("/snippets/tmux") { header(HttpHeaders.Cookie, cookie) }.headers[HttpHeaders.Location])
+        }
+    }
 }

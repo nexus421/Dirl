@@ -238,9 +238,8 @@
     if (last < command.length) parts.push(document.createTextNode(command.slice(last)));
     askPreview.replaceChildren.apply(askPreview, parts);
   }
-  // While the snippet form is open the action bar belongs to it: Cancel closes the form, Enter waits, so neither
-  // reaches a running job by a slip of the thumb.
-  const actionEnter = document.querySelector('.actionbar button');
+  // Enter of the action bar, disabled while the snippet form is open.
+  const actionEnter = document.querySelector('.actionbar [data-key="enter"]');
   function closeAsk() {
     ask.hidden = true;
     asking = null;
@@ -306,19 +305,27 @@
   document.querySelectorAll('[data-send]').forEach(function (button) {
     button.addEventListener('click', function () {
       closeMenus(null);
-      if (asking && button.closest('.actionbar')) {
-        if (button.dataset.send === '\u0003') closeAsk();
-        return;
-      }
-      // The keys of the key bar and of the action bar are sent as they are.
+      // The keys of the key bar are sent as they are.
       const placeholders = placeholdersOf(button.dataset.send);
       const asks = placeholders.size > 0 || button.dataset.send.endsWith('\n') === false;
-      if (asks && button.closest('.keybar, .actionbar') === null) {
+      if (asks && button.closest('.keybar') === null) {
         openAsk(button, placeholders);
         return;
       }
       send(button.dataset.send);
       focusTerminal();
+    });
+  });
+  // The action bar of the Actions mode sends Enter and Ctrl+C. While the snippet form is open the bar belongs to it:
+  // Cancel closes the form and Enter is disabled, so neither reaches a running job by a slip of the thumb.
+  const actionKeys = { enter: '\r', cancel: '\u0003' };
+  document.querySelectorAll('.actionbar [data-key]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      if (asking) {
+        if (button.dataset.key === 'cancel') closeAsk();
+        return;
+      }
+      send(actionKeys[button.dataset.key]);
     });
   });
   if (ctrlButton) ctrlButton.addEventListener('click', function () {
