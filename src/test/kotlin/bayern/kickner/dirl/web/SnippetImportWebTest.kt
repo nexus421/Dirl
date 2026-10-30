@@ -149,7 +149,7 @@ class SnippetImportWebTest {
         assertTrue(page.contains("replaces existing"))
         assertTrue(page.contains(">new<"))
         assertTrue(page.contains("runs immediately"))
-        assertTrue(page.contains("Existing Docker / Logs, inserts only:"), "the existing command is shown next to the new one")
+        assertTrue(page.contains("Existing Docker / Logs, asks first:"), "the existing command is shown next to the new one")
         assertTrue(page.contains("docker compose logs -f</pre>") && page.contains("docker compose logs -f --tail=100</pre>"))
         // Only the replacing row reacts to the choice for existing snippets, the unchanged one cannot be ticked.
         assertEquals(1, Regex("data-conflict").findAll(page).count())

@@ -236,6 +236,8 @@ private fun demoSnippets(): List<Snippet> = listOf(
     Snippet("s10", "Say hello", "echo \"Hello {{Name:World}}, nice to see you {{Name}}\"\n"),
     // Lower case names and braces of the shell in a default.
     Snippet("s11", "Tail a file", "tail -n {{lines:5}} \"{{file:\${HOME}/.profile}}\"\n", "System"),
+    // Asks first without variables: the command with Send and Cancel.
+    Snippet("s12", "Free memory", "free -h", "System"),
 )
 
 /**

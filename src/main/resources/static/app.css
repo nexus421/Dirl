@@ -451,6 +451,8 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
 .snippet-ask[hidden] { display: none; }
 .snippet-ask-title { font-weight: 650; }
 .snippet-ask-fields { display: grid; gap: 8px; }
+/* A snippet without variables only shows its command, no gap for the missing fields. */
+.snippet-ask-fields:empty { display: none; }
 .snippet-ask-fields .field { margin: 0; }
 .snippet-ask-preview { margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--code); font-size: 12.5px; white-space: pre-wrap; word-break: break-all; max-height: 140px; overflow: auto; }
 /* The values in the preview: blue and underlined, the one being typed with a background, a missing one by name.

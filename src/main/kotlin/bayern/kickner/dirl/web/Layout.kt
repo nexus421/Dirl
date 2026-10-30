@@ -186,7 +186,8 @@ suspend fun ApplicationCall.page(
                     }
                 } else content()
             }
-            if (frame != PageFrame.WIDE) footer {
+            // The version is nobody's business before the login, so pages without a session have no footer.
+            if (frame != PageFrame.WIDE && session != null) footer {
                 +"Dirl $appVersion"
                 if (newer != null) {
                     +" · "

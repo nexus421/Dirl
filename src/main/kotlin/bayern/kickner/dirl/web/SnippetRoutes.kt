@@ -394,7 +394,7 @@ private fun kotlinx.html.FlowContent.importRow(row: ImportRow) = div("import-row
         }
         if (state is ImportState.Replaces) {
             state.existing.forEach { old ->
-                p("muted small") { +"Existing ${old.folder?.let { "$it / " }.orEmpty()}${old.name}, ${if (old.command.endsWith("\n")) "runs immediately" else "inserts only"}:" }
+                p("muted small") { +"Existing ${old.folder?.let { "$it / " }.orEmpty()}${old.name}, ${if (old.command.endsWith("\n")) "runs immediately" else "asks first"}:" }
                 div("code") { pre { +old.command.trimEnd('\n') } }
             }
             p("muted small") { +"From the file:" }
@@ -425,7 +425,7 @@ private fun kotlinx.html.FlowContent.snippetRow(snippet: Snippet) = div("snippet
     div("snippet-main") {
         div("snippet-title") {
             span("snippet-name") { +snippet.name }
-            if (snippet.command.endsWith("\n")) pill("error", "runs immediately") else pill("", "inserts only")
+            if (snippet.command.endsWith("\n")) pill("error", "runs immediately") else pill("", "asks first")
             variablesPill(snippet.command)
         }
         div("snippet-command") {
@@ -459,8 +459,8 @@ private fun kotlinx.html.FlowContent.snippetForm(action: String, snippet: Snippe
             hint = "Variables like {{Name}} or {{Name:default}} are asked for when the snippet is clicked, e.g. docker logs --tail {{Lines:100}} {{Container}}.",
         )
         val run = if (form != null) form["run"] == "on" else snippet?.command?.endsWith("\n") ?: true
-        checkField("Run immediately (send Enter after the command)", "run", run)
-        p("muted small") { +"Snippets are sent as typed text into the terminal of whatever host is open." }
+        checkField("Run immediately, without asking first", "run", run)
+        p("muted small") { +"Snippets are sent as typed text into the terminal of whatever host is open. Without \"Run immediately\" a click shows the command first, with Send and Cancel." }
         div("btn-row") {
             submit(label)
             if (snippet != null) linkButton("/snippets", "Cancel", "ghost")

@@ -9,7 +9,7 @@
 | Terminal  | xterm.js with resize, snippet buttons, a key bar with Ctrl, Esc, Tab, arrows on touch devices, Enter reloads after a disconnect. While connected, the browser asks before leaving the page (also on Ctrl+W), because leaving ends the shell. Run long jobs in `tmux` or `screen` |
 | Files     | Breadcrumbs, path input, download, upload with progress (existing files only with "Overwrite existing files"), new directory, rename or move, delete. There is no editor, files are changed in the terminal. Symlinks are marked with →, they open, download and get overwritten like their target, deleting one removes only the link |
 | Keys      | Generate Ed25519 or import on top, below one folded row per key with fingerprint and use (a new key opens right after it was added). Rename, export after entering the passphrase again, delete unused keys |
-| Snippets  | Add, edit, delete, "run immediately" or "insert only", optional folder: each folder is a menu above the terminal and a folded group on this page, the one just changed opens. Placeholders like `{{Container}}` are asked for before sending, see below. Export all as JSON, import a dropped, chosen or pasted file with a preview, see below |
+| Snippets  | Add, edit, delete, "run immediately" or "asks first" (a click shows the command above the terminal with Send and Cancel, Enter sends), optional folder: each folder is a menu above the terminal and a folded group on this page, the one just changed opens. Placeholders like `{{Container}}` are asked for before sending, see below. Export all as JSON, import a dropped, chosen or pasted file with a preview, see below |
 | Audit     | The latest entries, filterable                                                                                           |
 | Settings  | Access requests, allowed users, active sessions (end any), Dirl's source address (several separated by commas, or no restriction at all), update check (on or off, latest release, a newer one shows in the footer of every page), passphrase change, encrypted backup download, seal now |
 | Login     | A terminal that types `dirl scan` and lists what Dirl does, next to the sign in through the identity provider. The motion runs once and stops with the system setting for reduced motion |
@@ -20,8 +20,8 @@
 A snippet can ask for values before it is sent: `{{Name}}`, or `{{Name:default}}` with a prefilled value. For example
 `docker logs --tail {{Lines:100}} -f {{Container}}`. A click on the snippet in the terminal opens a small form above
 the terminal with one field per name and a preview of the finished command. In the preview every value is blue and
-underlined, the one being typed has a background, an empty one shows its name as `<Name>`. Enter sends it, Escape cancels. A name that
-appears several times is asked for once, all of them in the same form, at most 10 different names per snippet.
+underlined, the one being typed has a background, an empty one shows its name as `<Name>`. Send or Enter runs it, also
+for a snippet that does not run immediately, Cancel or Escape closes the form. A name that appears several times is asked for once, all of them in the same form, at most 10 different names per snippet.
 
 Names hold letters, digits, `_` and `-`, no spaces. Everything after the colon up to the closing `}}` is the default,
 braces included, as in `{{Path:${HOME}/logs}}`, only line breaks are not. Templates with a dot or a space such as
@@ -45,7 +45,7 @@ cannot run the command early.
 }
 ```
 
-`folder` and `run` are optional, `run` decides whether Enter is sent after the command. A plain list of snippets
+`folder` and `run` are optional, `run` decides whether the command runs right away or asks first. A plain list of snippets
 without the outer object is read as well, which makes it easy to have an AI tool write one. There are no IDs, the file
 works on any Dirl.
 

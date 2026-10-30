@@ -118,7 +118,7 @@ class SnippetFolderTest {
         assertEquals(listOf("No folder 1", "Docker 2"), folders(page("?open=nope")), "an unknown snippet opens nothing")
 
         val rows = page()
-        assertTrue(rows.contains("<span class=\"pill error\">runs immediately</span>") && rows.contains("<span class=\"pill\">inserts only</span>"))
+        assertTrue(rows.contains("<span class=\"pill error\">runs immediately</span>") && rows.contains("<span class=\"pill\">asks first</span>"))
         assertTrue(rows.contains("title=\"docker logs -f\nmore\">docker logs -f …</div>"), "a command of several lines shows its first line, all of it as tooltip")
 
         // Adding and saving lead back with the folder open.

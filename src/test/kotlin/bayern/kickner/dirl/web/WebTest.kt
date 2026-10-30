@@ -83,7 +83,9 @@ class WebTest {
         val page = client.get("/") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
         assertTrue(page.contains("99.0.0 available"), "footer must show the release")
         assertTrue(page.contains("href=\"https://github.com/nexus421/Dirl/releases/tag/v99.0.0\""), "link to the release")
-        assertFalse(client.get("/login").bodyAsText().contains("available"), "not before login")
+        val login = client.get("/login").bodyAsText()
+        assertFalse(login.contains("available"), "not before login")
+        assertFalse(login.contains("<footer") || login.contains(bayern.kickner.dirl.BuildConfig.VERSION), "and no version either")
         val settings = client.get("/settings") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
         assertTrue(settings.contains("99.0.0"), "the settings show the latest release")
     }

@@ -207,7 +207,7 @@ Verified:
   limit, where they show), the import drop zone, snippet export and import (round trip between two instances, the file
   format and its problems, preview states, all four ways to import, refused and oversized input, session and origin),
   metrics (real output, missing parts, text from the server, the reboot rule, the choice per host and what each card
-  shows), the update check (version rules, answer limit, at most once an hour, the switch, the footer), SSH
+  shows), the update check (version rules, answer limit, at most once an hour, the switch, the footer, no version before the login), SSH
   integration as listed above and the limits on data read from servers. Without an `sshd` the 25 SSH integration tests
   are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock

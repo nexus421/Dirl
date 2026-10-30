@@ -102,7 +102,8 @@
   });
 
   // Placeholders: {{Name}} or {{Name:default}}, the same pattern as PLACEHOLDER_PATTERN in SnippetPlaceholders.kt.
-  // A snippet with placeholders first asks for their values above the terminal, then sends the filled command.
+  // A snippet with placeholders first asks for their values above the terminal, then sends the filled command. A
+  // snippet that does not run immediately shows its command there with Send and Cancel, Send runs it.
   const placeholderPattern = /\{\{([A-Za-z0-9_-]{1,32})(?::((?:(?!\}\})[^\r\n]){0,200}))?\}\}/g;
   function placeholdersOf(command) {
     const byName = new Map();
@@ -135,7 +136,7 @@
   ask.className = 'snippet-ask';
   ask.hidden = true;
   ask.autocomplete = 'off';
-  ask.setAttribute('aria-label', 'Values for the snippet');
+  ask.setAttribute('aria-label', 'Send the snippet');
   noPasswordManager(ask);
   const askTitle = document.createElement('div');
   askTitle.className = 'snippet-ask-title';
@@ -148,6 +149,7 @@
   const askSend = document.createElement('button');
   askSend.type = 'submit';
   askSend.className = 'btn primary sm';
+  askSend.textContent = 'Send';
   const askCancel = document.createElement('button');
   askCancel.type = 'button';
   askCancel.className = 'btn ghost sm';
@@ -191,7 +193,6 @@
   function openAsk(button, placeholders) {
     asking = { command: button.dataset.send };
     askTitle.textContent = button.dataset.name || button.textContent;
-    askSend.textContent = button.dataset.send.endsWith('\n') ? 'Run' : 'Insert';
     askFields.replaceChildren();
     placeholders.forEach(function (value, name) {
       const label = document.createElement('label');
@@ -215,14 +216,18 @@
     ask.style.top = (el.offsetTop + 8) + 'px';
     ask.hidden = false;
     updatePreview();
+    // Enter sends: in a field it submits the form, without fields Send has the focus.
     const first = askFields.querySelector('input');
-    first.focus();
-    first.select();
+    if (first) {
+      first.focus();
+      first.select();
+    } else askSend.focus();
   }
   ask.addEventListener('submit', function (event) {
     event.preventDefault();
     if (!asking) return;
-    const command = fillPlaceholders(asking.command, askValues());
+    // Send always runs the command, also one stored without the Enter of "run immediately".
+    const command = fillPlaceholders(asking.command, askValues()).replace(/\n?$/, '\n');
     closeAsk();
     send(command);
   });
@@ -237,8 +242,10 @@
   document.querySelectorAll('[data-send]').forEach(function (button) {
     button.addEventListener('click', function () {
       closeMenus(null);
+      // The keys of the key bar are sent as they are.
       const placeholders = placeholdersOf(button.dataset.send);
-      if (placeholders.size > 0 && button.closest('.keybar') === null) {
+      const asks = placeholders.size > 0 || button.dataset.send.endsWith('\n') === false;
+      if (asks && button.closest('.keybar') === null) {
         openAsk(button, placeholders);
         return;
       }
