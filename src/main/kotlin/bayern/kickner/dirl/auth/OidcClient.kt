@@ -1,5 +1,6 @@
 package bayern.kickner.dirl.auth
 
+import bayern.kickner.dirl.cleanText
 import bayern.kickner.dirl.config.OidcConfig
 import bayern.kickner.dirl.config.isLoopback
 import bayern.kickner.dirl.randomToken
@@ -69,7 +70,10 @@ sealed interface LoginError {
     /** The `state` parameter does not match: a forged or mixed-up callback. */
     data object StateMismatch : LoginError
 
-    /** The provider reported an error, e.g. the user is not in the allowed group. @property description From the provider. */
+    /**
+     * The provider reported an error, e.g. the user is not in the allowed group. @property description From the
+     * callback URL, so cleaned with [cleanText] and at most [OidcClient.MAX_ERROR_LENGTH] characters.
+     */
     data class Denied(val description: String) : LoginError
 
     /** The code exchange or the ID token validation failed. @property reason For the log. */
@@ -155,7 +159,8 @@ class OidcClient(
         val expired = clock() - attempt.createdAt > ATTEMPT_TTL.inWholeMilliseconds
         if (expired) return ResultOf2.Failure(LoginError.UnknownAttempt)
         if (state == null || constantTimeEquals(state, attempt.state).not()) return ResultOf2.Failure(LoginError.StateMismatch)
-        if (error != null) return ResultOf2.Failure(LoginError.Denied(errorDescription ?: error))
+        // The callback URL is anybody's to write, a line break in the reason would forge a line in the log.
+        if (error != null) return ResultOf2.Failure(LoginError.Denied(cleanText(errorDescription ?: error, MAX_ERROR_LENGTH) ?: "no reason given"))
         if (code.isNullOrBlank()) return ResultOf2.Failure(LoginError.InvalidToken("Callback without code"))
 
         val provider = providerMetadata().getOrElse { return ResultOf2.Failure(LoginError.ProviderUnavailable(it.message ?: it.toString())) }
@@ -261,6 +266,9 @@ class OidcClient(
 
         /** Blocking calls to the provider at the same time, logins of a few people never need more. */
         const val MAX_CONCURRENT_PROVIDER_CALLS = 4
+
+        /** Longest reason of a denied login that is shown and logged, longer ones are cut. */
+        const val MAX_ERROR_LENGTH = 200
     }
 }
 

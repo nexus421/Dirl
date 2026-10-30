@@ -207,7 +207,8 @@ not depend on Dirl: your own keys in the password manager and the provider's con
   login attempt (state, nonce, PKCE verifier) travels in a `SameSite=Lax` cookie for ten minutes, signed with an HMAC
   key that is new on every start. The server keeps no state for started logins, so anonymous requests cannot fill
   memory or block the login. The callback deletes the cookie and the provider accepts each code once, so a callback
-  URL works once.
+  URL works once. The reason of a denied login comes from the callback URL, which anybody can write, so it loses
+  control and formatting characters and is cut to 200 characters before it is shown or logged.
 - Calls to the provider are limited to four at a time, a request that finds no free slot fails at once instead of
   waiting, and a failed discovery fetch is not repeated for 15 seconds. Anonymous login requests, against a slow
   provider or replaying their own login cookie in a flood, can therefore not tie up the threads that serve terminals

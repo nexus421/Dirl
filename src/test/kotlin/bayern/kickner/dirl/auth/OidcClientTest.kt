@@ -106,4 +106,31 @@ class OidcClientTest {
             provider.stop(0)
         }
     }
+
+    @Test
+    fun `the reason of a denied login cannot forge log lines`() {
+        // Anybody gets a login cookie and its state, and writes error_description into the callback URL themselves.
+        val provider = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val issuer = "http://localhost:${provider.address.port}"
+        provider.createContext("/.well-known/openid-configuration") { ex ->
+            val doc = """{"issuer":"$issuer","authorization_endpoint":"$issuer/authorize","token_endpoint":"$issuer/token"}""".toByteArray()
+            ex.sendResponseHeaders(200, doc.size.toLong())
+            ex.responseBody.use { it.write(doc) }
+        }
+        provider.start()
+        try {
+            val client = OidcClient(OidcConfig(issuer = issuer, clientId = "dirl", clientSecret = "secret"), "https://x/cb")
+            val start = assertIs<ResultOf2.Success<LoginStart>>(client.startLogin()).value
+            val state = URI(start.redirectUrl).query.split('&').first { it.startsWith("state=") }.removePrefix("state=")
+            fun reason(description: String?, error: String = "access_denied") =
+                assertIs<LoginError.Denied>(assertIs<ResultOf2.Failure<LoginError>>(client.finishLogin(start.cookie, state, null, error, description)).value).description
+
+            assertEquals("no access 30.10.2026 15:00:00 INFO/Vault: unlocked", reason("no access\n30.10.2026 15:00:00 INFO/Vault:\u202E unlocked"))
+            assertEquals(OidcClient.MAX_ERROR_LENGTH, reason("x".repeat(5000)).length)
+            assertEquals("access_denied", reason(null))
+            assertEquals("no reason given", reason("\r\n", error = "\n"))
+        } finally {
+            provider.stop(0)
+        }
+    }
 }

@@ -74,14 +74,21 @@ private val whitespace = Regex("\\s+")
 /** Terminal escape sequences like colors (`ESC [ 31 m`), dropped as a whole instead of leaving `[31m` behind. */
 private val ansiEscape = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]|\u001B[@-Z\\\\-_]")
 
+/** Control characters such as line breaks and tabs, they become a space so the words around them stay apart. */
+private val controlChar = Regex("\\p{Cc}")
+
+/** Invisible formatting characters such as U+202E, which turns the text after it around on screen. */
+private val formatChar = Regex("\\p{Cf}")
+
 /**
  * Untrusted text as it may be shown and logged: no terminal escapes, no control or formatting characters (which could
  * hide or reorder text, or forge log lines), whitespace collapsed, at most [max] characters. Used for text from
- * servers and for display names from the identity provider.
+ * servers and for display names and login errors from the identity provider.
  *
  * @return the cleaned text, `null` if nothing is left.
  */
 fun cleanText(raw: String, max: Int): String? = raw
     .replace(ansiEscape, "")
-    .filter { Character.isISOControl(it).not() && Character.getType(it) != Character.FORMAT.toInt() }
+    .replace(controlChar, " ")
+    .replace(formatChar, "")
     .replace(whitespace, " ").trim().take(max).trim().ifEmpty { null }
