@@ -202,9 +202,11 @@ not depend on Dirl: your own keys in the password manager and the provider's con
   key that is new on every start. The server keeps no state for started logins, so anonymous requests cannot fill
   memory or block the login. The callback deletes the cookie and the provider accepts each code once, so a callback
   URL works once.
-- Calls to the provider are limited to four at a time, and a failed discovery fetch is not repeated for 15 seconds.
-  Anonymous login requests against a slow or unreachable provider can therefore not tie up the threads that serve
-  terminals and file transfers. The discovery document is fetched once and kept until restart, so restart Dirl after
+- Calls to the provider are limited to four at a time, a request that finds no free slot fails at once instead of
+  waiting, and a failed discovery fetch is not repeated for 15 seconds. Anonymous login requests, against a slow
+  provider or replaying their own login cookie in a flood, can therefore not tie up the threads that serve terminals
+  and file transfers. Such a flood can still make logins fail while it lasts, a rate limit on `/auth/` in the reverse
+  proxy keeps that in check. The discovery document is fetched once and kept until restart, so restart Dirl after
   the provider moved its endpoints.
 - The ID token is not signature-checked. It comes straight from the token endpoint over TLS, which OIDC Core 1.0
   section 3.1.3.7 allows as replacement. `iss`, `aud`, `azp`, `exp`, `iat` and `nonce` are checked

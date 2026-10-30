@@ -19,7 +19,6 @@ import java.security.MessageDigest
 import java.time.Duration
 import java.util.Base64
 import java.util.concurrent.Semaphore
-import java.util.concurrent.TimeUnit
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import kotlin.time.Duration.Companion.minutes
@@ -189,9 +188,12 @@ class OidcClient(
         parsed.also { metadata = it }
     }.onFailure { discoveryFailedAt = clock() }
 
-    /** Runs [call] if a provider slot is free within a second, fails otherwise instead of queueing up threads. */
+    /**
+     * Runs [call] if a provider slot is free right now, fails otherwise. Waiting for a slot would hold an IO thread per
+     * waiting request, and a flood of anonymous callbacks would then starve the terminals.
+     */
     private fun <T> limited(call: () -> T): T {
-        check(providerCalls.tryAcquire(1, TimeUnit.SECONDS)) { "Too many concurrent requests to the identity provider" }
+        check(providerCalls.tryAcquire()) { "Too many concurrent requests to the identity provider" }
         return try {
             call()
         } finally {
