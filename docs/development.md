@@ -148,8 +148,9 @@ server-rendered kotlinx.html instead of Compose, because xterm.js lives in the D
 
 ## Endpoints
 
-Everything except `/login`, `/auth/*`, `/static/*` and `/healthz` requires a session of an allowed user. While the
-vault is sealed only `/unlock`, `/setup`, `/setup/restore` and `/logout` work.
+Everything except `/login`, `/auth/start`, `/auth/callback`, `/healthz` and `/static/*` requires a session of an
+allowed user. The public paths are matched exactly, only `/static/` is a prefix. While the vault is sealed only
+`/unlock`, `/setup`, `/setup/restore` and `/logout` work.
 
 | Method | Path                                                         | Purpose                                         |
 |--------|--------------------------------------------------------------|-------------------------------------------------|

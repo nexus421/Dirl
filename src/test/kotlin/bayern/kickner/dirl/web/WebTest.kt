@@ -323,7 +323,23 @@ class WebTest {
         application { dirlModule(dirl) }
         val client = noRedirects()
         assertEquals(HttpStatusCode.BadRequest, client.get("/static/..%2Fsettings").status)
-        assertEquals(HttpStatusCode.NotFound, client.get("/login/..%2Fsettings").status)
+        assertEquals("/login", client.get("/login/..%2Fsettings").headers[HttpHeaders.Location])
+    }
+
+    @Test
+    fun `a path that only starts like a public one needs a login`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        listOf("/loginX", "/login-history", "/auth/tokens", "/auth/", "/healthzfoo").forEach { path ->
+            val response = client.get(path)
+            assertEquals(HttpStatusCode.Found, response.status, path)
+            assertEquals("/login", response.headers[HttpHeaders.Location], path)
+        }
+        // The real public paths stay reachable without a session.
+        assertEquals(HttpStatusCode.OK, client.get("/login").status)
+        assertEquals("ok", client.get("/healthz").bodyAsText())
+        assertEquals(HttpStatusCode.OK, client.get("/static/app.css").status)
+        assertTrue(client.get("/auth/callback").status != HttpStatusCode.Found, "the callback answers itself")
     }
 
     @Test

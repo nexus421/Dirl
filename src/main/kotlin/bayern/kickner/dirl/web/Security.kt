@@ -32,8 +32,14 @@ const val LOGIN_COOKIE = "__Host-login"
 const val CONTENT_SECURITY_POLICY = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
     "img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 
-/** Paths reachable without a session. Everything else requires a login, so a new route is protected by default. */
-private val publicPrefixes = listOf("/login", "/auth/", "/static/", "/healthz")
+/**
+ * Paths reachable without a session, matched exactly. Everything else requires a login, so a new route is protected
+ * by default, also one that only starts like a public path (`/login-history`, `/auth/tokens`).
+ */
+private val publicPaths = setOf("/login", "/auth/start", "/auth/callback", "/healthz")
+
+/** The only public prefix: the static files (styles, scripts, icons) the login page needs. */
+private const val STATIC_PREFIX = "/static/"
 
 /** Paths reachable with a session while the vault is not unlocked. */
 private val sealedAllowed = setOf("/unlock", "/setup", "/setup/restore", "/logout")
@@ -93,7 +99,7 @@ fun Application.installGuards(dirl: Dirl) {
             return@intercept finish()
         }
 
-        if (publicPrefixes.any { path == it || path.startsWith(it) }) return@intercept
+        if (path in publicPaths || path.startsWith(STATIC_PREFIX)) return@intercept
 
         val token = call.request.cookies[SESSION_COOKIE]
         val automatic = call.request.queryParameters[AUTO_REFRESH_PARAM] != null || path == PRESENCE_PATH

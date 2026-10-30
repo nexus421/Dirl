@@ -62,9 +62,9 @@ tests). Packages: `config`, `crypto`, `vault`, `audit`, `auth`, `ssh`, `web`, se
 Security invariants, keep them when adding code:
 
 - New routes are protected by default. `web/Security.kt` (`installGuards`) requires a session of an allowed user for
-  everything outside `/login`, `/auth/`, `/static/`, `/healthz`, an unlocked vault for everything outside `/unlock`,
-  `/setup`, `/setup/restore`, `/logout`, and a matching `Origin` for every non-GET request and every WebSocket
-  upgrade. Keep `Referrer-Policy: same-origin`, `no-referrer` makes browsers send `Origin: null` on form posts.
+  everything outside `/login`, `/auth/start`, `/auth/callback`, `/healthz` (matched exactly) and `/static/`, an
+  unlocked vault for everything outside `/unlock`, `/setup`, `/setup/restore`, `/logout`, and a matching `Origin` for
+  every non-GET request and every WebSocket upgrade. Keep `Referrer-Policy: same-origin`, `no-referrer` makes browsers send `Origin: null` on form posts.
 - Never `unsafe {}` or raw HTML in kotlinx.html, never `innerHTML` in JavaScript, no inline scripts (CSP). Success
   messages after a redirect go through the fixed `?done=` keys in `web/Layout.kt`, never through text in the URL.
 - Always create the GCM nonce yourself (`crypto.Aead.seal`), never use KotNexLib's default nonce argument.
