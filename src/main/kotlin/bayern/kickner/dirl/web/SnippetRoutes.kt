@@ -349,9 +349,9 @@ private suspend fun ApplicationCall.importPreviewPage(entries: List<SnippetEntry
     val fileKeys = entries.map { matchKey(it.folder, it.name) }.toSet()
     val notInFile = existing.count { matchKey(it.folder, it.name) !in fileKeys }
     val title = readyMade?.let { "Add $it snippets" } ?: "Import snippets"
-    val source = if (readyMade == null) "in the file" else "ready-made"
+    val counted = if (readyMade == null) "${entries.size} snippets in the file" else "${entries.size} ready-made snippets"
     page(title, session, Nav.SNIPPETS) {
-        pageHeader(title, "${entries.size} snippets $source: ${rows.count { it.state == ImportState.New }} new, $conflicts replacing existing ones, ${rows.count { it.state is ImportState.Unchanged }} unchanged.")
+        pageHeader(title, "$counted: ${rows.count { it.state == ImportState.New }} new, $conflicts replacing existing ones, ${rows.count { it.state is ImportState.Unchanged }} unchanged.")
         notice("info", "Nothing is saved until you import. Snippets marked \"runs immediately\" execute on the server as soon as you click them in a terminal.")
         form(action = "/snippets/import/apply", method = FormMethod.post, classes = "stack") {
             hiddenInput(name = "data") { value = encodeSnippetEntries(entries) }

@@ -269,6 +269,7 @@ class SnippetImportWebTest {
             assertEquals(HttpStatusCode.OK, preview.status)
             val page = preview.bodyAsText()
             assertTrue(page.contains("<h1>Add tmux snippets</h1>"), page)
+            assertTrue(page.contains("2 ready-made snippets: 2 new"), page)
             assertTrue(page.contains("Start tmux") && page.contains("Stop tmux"))
             assertTrue(page.contains("tmux new -A -s dirl") && page.contains("tmux kill-session -t dirl"))
             assertTrue(page.contains("name=\"replaceAll\"").not(), "adding ready-made snippets never offers to delete the others")
