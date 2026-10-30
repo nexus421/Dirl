@@ -63,6 +63,7 @@ private val folderPattern = Regex("^[\\p{L}\\p{N} ._-]{1,32}$")
  * - `GET /snippets/export` downloads all snippets as [SnippetFile].
  * - `POST /snippets/import` reads an uploaded or pasted file and shows the preview, nothing is saved yet.
  *   `POST /snippets/import/apply` saves the rows selected there.
+ * - `GET /snippets/tmux` shows the same preview for the ready-made [tmuxSnippets].
  */
 fun Route.snippetRoutes(dirl: Dirl) {
     get("/snippets") { call.snippetsPage(dirl, null, null) }
@@ -89,6 +90,11 @@ fun Route.snippetRoutes(dirl: Dirl) {
         }
         val content = dirl.vault.content ?: return@post call.respondRedirect("/snippets")
         call.importPreviewPage(entries, content.snippets)
+    }
+
+    get("/snippets/tmux") {
+        val content = dirl.vault.content ?: return@get call.respondRedirect("/snippets")
+        call.importPreviewPage(tmuxSnippets, content.snippets, readyMade = "tmux")
     }
 
     post("/snippets/import/apply") {
@@ -284,6 +290,13 @@ private suspend fun ApplicationCall.snippetsPage(dirl: Dirl, error: String?, for
                     groups.folders.forEach { (folder, inFolder) -> snippetFolder(folder, inFolder, open?.folder == folder) }
                 }
             }
+            card("Ready-made snippets") {
+                p("muted small") {
+                    +"tmux keeps a job running when the connection drops, for example when the phone locks. Tap Start tmux before a long job "
+                    +"and again to get back to it, Stop tmux ends it. tmux must be installed on the host."
+                }
+                div("btn-row") { linkButton("/snippets/tmux", "Add tmux snippets", "sm") }
+            }
             card("Add snippet") { snippetForm("/snippets", null, "Add", form, content.snippets) }
             importCard(content.snippets.size, import)
         }
@@ -326,14 +339,19 @@ private fun kotlinx.html.FlowContent.importCard(count: Int, import: ImportInput?
     }
 }
 
-/** What the import of [entries] would change in [existing], with a checkbox per snippet. */
-private suspend fun ApplicationCall.importPreviewPage(entries: List<SnippetEntry>, existing: List<Snippet>) {
+/**
+ * What the import of [entries] would change in [existing], with a checkbox per snippet. For the ready-made snippets
+ * named by [readyMade] it is titled after them and does not offer to delete all other snippets.
+ */
+private suspend fun ApplicationCall.importPreviewPage(entries: List<SnippetEntry>, existing: List<Snippet>, readyMade: String? = null) {
     val rows = planImport(entries, existing)
     val conflicts = rows.count { it.state is ImportState.Replaces }
     val fileKeys = entries.map { matchKey(it.folder, it.name) }.toSet()
     val notInFile = existing.count { matchKey(it.folder, it.name) !in fileKeys }
-    page("Import snippets", session, Nav.SNIPPETS) {
-        pageHeader("Import snippets", "${entries.size} snippets in the file: ${rows.count { it.state == ImportState.New }} new, $conflicts replacing existing ones, ${rows.count { it.state is ImportState.Unchanged }} unchanged.")
+    val title = readyMade?.let { "Add $it snippets" } ?: "Import snippets"
+    val counted = if (readyMade == null) "${entries.size} snippets in the file" else "${entries.size} ready-made snippets"
+    page(title, session, Nav.SNIPPETS) {
+        pageHeader(title, "$counted: ${rows.count { it.state == ImportState.New }} new, $conflicts replacing existing ones, ${rows.count { it.state is ImportState.Unchanged }} unchanged.")
         notice("info", "Nothing is saved until you import. Snippets marked \"runs immediately\" execute on the server as soon as you click them in a terminal.")
         form(action = "/snippets/import/apply", method = FormMethod.post, classes = "stack") {
             hiddenInput(name = "data") { value = encodeSnippetEntries(entries) }
@@ -351,7 +369,7 @@ private suspend fun ApplicationCall.importPreviewPage(entries: List<SnippetEntry
                 }
             }
             card(classes = "import-rows") { rows.forEach { importRow(it) } }
-            card {
+            if (readyMade == null) card {
                 checkField("Delete all other snippets and keep only the ones selected here", "replaceAll", false)
                 p("muted small") {
                     +"Deletes the $notInFile of your ${existing.size} snippets that are not in the file, and every existing snippet whose row is not ticked. "

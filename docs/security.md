@@ -225,6 +225,8 @@ not depend on Dirl: your own keys in the password manager and the provider's con
   browser would not send the Strict cookie.
 - CSP `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; ...`. `unsafe-inline` for styles is
   required by xterm.js 6, which creates `<style>` elements without nonce support. Scripts stay strict.
+  `manifest-src 'self'` allows the web app manifest under `/static/`, which makes Dirl installable. There is no
+  service worker, so no response is cached and `Cache-Control: no-store` holds for the installed app as well.
 - Every POST and every WebSocket upgrade must carry `Origin: <publicUrl>`, Ktor does not check that for WebSockets.
   `Referrer-Policy` is `same-origin`, not `no-referrer`: with `no-referrer` browsers send `Origin: null` on form
   posts, which broke every form in the first browser test.

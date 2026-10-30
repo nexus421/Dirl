@@ -256,4 +256,58 @@ class SnippetImportWebTest {
         assertTrue(page.contains("action=\"/snippets/import\""))
         assertTrue(page.contains("enctype=\"multipart/form-data\""))
     }
+
+    @Test
+    fun `the tmux snippets are added through the preview`() {
+        val dirl = newDirl()
+        testApplication {
+            val browser = browser(dirl)
+            val snippetsPage = browser.get("/snippets").bodyAsText()
+            assertTrue(snippetsPage.contains("href=\"/snippets/tmux\""), "the snippets page offers them")
+
+            val preview = browser.get("/snippets/tmux")
+            assertEquals(HttpStatusCode.OK, preview.status)
+            val page = preview.bodyAsText()
+            assertTrue(page.contains("<h1>Add tmux snippets</h1>"), page)
+            assertTrue(page.contains("2 ready-made snippets: 2 new"), page)
+            assertTrue(page.contains("Start tmux") && page.contains("Stop tmux"))
+            assertTrue(page.contains("tmux new -A -s dirl") && page.contains("tmux kill-session -t dirl"))
+            assertTrue(page.contains("name=\"replaceAll\"").not(), "adding ready-made snippets never offers to delete the others")
+
+            val redirect = browser.apply(hiddenData(page), take = listOf(0, 1))
+            assertEquals("/snippets?done=snippets-imported", redirect.headers[HttpHeaders.Location])
+        }
+        val tmux = dirl.snippets().filter { it.folder == "tmux" }.associateBy { it.name }
+        assertEquals("tmux new -A -s dirl\n", tmux["Start tmux"]?.command, "Start runs on the tap")
+        assertEquals("tmux kill-session -t dirl", tmux["Stop tmux"]?.command, "Stop ends a running job, so it asks first")
+        assertEquals(existing.size + 2, dirl.snippets().size, "the other snippets stay")
+        assertEquals("added=2 replaced=0 deleted=0", dirl.lastImport())
+    }
+
+    @Test
+    fun `adding the tmux snippets again changes nothing`() {
+        val dirl = newDirl(existing + tmuxSnippets.mapIndexed { i, entry -> entry.toSnippet("t$i") })
+        testApplication {
+            val page = browser(dirl).get("/snippets/tmux").bodyAsText()
+            assertEquals(2, Regex("already there, unchanged").findAll(page).count(), page)
+            assertTrue(Regex("<input type=\"checkbox\" name=\"take\"[^>]*checked").containsMatchIn(page).not(), "nothing is ticked")
+        }
+    }
+
+    @Test
+    fun `the tmux preview needs a login and an unlocked vault and saves nothing by itself`() {
+        val dirl = newDirl()
+        testApplication {
+            application { dirlModule(dirl) }
+            val client = createClient { followRedirects = false }
+            assertEquals("/login", client.get("/snippets/tmux").headers[HttpHeaders.Location], "no session, no preview")
+
+            val cookie = "$SESSION_COOKIE=${dirl.sessions.create(actor).token}"
+            client.get("/snippets/tmux") { header(HttpHeaders.Cookie, cookie) }
+            assertEquals(existing, dirl.snippets(), "the GET only shows the preview")
+
+            dirl.vault.seal(actor)
+            assertEquals("/unlock", client.get("/snippets/tmux") { header(HttpHeaders.Cookie, cookie) }.headers[HttpHeaders.Location])
+        }
+    }
 }
