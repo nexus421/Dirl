@@ -19,7 +19,8 @@
 
 A snippet can ask for values before it is sent: `{{Name}}`, or `{{Name:default}}` with a prefilled value. For example
 `docker logs --tail {{Lines:100}} -f {{Container}}`. A click on the snippet in the terminal opens a small form above
-the terminal with one field per name and a preview of the finished command. Enter sends it, Escape cancels. A name that
+the terminal with one field per name and a preview of the finished command. In the preview every value is blue and
+underlined, the one being typed has a background, an empty one shows its name as `<Name>`. Enter sends it, Escape cancels. A name that
 appears several times is asked for once, all of them in the same form, at most 10 different names per snippet.
 
 Names hold letters, digits, `_` and `-`, no spaces. Everything after the colon up to the closing `}}` is the default,

@@ -453,6 +453,11 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
 .snippet-ask-fields { display: grid; gap: 8px; }
 .snippet-ask-fields .field { margin: 0; }
 .snippet-ask-preview { margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--code); font-size: 12.5px; white-space: pre-wrap; word-break: break-all; max-height: 140px; overflow: auto; }
+/* The values in the preview: blue and underlined, the one being typed with a background, a missing one by name.
+   Not .empty, that is the empty state of a page with its own padding. */
+.snippet-ask-preview .var { color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; border-radius: 3px; }
+.snippet-ask-preview .var.active { background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent-soft); }
+.snippet-ask-preview .var.missing { color: var(--muted); font-weight: 400; font-style: italic; text-decoration-style: dotted; }
 .term-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
 .term-bar .name { font-weight: 650; margin-right: 6px; }
 .term-bar .spacer { flex: 1; }

@@ -162,8 +162,25 @@
     askFields.querySelectorAll('input').forEach(function (input) { values[input.name] = cleanValue(input.value); });
     return values;
   }
+  // The preview is the command with every value marked, so a rarely used command shows what goes where. The value of
+  // the field with the focus is marked stronger, an empty one shows its name. Built from text nodes, never markup.
   function updatePreview() {
-    askPreview.textContent = fillPlaceholders(asking.command, askValues()).replace(/\n$/, '');
+    const values = askValues();
+    const focused = document.activeElement && document.activeElement.form === ask ? document.activeElement.name : null;
+    const command = asking.command.replace(/\n$/, '');
+    const parts = [];
+    let last = 0;
+    command.replace(placeholderPattern, function (all, name, value, offset) {
+      if (offset > last) parts.push(document.createTextNode(command.slice(last, offset)));
+      const mark = document.createElement('span');
+      mark.className = 'var' + (name === focused ? ' active' : '') + (values[name] === '' ? ' missing' : '');
+      mark.textContent = values[name] === '' ? '<' + name + '>' : values[name];
+      parts.push(mark);
+      last = offset + all.length;
+      return all;
+    });
+    if (last < command.length) parts.push(document.createTextNode(command.slice(last)));
+    askPreview.replaceChildren.apply(askPreview, parts);
   }
   function closeAsk() {
     ask.hidden = true;
@@ -190,6 +207,7 @@
       input.spellcheck = false;
       noPasswordManager(input);
       input.addEventListener('input', updatePreview);
+      input.addEventListener('focus', updatePreview);
       label.append(caption, input);
       askFields.append(label);
     });

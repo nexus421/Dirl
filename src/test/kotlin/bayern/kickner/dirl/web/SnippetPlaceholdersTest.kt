@@ -60,6 +60,16 @@ class SnippetPlaceholdersTest {
     }
 
     @Test
+    fun `the marks of the preview have no rules of their own outside the preview`() {
+        // terminal.js marks values with these classes. A page wide rule for one of them, like the padding of .empty,
+        // would bend the preview.
+        val css = javaClass.getResource("/static/app.css")!!.readText().replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
+        val selectors = Regex("([^{}]+)\\{[^{}]*\\}").findAll(css).flatMap { it.groupValues[1].split(',') }.map { it.trim() }
+        selectors.filter { Regex("(^|\\s)\\.(var|missing|active)\\b").containsMatchIn(it) }
+            .forEach { assertTrue(it.startsWith(".snippet-ask-preview "), "a rule for a mark outside the preview: $it") }
+    }
+
+    @Test
     fun `a snippet may ask for at most ten different values`() {
         fun command(count: Int) = (1..count).joinToString(" ") { "{{V$it}}" } + " {{V1}}"
         assertNull(snippetProblem("ten", command(10), null))
