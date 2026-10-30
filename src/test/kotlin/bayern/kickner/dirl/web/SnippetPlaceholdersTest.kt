@@ -95,8 +95,10 @@ class SnippetPlaceholdersTest {
         val key = generateEd25519Key("k")
         val logs = Snippet("1", "Logs", "docker logs --tail {{Lines:100}} -f {{Container}}", null)
         val names = Snippet("2", "Names", "docker ps --format '{{.Names}}'\n", null)
+        val hello = Snippet("3", "Hello", "echo {{Name}}\n", null)
+        val free = Snippet("4", "Free", "free -h", null)
         dirl.vault.update {
-            it.copy(keys = listOf(key), hosts = listOf(Host(id = "h", name = "web", address = "127.0.0.1", port = 1, username = "u", keyId = key.id)), snippets = listOf(logs, names))
+            it.copy(keys = listOf(key), hosts = listOf(Host(id = "h", name = "web", address = "127.0.0.1", port = 1, username = "u", keyId = key.id)), snippets = listOf(logs, names, hello, free))
         }
         application { dirlModule(dirl) }
         val client = createClient { followRedirects = false }
@@ -104,16 +106,21 @@ class SnippetPlaceholdersTest {
 
         val page = client.get("/snippets") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
         assertTrue(page.contains("<span class=\"pill accent\">variables: Lines, Container</span>"), page)
-        assertEquals(1, Regex("pill accent").findAll(page).count(), "a Go template asks for nothing")
+        assertEquals(2, Regex("pill accent").findAll(page).count(), "Logs and Hello, a Go template asks for nothing")
         assertTrue(page.contains("Variables like {{Name}} or {{Name:default}} are asked for when the snippet is clicked"), "the form explains it")
 
         val terminal = client.get("/hosts/h/terminal") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
         assertTrue(terminal.contains("data-send=\"docker logs --tail {{Lines:100}} -f {{Container}}\""), "the browser fills the values, the page sends the command as stored")
-        // The button with variables carries the mark and says it to screen readers, the other one has neither.
-        val logsButton = terminal.substringAfter("data-name=\"Logs\"").substringBefore("</button>")
+        // A button with variables carries the braces, one that runs on the click the Enter symbol, both say it to
+        // screen readers. Variables win: the form comes first, so a snippet that runs immediately is no warning then.
+        fun button(name: String) = terminal.substringAfter("data-name=\"$name\"").substringBefore("</button>")
+        val runMark = "<span class=\"snippet-run\" aria-hidden=\"true\">⏎</span><span class=\"sr-only\">, runs immediately</span>"
+        val logsButton = button("Logs")
         assertTrue(logsButton.contains("<span class=\"snippet-var\" aria-hidden=\"true\">{ }</span>") && logsButton.contains("<span class=\"sr-only\">, asks for Lines, Container</span>"), logsButton)
-        val namesButton = terminal.substringAfter("data-name=\"Names\"").substringBefore("</button>")
-        assertTrue(namesButton.contains("snippet-var").not() && namesButton.contains("sr-only").not(), namesButton)
+        assertTrue(logsButton.contains("snippet-run").not(), logsButton)
+        assertTrue(button("Names").contains(runMark) && button("Names").contains("snippet-var").not(), button("Names"))
+        assertTrue(button("Hello").contains("snippet-var") && button("Hello").contains("snippet-run").not(), button("Hello"))
+        assertTrue(button("Free").contains("snippet-").not() && button("Free").contains("sr-only").not(), button("Free"))
         assertTrue(terminal.contains("<script src=\"/static/terminal.js\">"))
     }
 }

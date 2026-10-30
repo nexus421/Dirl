@@ -233,6 +233,8 @@ input[type=file] { font: inherit; }
 .pill.accent { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
 /* The mark of a snippet button with variables, blue like the pill on the snippets page. */
 .snippet-var { margin-left: 6px; padding: 0 5px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-family: var(--mono); font-size: 10.5px; line-height: 1.6; }
+/* A snippet button that runs on the click, without asking: gray, red stays for status. */
+.snippet-run { margin-left: 6px; padding: 0 4px; border-radius: 5px; background: var(--code); border: 1px solid var(--border); color: var(--muted); font-size: 14px; line-height: 1.1; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   padding: 3px 10px;

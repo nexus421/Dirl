@@ -214,7 +214,10 @@ suspend fun io.ktor.server.application.ApplicationCall.jumpOnlyPage(host: Host) 
     }
 }
 
-/** A button that sends [snippet] to the terminal through `terminal.js`, marked with `{ }` when it has variables. */
+/**
+ * A button that sends [snippet] to the terminal through `terminal.js`. Marked with `{ }` when it has variables and with
+ * `⏎` when a click runs it right away, without the dialog. Unmarked buttons ask first.
+ */
 private fun FlowContent.snippetButton(snippet: Snippet) = button(type = ButtonType.button, classes = "btn sm") {
     attributes["data-send"] = snippet.command
     attributes["data-name"] = snippet.name
@@ -228,6 +231,13 @@ private fun FlowContent.snippetButton(snippet: Snippet) = button(type = ButtonTy
             +"{ }"
         }
         span("sr-only") { +", asks for ${variables.joinToString { it.name }}" }
+    } else if (snippet.command.endsWith("\n")) {
+        // Runs on the click, the Enter symbol warns. With variables the form comes first, so no warning there.
+        span("snippet-run") {
+            attributes["aria-hidden"] = "true"
+            +"⏎"
+        }
+        span("sr-only") { +", runs immediately" }
     }
 }
 
