@@ -234,6 +234,8 @@ private fun demoSnippets(): List<Snippet> = listOf(
     Snippet("s8", "Logs of a container", "docker logs --tail {{Lines:100}} -f {{Container}}", "Docker"),
     Snippet("s9", "Container names", "docker ps --format '{{.Names}}'\n", "Docker"),
     Snippet("s10", "Say hello", "echo \"Hello {{Name:World}}, nice to see you {{Name}}\"\n"),
+    // Lower case names and braces of the shell in a default.
+    Snippet("s11", "Tail a file", "tail -n {{lines:5}} \"{{file:\${HOME}/.profile}}\"\n", "System"),
 )
 
 /**

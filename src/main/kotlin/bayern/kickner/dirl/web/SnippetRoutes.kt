@@ -390,6 +390,7 @@ private fun kotlinx.html.FlowContent.importRow(row: ImportRow) = div("import-row
                 is ImportState.Unchanged -> pill("", "already there, unchanged")
             }
             if (row.entry.run) pill("error", "runs immediately")
+            variablesPill(row.entry.command)
         }
         if (state is ImportState.Replaces) {
             state.existing.forEach { old ->
@@ -412,6 +413,12 @@ private fun kotlinx.html.FlowContent.snippetFolder(title: String, snippets: List
     div("snippet-list") { snippets.forEach { snippetRow(it) } }
 }
 
+/** A pill naming the variables [command] asks for before it is sent, nothing without variables. */
+private fun kotlinx.html.FlowContent.variablesPill(command: String) {
+    val variables = placeholdersOf(command)
+    if (variables.isNotEmpty()) pill("accent", "variables: ${variables.joinToString { it.name }}")
+}
+
 /** One snippet as a compact row: name, whether it runs, the command on one line (complete as tooltip), actions. */
 private fun kotlinx.html.FlowContent.snippetRow(snippet: Snippet) = div("snippet-row") {
     val command = snippet.command.trimEnd('\n')
@@ -419,8 +426,7 @@ private fun kotlinx.html.FlowContent.snippetRow(snippet: Snippet) = div("snippet
         div("snippet-title") {
             span("snippet-name") { +snippet.name }
             if (snippet.command.endsWith("\n")) pill("error", "runs immediately") else pill("", "inserts only")
-            val asks = placeholdersOf(snippet.command)
-            if (asks.isNotEmpty()) span("snippet-asks") { +"asks for ${asks.joinToString { it.name }}" }
+            variablesPill(snippet.command)
         }
         div("snippet-command") {
             title = command
@@ -450,7 +456,7 @@ private fun kotlinx.html.FlowContent.snippetForm(action: String, snippet: Snippe
         }
         textAreaField(
             "Command", "command", form?.get("command") ?: snippet?.command?.trimEnd('\n').orEmpty(), rows = 3,
-            hint = "{{Name}} or {{Name:default}}, starting with a capital letter, is asked for when the snippet is clicked, e.g. docker logs --tail {{Lines:100}} {{Container}}.",
+            hint = "Variables like {{Name}} or {{Name:default}} are asked for when the snippet is clicked, e.g. docker logs --tail {{Lines:100}} {{Container}}.",
         )
         val run = if (form != null) form["run"] == "on" else snippet?.command?.endsWith("\n") ?: true
         checkField("Run immediately (send Enter after the command)", "run", run)

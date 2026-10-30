@@ -214,11 +214,21 @@ suspend fun io.ktor.server.application.ApplicationCall.jumpOnlyPage(host: Host) 
     }
 }
 
-/** A button that sends [snippet] to the terminal through `terminal.js`. */
+/** A button that sends [snippet] to the terminal through `terminal.js`, marked with `{ }` when it has variables. */
 private fun FlowContent.snippetButton(snippet: Snippet) = button(type = ButtonType.button, classes = "btn sm") {
     attributes["data-send"] = snippet.command
+    attributes["data-name"] = snippet.name
     attributes["title"] = snippet.command.trimEnd('\n')
     +snippet.name
+    // A snippet with variables asks for values first, the braces say so at a glance. Screen readers get it in words.
+    val variables = placeholdersOf(snippet.command)
+    if (variables.isNotEmpty()) {
+        span("snippet-var") {
+            attributes["aria-hidden"] = "true"
+            +"{ }"
+        }
+        span("sr-only") { +", asks for ${variables.joinToString { it.name }}" }
+    }
 }
 
 private val controlJson = Json { ignoreUnknownKeys = true }

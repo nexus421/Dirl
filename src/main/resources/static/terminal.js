@@ -103,7 +103,7 @@
 
   // Placeholders: {{Name}} or {{Name:default}}, the same pattern as PLACEHOLDER_PATTERN in SnippetPlaceholders.kt.
   // A snippet with placeholders first asks for their values above the terminal, then sends the filled command.
-  const placeholderPattern = /\{\{([A-Z][A-Za-z0-9_-]{0,31})(?::([^{}\r\n]{0,200}))?\}\}/g;
+  const placeholderPattern = /\{\{([A-Za-z0-9_-]{1,32})(?::((?:(?!\}\})[^\r\n]){0,200}))?\}\}/g;
   function placeholdersOf(command) {
     const byName = new Map();
     command.replace(placeholderPattern, function (all, name, value) {
@@ -161,7 +161,7 @@
   }
   function openAsk(button, placeholders) {
     asking = { command: button.dataset.send };
-    askTitle.textContent = button.textContent;
+    askTitle.textContent = button.dataset.name || button.textContent;
     askSend.textContent = button.dataset.send.endsWith('\n') ? 'Run' : 'Insert';
     askFields.replaceChildren();
     placeholders.forEach(function (value, name) {

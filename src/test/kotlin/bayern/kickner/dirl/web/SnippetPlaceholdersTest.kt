@@ -28,25 +28,34 @@ class SnippetPlaceholdersTest {
     fun `placeholders are found once each, in order, with the first default`() {
         assertEquals(listOf("Lines=100", "Container=null"), names("docker logs --tail {{Lines:100}} -f {{Container}}"))
         assertEquals(listOf("Name=World"), names("echo {{Name}} {{Name:World}} {{Name:Other}}"), "a later default fills a missing one, the first default wins")
-        assertEquals(listOf("A=", "B_2-x=v a/l:ue"), names("{{A:}} {{B_2-x:v a/l:ue}}"), "an empty default is a default, a default may hold spaces, slashes and colons")
+        assertEquals(listOf("container=null", "1st=null", "a_b-2=null"), names("{{container}} {{1st}} {{a_b-2}}"), "lower case and digits anywhere")
+        assertEquals(listOf("Name=null", "name=null"), names("{{Name}} {{name}}"), "names are case sensitive")
         assertEquals(emptyList(), names("no placeholder here"))
     }
 
     @Test
-    fun `templates of docker and kubectl and other braces stay as they are`() {
+    fun `the default is everything after the colon up to the closing braces`() {
+        assertEquals(listOf("A="), names("{{A:}}"), "an empty default is a default")
+        assertEquals(listOf("B=v a/l:ue"), names("{{B:v a/l:ue}}"), "spaces, slashes and more colons")
+        assertEquals(listOf("Path=\${HOME}/logs"), names("tail {{Path:\${HOME}/logs}}"), "braces of the shell")
+        assertEquals(listOf("C=a{b"), names("{{C:a{b}}}"), "the first closing pair ends it, a third brace stays text")
+        assertEquals(listOf("D=x}y"), names("{{D:x}y}}"), "a single closing brace is part of the default")
+        assertEquals(emptyList(), names("echo {{E:line\nbreak}}"), "no line breaks")
+    }
+
+    @Test
+    fun `templates with a dot or a space stay as they are, bare words count`() {
         listOf(
             "docker ps --format '{{.Names}}'",
             "docker inspect -f '{{ .State.Status }}' web",
             "docker inspect -f '{{json .Config}}' web",
-            "kubectl get pods -o go-template='{{range .items}}{{.metadata.name}}{{end}}'",
-            "echo {{1st}} {{ Name }} {{Name }} {Name} {{{Name}",
-            "helm template {{ .Release.Name }} {{- if .Values.x }}{{ else }}{{ end }}",
-            "echo {{end}} {{else}} {{container}} {{name:default}}",
-            "echo {{Name:a{b}}}",
-            "echo {{Name:line\nbreak}}",
+            "helm template {{ .Release.Name }} {{- if .Values.x }}",
+            "echo {{ Name }} {{Name }} {Name} {{{Name}",
             "echo {{${"x".repeat(33)}}}",
+            "echo {{a.b}} {{a b}} {{ä}}",
         ).forEach { assertEquals(emptyList(), names(it), it) }
-        // Mixed: only the real placeholder counts.
+        // Known and accepted: a bare keyword of a Go template is a variable, the pill on the snippets page names it.
+        assertEquals(listOf("else=null", "end=null"), names("docker ps --format '{{if .Ports}}{{.Ports}}{{else}}none{{end}}'"))
         assertEquals(listOf("Format=null"), names("docker ps --format '{{.Names}}' {{Format}}"))
     }
 
@@ -84,12 +93,17 @@ class SnippetPlaceholdersTest {
         val cookie = "$SESSION_COOKIE=${dirl.sessions.create(actor).token}"
 
         val page = client.get("/snippets") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
-        assertTrue(page.contains("<span class=\"snippet-asks\">asks for Lines, Container</span>"), page)
-        assertEquals(1, Regex("snippet-asks").findAll(page).count(), "a Go template asks for nothing")
-        assertTrue(page.contains("{{Name}} or {{Name:default}}, starting with a capital letter, is asked for when the snippet is clicked"), "the form explains it")
+        assertTrue(page.contains("<span class=\"pill accent\">variables: Lines, Container</span>"), page)
+        assertEquals(1, Regex("pill accent").findAll(page).count(), "a Go template asks for nothing")
+        assertTrue(page.contains("Variables like {{Name}} or {{Name:default}} are asked for when the snippet is clicked"), "the form explains it")
 
         val terminal = client.get("/hosts/h/terminal") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
         assertTrue(terminal.contains("data-send=\"docker logs --tail {{Lines:100}} -f {{Container}}\""), "the browser fills the values, the page sends the command as stored")
+        // The button with variables carries the mark and says it to screen readers, the other one has neither.
+        val logsButton = terminal.substringAfter("data-name=\"Logs\"").substringBefore("</button>")
+        assertTrue(logsButton.contains("<span class=\"snippet-var\" aria-hidden=\"true\">{ }</span>") && logsButton.contains("<span class=\"sr-only\">, asks for Lines, Container</span>"), logsButton)
+        val namesButton = terminal.substringAfter("data-name=\"Names\"").substringBefore("</button>")
+        assertTrue(namesButton.contains("snippet-var").not() && namesButton.contains("sr-only").not(), namesButton)
         assertTrue(terminal.contains("<script src=\"/static/terminal.js\">"))
     }
 }

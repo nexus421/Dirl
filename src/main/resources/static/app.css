@@ -229,6 +229,10 @@ input[type=file] { font: inherit; }
 .pill.ok { color: var(--ok); background: var(--ok-soft); border-color: transparent; }
 .pill.warn { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
 .pill.error { color: var(--error); background: var(--error-soft); border-color: transparent; }
+/* Not a status, just a fact about the thing, e.g. the variables of a snippet. */
+.pill.accent { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+/* The mark of a snippet button with variables, blue like the pill on the snippets page. */
+.snippet-var { margin-left: 6px; padding: 0 5px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-family: var(--mono); font-size: 10.5px; line-height: 1.6; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   padding: 3px 10px;
@@ -449,7 +453,6 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
 .snippet-ask-fields { display: grid; gap: 8px; }
 .snippet-ask-fields .field { margin: 0; }
 .snippet-ask-preview { margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--code); font-size: 12.5px; white-space: pre-wrap; word-break: break-all; max-height: 140px; overflow: auto; }
-.snippet-asks { color: var(--muted); font-size: 12.5px; }
 .term-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
 .term-bar .name { font-weight: 650; margin-right: 6px; }
 .term-bar .spacer { flex: 1; }

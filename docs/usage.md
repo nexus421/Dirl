@@ -20,12 +20,15 @@
 A snippet can ask for values before it is sent: `{{Name}}`, or `{{Name:default}}` with a prefilled value. For example
 `docker logs --tail {{Lines:100}} -f {{Container}}`. A click on the snippet in the terminal opens a small form above
 the terminal with one field per name and a preview of the finished command. Enter sends it, Escape cancels. A name that
-appears several times is asked for once, at most 10 different names per snippet.
+appears several times is asked for once, all of them in the same form, at most 10 different names per snippet.
 
-Names start with a capital letter and hold letters, digits, `_` and `-`. That keeps Go templates of Docker, kubectl
-and Helm such as `{{.Names}}`, `{{ .Status }}` or `{{end}}` as they are, they are sent unchanged. A value is typed
-into the shell as given, like typing it yourself, without quoting. Line breaks and other control characters are
-removed from it, so a value cannot run the command early. The Snippets page shows which values a snippet asks for.
+Names hold letters, digits, `_` and `-`, no spaces. Everything after the colon up to the closing `}}` is the default,
+braces included, as in `{{Path:${HOME}/logs}}`, only line breaks are not. Templates with a dot or a space such as
+Docker's `{{.Names}}` or `{{ .Status }}` stay as they are and are sent unchanged. A bare word in braces counts as a
+variable, also `{{end}}` or `{{else}}` of a Go template, the pill on the Snippets page shows what a snippet asks for. A
+value is typed into the shell as given, like typing it yourself, without quoting: put quotes into the snippet where a
+value may hold spaces, `cat "{{File}}"`. Line breaks and other control characters are removed from a value, so it
+cannot run the command early.
 
 ## Sharing snippets
 
