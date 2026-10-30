@@ -121,10 +121,22 @@
     return command.replace(placeholderPattern, function (all, name) { return values[name]; });
   }
 
+  // Password managers ignore autocomplete="off" and offer to fill a field labelled "Name" with a person's name.
+  // These are the attributes the common ones honour instead: Proton Pass, 1Password, Bitwarden, LastPass, Dashlane.
+  function noPasswordManager(element) {
+    element.setAttribute('data-protonpass-ignore', 'true');
+    element.setAttribute('data-1p-ignore', 'true');
+    element.setAttribute('data-bwignore', 'true');
+    element.setAttribute('data-lpignore', 'true');
+    element.setAttribute('data-form-type', 'other');
+  }
+
   const ask = document.createElement('form');
   ask.className = 'snippet-ask';
   ask.hidden = true;
+  ask.autocomplete = 'off';
   ask.setAttribute('aria-label', 'Values for the snippet');
+  noPasswordManager(ask);
   const askTitle = document.createElement('div');
   askTitle.className = 'snippet-ask-title';
   const askFields = document.createElement('div');
@@ -176,6 +188,7 @@
       input.required = true;
       input.autocomplete = 'off';
       input.spellcheck = false;
+      noPasswordManager(input);
       input.addEventListener('input', updatePreview);
       label.append(caption, input);
       askFields.append(label);
