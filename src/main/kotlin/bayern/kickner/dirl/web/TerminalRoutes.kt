@@ -117,6 +117,12 @@ fun Route.terminalRoutes(dirl: Dirl) {
                     button(type = ButtonType.button, classes = "btn") { attributes["data-send"] = "\u0003"; +"Cancel" }
                 }
                 div("snippet-panel") {
+                    // Without snippets the Actions mode has nothing to tap, so it says where they come from.
+                    if (content.snippets.isEmpty()) p("muted small") {
+                        +"No snippets yet. "
+                        a(href = "/snippets") { +"Add snippets" }
+                        +" to run them here with a tap."
+                    }
                     if (groups.loose.isNotEmpty()) div("grid") { groups.loose.forEach { snippetButton(it) } }
                     groups.folders.forEach { (folder, inFolder) ->
                         details("panel-folder") {

@@ -22,13 +22,15 @@ the other one: "Actions" or "Classic terminal".
 
 - Classic terminal: the keyboard types into the shell, snippets sit in the bar above the terminal.
 - Actions: for a phone or tablet in an emergency, restart a service, install updates, read a log. The terminal only
-  shows output and tapping it does not open the keyboard. Input comes from two buttons below it, Enter and Cancel
-  (Ctrl+C), and from every snippet in a panel below them, folders open in place. On a wide screen the panel is on the
-  left. Snippets behave as in the classic mode, one that does not run immediately shows its command with Send and
-  Cancel first. Fields for variables do open the keyboard. To type anything else, a `sudo` password for example,
-  switch to the classic terminal.
+  shows output, tapping it neither opens the keyboard nor clicks into the program. Input comes from two buttons below
+  it, Enter and Cancel (Ctrl+C), and from every snippet in a panel below them, folders open in place. On a wide screen
+  the panel is on the left. Snippets behave as in the classic mode, one that does not run immediately shows its
+  command with Send and Cancel first. While it asks, Enter of the bar waits and its Cancel only closes the question,
+  so a slip never reaches a running job. Fields for variables do open the keyboard. To type anything else, a `sudo`
+  password for example, switch to the classic terminal.
 
-The mode is remembered per device in the browser. A device with a touch screen and no stored mode starts in Actions.
+The mode is remembered per device in the browser. Without a stored mode a device whose main pointer is a touch screen
+starts in Actions, a laptop with a touch screen and a trackpad starts in the classic terminal.
 
 ## Long jobs with tmux
 
@@ -43,15 +45,18 @@ import preview:
 
 Tap Start tmux, then run the long job. After a disconnect, open the terminal again and tap Start tmux: the job is
 still there with its output. Cancel stops the job and leaves the session open. Leaving the page detaches from tmux
-without ending it. tmux must be installed on the host, and inside tmux the output scrolls with tmux itself, not with
-the browser. The snippets can be changed or deleted like any other, Dirl does not treat them differently.
+without ending it. Start tmux inside the session only prints a warning about nesting. tmux must be installed on the
+host. Inside tmux the output scrolls with tmux, not with the browser: to scroll back, switch to the classic terminal
+and use the copy mode of tmux (Ctrl+B, then `[`). The snippets can be changed or deleted like any other, Dirl does not
+treat them differently.
 
 ## Install as an app
 
 Dirl can be installed from the browser menu and then opens in its own window without browser bars: in Chrome on
 Android "Add to Home screen" or "Install app", on the desktop the install icon in the address bar, in Safari on iOS
 Share, "Add to Home Screen". There is no service worker and nothing is cached, the app needs the connection to Dirl
-like the browser tab. An app on the iOS home screen keeps its own cookies, so it asks for a login once.
+like the browser tab. An app on the iOS home screen keeps its own cookies, separate from Safari, so it needs its own
+login.
 
 ## Placeholders in snippets
 

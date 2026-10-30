@@ -186,4 +186,15 @@ class SnippetFolderTest {
             assertEquals(2, Regex(Regex.escape("data-send=\"${s.command}\"")).findAll(page).count(), "${s.name} in the bar and in the panel")
         }
     }
+
+    @Test
+    fun `without snippets the panel of the actions mode points to the snippets page`(): Unit = testApplication {
+        val (client, cookie) = loggedIn()
+        val key = generateEd25519Key("k")
+        val host = Host(id = "h", name = "web", address = "127.0.0.1", port = 1, username = "u", keyId = key.id)
+        dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(host), snippets = emptyList()) }
+        val page = client.get("/hosts/h/terminal") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("<div class=\"keybar\">")
+        assertTrue(panel.contains("No snippets yet.") && panel.contains("href=\"/snippets\""), panel)
+    }
 }

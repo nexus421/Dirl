@@ -83,18 +83,31 @@
   }
   function applyMode() {
     page.classList.toggle('actions', actionsMode);
-    // xterm drops typed input with disableStdin and makes its textarea read-only. inputmode="none" also keeps the
-    // keyboard closed when the terminal is tapped to scroll.
-    term.options.disableStdin = actionsMode;
+    // Not disableStdin: it would also drop the answers of xterm to queries of the host (cursor position, device
+    // attributes, colours), which shells and tmux wait for. A read-only textarea with inputmode="none" keeps the
+    // keyboard closed when the terminal is tapped to scroll, the handlers below hold back keys, paste and the mouse.
+    term.textarea.readOnly = actionsMode;
     if (actionsMode) term.textarea.setAttribute('inputmode', 'none');
     else term.textarea.removeAttribute('inputmode');
     if (modeButton) modeButton.textContent = actionsMode ? 'Classic terminal' : 'Actions';
     setCtrl(false);
     fit.fit();
     placeAsk();
+    // An open snippet form keeps the focus.
     if (actionsMode) term.blur();
-    else term.focus();
+    else if (asking === null) term.focus();
   }
+  // In Actions mode only what the user enters is held back: keys, pasted or dropped text and mouse reports, X10
+  // (ESC [ M) and SGR (ESC [ <). Everything else xterm sends is an answer to the host and goes out.
+  const mouseReport = /^\x1b\[[M<]/;
+  term.attachCustomKeyEventHandler(function () { return actionsMode === false; });
+  ['paste', 'drop'].forEach(function (type) {
+    el.addEventListener(type, function (event) {
+      if (actionsMode === false) return;
+      event.preventDefault();
+      event.stopPropagation();
+    }, true);
+  });
 
   function send(text) {
     if (closed) {
@@ -112,9 +125,13 @@
     ws.send(encoder.encode(text));
   }
 
-  term.onData(send);
+  term.onData(function (data) {
+    if (actionsMode && mouseReport.test(data)) return;
+    send(data);
+  });
   // Some mouse reports are not valid UTF-8 and arrive here as raw bytes.
   term.onBinary(function (data) {
+    if (actionsMode) return;
     if (!closed && ws.readyState === WebSocket.OPEN) ws.send(Uint8Array.from(data, function (c) { return c.charCodeAt(0); }));
   });
   term.onResize(function (size) {
@@ -221,9 +238,13 @@
     if (last < command.length) parts.push(document.createTextNode(command.slice(last)));
     askPreview.replaceChildren.apply(askPreview, parts);
   }
+  // While the snippet form is open the action bar belongs to it: Cancel closes the form, Enter waits, so neither
+  // reaches a running job by a slip of the thumb.
+  const actionEnter = document.querySelector('.actionbar button');
   function closeAsk() {
     ask.hidden = true;
     asking = null;
+    if (actionEnter) actionEnter.disabled = false;
     askFields.replaceChildren();
     focusTerminal();
   }
@@ -257,6 +278,7 @@
     });
     placeAsk();
     ask.hidden = false;
+    if (actionEnter) actionEnter.disabled = true;
     updatePreview();
     // Enter sends: in a field it submits the form, without fields Send has the focus.
     const first = askFields.querySelector('input');
@@ -284,6 +306,10 @@
   document.querySelectorAll('[data-send]').forEach(function (button) {
     button.addEventListener('click', function () {
       closeMenus(null);
+      if (asking && button.closest('.actionbar')) {
+        if (button.dataset.send === '\u0003') closeAsk();
+        return;
+      }
       // The keys of the key bar and of the action bar are sent as they are.
       const placeholders = placeholdersOf(button.dataset.send);
       const asks = placeholders.size > 0 || button.dataset.send.endsWith('\n') === false;
