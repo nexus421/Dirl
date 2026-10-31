@@ -43,12 +43,14 @@ import preview:
 | Start tmux | `tmux new -A -s dirl`       | Runs on the tap. Starts the tmux session `dirl` or attaches to it if it runs      |
 | Stop tmux  | `tmux kill-session -t dirl` | Asks first, because it ends a running job. Ends the session, inside or outside it |
 
-Tap Start tmux, then run the long job. After a disconnect, open the terminal again and tap Start tmux: the job is
-still there with its output. Cancel stops the job and leaves the session open. Leaving the page detaches from tmux
-without ending it. Start tmux inside the session only prints a warning about nesting. tmux must be installed on the
-host. Inside tmux the output scrolls with tmux, not with the browser: to scroll back, switch to the classic terminal
-and use the copy mode of tmux (Ctrl+B, then `[`). The snippets can be changed or deleted like any other, Dirl does not
-treat them differently.
+Tap Start tmux, then run the long job. After a disconnect, open the terminal again and tap Start tmux: the job is still
+there with its output. Cancel stops the job and leaves the session open. Leaving the page detaches from tmux without
+ending it. Start tmux inside the session only prints a warning about nesting. tmux must be installed on the host. Inside
+tmux the output scrolls with tmux, not with the browser: to scroll back, switch to the classic terminal and use the copy
+mode of tmux (Ctrl+B, then `[`). The snippets can be changed or deleted like any other, Dirl does not treat them
+differently. All Dirl users log in to a host with the same account and so share the session `dirl`: Start tmux joins a
+job another user runs there, see [Security](security.md#ssh). Change the name in both snippets for a session of your
+own.
 
 ## Install as an app
 

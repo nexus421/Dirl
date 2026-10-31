@@ -16,6 +16,12 @@ The Argon2 parameters are not authenticated. Changing them only derives a wrong 
 heap or hang the unlock, so unlock and restore refuse more than 128 MiB, 10 passes or 4 lanes with a message instead
 of running Argon2.
 
+Five wrong passphrases in a row lock unlocking, key export and passphrase change for 15 minutes, without running
+Argon2. Every failure and the lockout are audited. Wrong passphrases of all three and of all users count together, and
+the counter lives in memory: every allowed user can lock the others out for 15 minutes, and a restart resets it, which
+costs an attacker a restart per five tries. Both are deliberate, all allowed users are trusted anyway, see
+[Access](#access).
+
 Writes go to a temporary file, are `fsync`ed and renamed over the old file. The previous three versions are kept as
 `vault.json.1` to `vault.json.3`. Settings offers the current file as encrypted backup download, the setup page of a
 fresh installation restores it.
@@ -39,7 +45,7 @@ users. Providers without such a restriction let every account through to the sec
 access request.
 
 - While the vault is unlocked, the list in the vault decides, checked on every request. Removing a user ends their
-  sessions and open terminals.
+  sessions at once and their open terminals at the next input, at the latest 30 seconds later.
 - While the vault is sealed, a plain copy (`dataDir/access.json`, `0600`) decides who reaches the unlock page.
   Tampering with it gives access to the passphrase prompt and nothing else. It is rewritten on every unlock.
 - Before a vault exists, everybody the provider lets through may create it or restore a backup (first-run
@@ -59,13 +65,14 @@ access request.
 
 ## SSH
 
-- Connections only exist while somebody uses Dirl. Every request of a logged-in user counts while it runs (a
-  download until it is done, a WebSocket until it is closed), and every Dirl page keeps a presence WebSocket open
-  ([ssh/Presence.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Presence.kt)). 30 seconds after the last one ended,
-  the next status round closes all connections, so they stay at most about 90 seconds after the last tab was
-  closed, about two minutes after a laptop went to sleep. The next visit connects again. Closing keeps the backoff
-  and the stop after rejected logins. The presence WebSocket carries no data, never extends the session and is
-  closed when the session ends, so a forgotten tab does not keep the connections open.
+- Connections only exist while somebody uses Dirl. Every request of a logged-in user counts while it runs (a download
+  until it is done, a WebSocket until it is closed), and every page of the app keeps a presence WebSocket open
+  ([ssh/Presence.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Presence.kt)). Login, unlock and setup do not, there is
+  nothing to keep connected. 30 seconds after the last one ended, the next status round closes all connections, so they
+  stay at most about 90 seconds after the last tab was closed, about two minutes after a laptop went to sleep. The next
+  visit connects again. Closing keeps the backoff and the stop after rejected logins. The presence WebSocket carries no
+  data, never extends the session and is closed when the session ends, so a forgotten tab does not keep the connections
+  open.
 - One connection per host while somebody is there. Terminals, SFTP and metrics are channels on it, a second
   terminal on the same host is a new channel with its own shell. OpenSSH allows 10 of them per connection
   (`MaxSessions`), so the eleventh terminal on a host, or the file manager next to ten terminals, is refused with that
@@ -87,21 +94,24 @@ access request.
   connections are closed together when nobody uses Dirl, a dead jump connection takes its targets down and they
   reconnect through the backoff.
 - Keys: Ed25519 generated with BouncyCastle in OpenSSH format, imports of unencrypted OpenSSH or PEM keys.
-- Terminal: `xterm-256color` PTY with a plain login shell. There is no tmux integration: a shared session name would
-  put several users into the same shell. Whoever wants tmux starts it in the terminal.
-  Terminal input counts as session activity. A watchdog closes the terminal when the session ends or access is
-  removed, sealing the vault closes all of them at once. After a disconnect, Enter reloads the page, which leads to
-  the login when the session ended.
+- Terminal: `xterm-256color` PTY with a plain login shell. The ready-made tmux snippets on the Snippets page (see
+  [usage](usage.md#long-jobs-with-tmux)) use one session name, `dirl`. Every Dirl user logs in to a host with the same
+  account, so whoever taps Start tmux while the job of another user runs there joins that shell, sees it and can type
+  into it. That is deliberate: the users share that account, its files and its shell history anyway, there are no roles,
+  and a job one user started can be picked up by another. Change the name in both snippets for a session of your own.
+  Terminal input counts as session activity. A watchdog closes the terminal when the session ends or access is removed,
+  sealing the vault closes all of them at once. After a disconnect, Enter reloads the page, which leads to the login
+  when the session ended.
 - Metrics: one `exec` per host and minute while somebody uses Dirl
-  ([ssh/Metrics.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Metrics.kt)), plus one right after an arrival, unlock
-  or "Connect now". It reads `/proc/stat` twice one second apart, so each poll has the CPU usage on its own. Only the
-  latest sample per host is kept, in memory, and forgotten when nobody uses Dirl or the vault is sealed. A host whose
-  previous poll still runs is skipped. Bind mounts and btrfs subvolumes of one device are shown once. Pure jump hosts with
-  `command="/bin/false"` have no metrics. Every host is asked for all values, the choice per host only decides what
-  its overview card shows. Each part of the output carries a marker, a part a host cannot deliver (no systemd, no
-  `who`, no kernel under `/boot` in a container) leaves only that value unknown. Text from the server (system name,
-  kernel, unit names) loses control, format and escape characters and is cut at 100 characters, at most 50 failed
-  units are kept.
+  ([ssh/Metrics.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Metrics.kt)), plus one right after an arrival, an unlock,
+  "Connect now", saving a host and pinning a host key. It reads `/proc/stat` twice one second apart, so each poll has
+  the CPU usage on its own. Only the latest sample per host is kept, in memory, and forgotten when nobody uses Dirl or
+  the vault is sealed. A host whose previous poll still runs is skipped. Bind mounts and btrfs subvolumes of one device
+  are shown once. A host marked "jump host only" has no metrics, Dirl runs no command there and only measures the round
+  trip. Every host is asked for all values, the choice per host only decides what its overview card shows. Each part of
+  the output carries a marker, a part a host cannot deliver (no systemd, no `who`, no kernel under `/boot` in a
+  container) leaves only that value unknown. Text from the server (system name, kernel, unit names) loses control,
+  format and escape characters and is cut at 100 characters, at most 50 failed units are kept.
 - Reboot needed is decided like Debian admins do it: the kernel `/vmlinuz` points to, else the last `vmlinuz-*`
   installed in `/boot`, differs from `uname -r`, or `/run/reboot-required` exists. A container has no kernel of its
   own under `/boot`, there it is only known from the flag.
@@ -220,11 +230,19 @@ not depend on Dirl: your own keys in the password manager and the provider's con
 - The ID token is not signature-checked. It comes straight from the token endpoint over TLS, which OIDC Core 1.0
   section 3.1.3.7 allows as replacement. `iss`, `aud`, `azp`, `exp`, `iat` and `nonce` are checked
   ([auth/IdToken.kt](../src/main/kotlin/bayern/kickner/dirl/auth/IdToken.kt)).
+- `oidc.forceReauth` sends `prompt=login`, which asks the provider for a fresh sign-in on every login. Dirl does not
+  check that it happened (no `auth_time` or `max_age`), a provider that ignores the parameter lets an existing
+  provider session through. Pocket ID asks for the passkey every time.
+- The answers of the provider (discovery document, token response) are read without a size limit, unlike everything
+  Dirl reads from SSH servers and GitHub. The provider is the party Dirl trusts with the login itself. A broken or
+  compromised one could at worst exhaust the heap, Dirl then restarts sealed.
 - Session: `__Host-session` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`), 256 bit random token, in memory, 60
   minutes idle, 12 hours at most (both configurable). The automatic reload of the host overview and the presence
   WebSocket it opens do not count as activity, so an unattended browser still reaches the idle timeout. The callback
   answers with a page that refreshes to `/`, because a redirect would belong to the cross-site navigation and the
-  browser would not send the Strict cookie.
+  browser would not send the Strict cookie. For the same reason the callback cannot end an older session of the same
+  browser: a new login only replaces the cookie, the old session stays valid on the server until it expires. Logging
+  out ends a session at once, Settings ends any other.
 - CSP `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; ...`. `unsafe-inline` for styles is
   required by xterm.js 6, which creates `<style>` elements without nonce support. Scripts stay strict.
   `manifest-src 'self'` allows the web app manifest under `/static/`, which makes Dirl installable. There is no
@@ -243,13 +261,13 @@ not depend on Dirl: your own keys in the password manager and the provider's con
 
 ## Update check
 
-Dirl asks `https://api.github.com/repos/nexus421/Dirl/releases/latest` whether a newer release exists. The server
-asks, never the browser. There is no timer: a page shown to a logged in user starts the question in the background
-when the last one is at least an hour ago, failed ones included. Nobody using Dirl means no requests, and neither
-does a sealed vault, which cannot tell whether the check was turned off. GitHub sees the server's address and the
-JDK's user agent with the Java version (`Java-http-client/25.0.4.1`), no Dirl version and nothing from the vault.
-Without a token GitHub allows 60 requests per hour and address, a refused answer (403, 429) is ignored until the
-next hour.
+Dirl asks `https://api.github.com/repos/nexus421/Dirl/releases/latest` whether a newer release exists. The server asks,
+never the browser. There is no timer: a page shown to a logged in user starts the question in the background when the
+last one is at least an hour ago, failed ones included. Nobody using Dirl means no requests, and neither does a sealed
+vault, which cannot tell whether the check was turned off. GitHub sees the server's address and the user agent of the
+JDK that runs Dirl, which names only its version, for example `Java-http-client/21.0.12.1`, no Dirl version and nothing
+from the vault. Without a token GitHub allows 60 requests per hour and address, a refused answer (403, 429) is ignored
+until the next hour.
 
 The answer is untrusted like everything from outside: at most 1 MiB is read, redirects are not followed, only
 `tag_name` is used and only if it is exactly `v1.2.3`. The footer link is built from the fixed release URL and that
@@ -259,9 +277,10 @@ the check is off. Dirl 0.2.0 and older cannot read a vault where it is off.
 ## Audit log
 
 `dataDir/audit.jsonl` (`0600`), one JSON object per line, appended and synced per entry: logins, rejected logins,
-access granted and removed, sessions ended, vault setup, restore, backup download, unlocks, failures and lockouts,
-passphrase and settings changes, host, key and snippet changes, key exports, snippet exports and imports, host key
-pins and mismatches, terminal open and close, every SFTP change and download. Reading files in a terminal is not
+logouts, access granted and removed, sessions ended, vault setup, restore, backup download, unlocks, failures and
+lockouts, sealing, passphrase and settings changes, host, key and snippet changes, key exports, snippet exports and
+imports, host key pins and mismatches, hosts stopped after rejected logins, terminal open and close, every SFTP change
+and download. Reading files in a terminal is not
 visible there, only that the terminal was opened. Never terminal contents, passphrases or keys. The Audit page shows
 and filters the latest entries and only reads the last MiB of the file, so a log that grows for years stays cheap to
 view.

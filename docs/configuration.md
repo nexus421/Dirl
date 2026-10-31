@@ -43,7 +43,7 @@ except the OIDC client secret, so `0400` and owned by the service user.
 | `clientId`        | string   | required                | Client ID at the provider                                                        |
 | `clientSecret`    | string   | required                | Secret of the confidential client, sent to the token endpoint with HTTP Basic    |
 | `allowedSubjects` | string[] | `[]`                    | Always allowed (break-glass). If set, only these may create the vault            |
-| `forceReauth`     | bool     | `true`                  | Sends `prompt=login`, so every login needs a fresh sign-in at the provider       |
+| `forceReauth`     | bool     | `true`                  | Sends `prompt=login`, which asks the provider for a fresh sign-in on every login. Dirl does not check it, see [Security](security.md#login-and-web-hardening) |
 | `scopes`          | string[] | `["openid", "profile"]` | Must contain `openid`                                                            |
 
 `allowedSubjects` holds `sub` values, not user names: the stable user ID of the provider, at most providers shown in
