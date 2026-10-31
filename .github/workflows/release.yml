@@ -2,7 +2,9 @@ name: Release
 
 # Runs when a release is published on GitHub. The tag must match the version in build.gradle.kts (tag v1.2.0 needs
 # version = "1.2.0"), otherwise the run fails and attaches nothing. Then it runs all tests including the SSH
-# integration tests, builds dirl.jar, checks it and attaches it together with its SHA-256 sum.
+# integration tests and the Docker image test, builds dirl.jar, checks it and attaches it together with its SHA-256
+# sum. Afterwards the image job builds the Docker image from exactly that attached JAR for amd64 and arm64 and pushes
+# it to ghcr.io as <version> and, unless it is a pre-release, as latest.
 on:
   release:
     types: [published]
@@ -41,6 +43,14 @@ jobs:
       - name: Check merged SLF4J service file
         run: test "$(unzip -p build/libs/dirl.jar META-INF/services/org.slf4j.spi.SLF4JServiceProvider)" = "bayern.kickner.klogger.slf4j.KloggerServiceProvider"
 
+      - name: Build Docker image
+        run: docker build --tag dirl:test .
+
+      - name: Test Docker image
+        env:
+          DIRL_DOCKER_IMAGE: dirl:test
+        run: ./gradlew dockerImageTest
+
       - name: Attach dirl.jar and its checksum to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -48,3 +58,42 @@ jobs:
           cd build/libs
           sha256sum dirl.jar > dirl.jar.sha256
           gh release upload "$GITHUB_REF_NAME" dirl.jar dirl.jar.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+
+  image:
+    needs: jar
+    runs-on: ubuntu-latest
+    # Only this job may push packages, it needs no write access to the repository.
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The image holds the JAR attached to the release, checked against its checksum.
+      - name: Download dirl.jar from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p build/libs
+          cd build/libs
+          gh release download "$GITHUB_REF_NAME" --pattern dirl.jar --pattern dirl.jar.sha256 --repo "$GITHUB_REPOSITORY"
+          sha256sum -c dirl.jar.sha256
+
+      # QEMU only runs the one RUN step of the Dockerfile for arm64, the JAR itself is the same on every platform.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to ghcr.io
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: echo "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and push the image
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tags=(--tag "$image:$version")
+          if [ "$PRERELEASE" != "true" ]; then tags+=(--tag "$image:latest"); fi
+          docker buildx build --platform linux/amd64,linux/arm64 --build-arg VERSION="$version" "${tags[@]}" --push .

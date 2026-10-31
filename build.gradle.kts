@@ -136,6 +136,22 @@ tasks.test {
     useJUnitPlatform()
     // The SSH integration tests start a local OpenSSH server, see SshIntegrationTest
     System.getenv("DIRL_SSHD_ROOT")?.let { environment("DIRL_SSHD_ROOT", it) }
+    // Runs on its own through dockerImageTest
+    filter { excludeTestsMatching("bayern.kickner.dirl.DockerImageTest") }
+}
+
+// Tests the Docker image named in DIRL_DOCKER_IMAGE, see DockerImageTest. The image changes under the same tag, so
+// the task is never up to date.
+tasks.register<Test>("dockerImageTest") {
+    group = "verification"
+    description = "Runs DockerImageTest against the image in DIRL_DOCKER_IMAGE, needs docker and an sshd."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform()
+    filter { includeTestsMatching("bayern.kickner.dirl.DockerImageTest") }
+    System.getenv("DIRL_DOCKER_IMAGE")?.let { environment("DIRL_DOCKER_IMAGE", it) }
+    System.getenv("DIRL_SSHD_ROOT")?.let { environment("DIRL_SSHD_ROOT", it) }
+    outputs.upToDateWhen { false }
 }
 
 // Local UI development with the mock OIDC provider from the test sources, never part of the fat JAR

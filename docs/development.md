@@ -12,14 +12,32 @@ Gradle wrapper.
 `build` compiles, runs all tests and builds the fat JAR `build/libs/dirl.jar` (`./gradlew shadowJar` alone skips the
 tests). GitHub Actions runs the same on every push and pull request, including the SSH integration tests.
 
+```bash
+docker build --tag dirl:test .
+DIRL_DOCKER_IMAGE=dirl:test ./gradlew dockerImageTest
+```
+
+The [Dockerfile](../Dockerfile) packs the finished `build/libs/dirl.jar`, so `shadowJar` or `build` comes first.
+`dockerImageTest` runs only
+[DockerImageTest.kt](../src/test/kotlin/bayern/kickner/dirl/DockerImageTest.kt), the normal `test` leaves it out. It
+starts the image with the restrictions of [deploy/docker-compose.yml](../deploy/docker-compose.yml), config and data
+owned by UID 10001, and goes through a whole first start in the host network against the mock provider and a local
+sshd: login, vault setup, key, host, host key, a command in the terminal, restart, unlock, logs. It needs `docker`
+and an sshd and is skipped without `DIRL_DOCKER_IMAGE`. CI runs it after the build, the image is only pushed by a
+release.
+
 ## Release
 
 1. Set `version` in `build.gradle.kts`, commit and push.
 2. Publish a release on GitHub with the tag `v<version>`, e.g. `v0.2.0` for `version = "0.2.0"`.
 
-[release.yml](../.github/workflows/release.yml) then checks that the tag matches the version, runs all tests, builds
-`dirl.jar` and attaches it to the release together with `dirl.jar.sha256`. A tag that does not match fails the run
-and attaches nothing.
+[release.yml](../.github/workflows/release.yml) then checks that the tag matches the version, runs all tests and the
+Docker image test, builds `dirl.jar` and attaches it to the release together with `dirl.jar.sha256`. A tag that does
+not match fails the run and attaches nothing. A second job downloads the attached JAR, checks its sum, builds the
+image for amd64 and arm64 and pushes it to `ghcr.io/nexus421/dirl` as `<version>` and, unless the release is marked
+as pre-release, as `latest`. It pushes with the workflow's own token (`packages: write`), no account or secret
+needed. A package created that way takes the visibility of the repository. Should it show up as private after the
+first release, set it to public once under the package settings on GitHub.
 
 The actions in both workflows are pinned to commit hashes, the comment names the version. All of them run on
 Node.js 24. `gradle/actions/setup-gradle` v6 keeps its caching in a closed-source component under the Gradle Terms of
@@ -227,5 +245,6 @@ Still open:
 - Incus: LXCFS values in `/proc/meminfo` when a container is a monitored host, so far only VMs and physical servers
   were monitored.
 - vim was not installed on the test machine.
+- The Docker image only in CI (`DockerImageTest`), not yet on a real host behind a reverse proxy with a real provider.
 
 [Back to the README](../README.md)

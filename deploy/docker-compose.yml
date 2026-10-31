@@ -1,0 +1,29 @@
+# Dirl with Docker Compose, see docs/deployment.md "Docker".
+#
+# Next to this file: config.json (from config.example.json, with "host": "0.0.0.0") and the directory data, both
+# owned by UID 10001. TLS stays with your reverse proxy, it forwards publicUrl to 127.0.0.1:8080.
+services:
+  dirl:
+    # latest is the newest release. For a fixed release use its version, e.g. ghcr.io/nexus421/dirl:0.6.0
+    image: ghcr.io/nexus421/dirl:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./config.json:/etc/dirl/config.json:ro
+      - ./data:/var/lib/dirl
+      # Only with "unlockMode": "keyfile". Never put the key into the same backup as ./data.
+      # - ./kek:/etc/dirl/kek:ro
+    # The same restrictions as deploy/dirl.service: only the data directory is writable, no capabilities, no core
+    # dumps and no swap, so the keys stay out of it.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+    mem_limit: 512m
+    memswap_limit: 512m

@@ -63,14 +63,14 @@ Try it locally without an identity provider:
 ./gradlew devRun
 ```
 
-There is no official Docker image. Dirl runs as a plain JAR with Java 21, see [Deployment](docs/deployment.md). A
-maintained image is a welcome contribution.
+With Docker: the image `ghcr.io/nexus421/dirl` and [deploy/docker-compose.yml](deploy/docker-compose.yml), see
+[Deployment](docs/deployment.md#docker).
 
 ## Documentation
 
 - [Usage](docs/usage.md): what each page does
 - [Configuration](docs/configuration.md): config file, command line, unlock modes, OIDC provider setup
-- [Deployment](docs/deployment.md): systemd, Incus, reverse proxy, backups
+- [Deployment](docs/deployment.md): systemd, Incus, Docker, reverse proxy, backups
 - [Security](docs/security.md): vault, access control, SSH restrictions, web hardening
 - [Development](docs/development.md): tests, dev server, dependencies, project layout, endpoints
 - [Concept](termix-eigenbau-konzept.md) (German): design decisions and reasoning

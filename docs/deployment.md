@@ -38,6 +38,45 @@ incus config set <container> limits.memory.swap false
 Zoraxy: proxy `publicUrl` to Dirl's port with WebSocket support. The 20 second WebSocket ping keeps idle terminals
 and the presence WebSocket of every open page open.
 
+## Docker
+
+Every release publishes the image `ghcr.io/nexus421/dirl` for amd64 and arm64, tagged with its version (e.g.
+`0.6.0`) and, the newest one, as `latest`. It holds the same `dirl.jar` as the release on Corretto 21 and runs as UID
+10001 with the paths of the systemd install: config `/etc/dirl/config.json`, data `/var/lib/dirl`.
+
+Put [deploy/docker-compose.yml](../deploy/docker-compose.yml) and a `config.json` from
+[config.example.json](../config.example.json) into one directory. In `config.json` set `publicUrl`, `oidc` and
+`"host": "0.0.0.0"`, and leave `dataDir` at its default. Inside the container Dirl has to listen on all of its
+interfaces, the compose file publishes the port only on `127.0.0.1` of the host. Then:
+
+```bash
+sudo install -d -o 10001 -g 10001 -m 0700 data
+sudo chown 10001:10001 config.json
+sudo chmod 0400 config.json
+docker compose up -d
+```
+
+Open `publicUrl` and create the vault, see [Quick start](../README.md#quick-start).
+
+The compose file restricts the container like [deploy/dirl.service](../deploy/dirl.service): read-only file system
+except `data` and a `tmpfs` for `/tmp`, no capabilities, `no-new-privileges`, no core dumps and 512 MiB without swap.
+For `"unlockMode": "keyfile"` create the key as in [Unlocking](configuration.md#unlocking), give it to UID 10001 with
+`0400` and enable the `kek` line. It stays outside `data`, so it never ends up in the same backup.
+
+Point the reverse proxy at `127.0.0.1:8080`. If the proxy runs in a container itself, put both into one Docker network
+and drop the port mapping. [Network between Zoraxy and Dirl](#network-between-zoraxy-and-dirl) applies the same way.
+
+Updating: `docker compose pull` and `docker compose up -d`. A version tag only changes when you change it in the
+compose file. Security updates of the base image arrive with the next Dirl release, a published image is never
+rebuilt.
+
+A rejected config stops Dirl with exit code 78. Compose cannot exclude an exit code from `restart`, so the container
+restarts over and over, `docker compose logs` shows the reason. Backups and starting over work as described below,
+with `data` as the data directory.
+
+CI builds the image on every push and runs a whole first start against it with exactly these restrictions, see
+[Development](development.md#build-and-test).
+
 ## Network between Zoraxy and Dirl
 
 TLS ends at Zoraxy. From there to Dirl the traffic is plain HTTP and carries session cookies, the vault passphrase

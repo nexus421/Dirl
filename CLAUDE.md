@@ -39,6 +39,9 @@ one, see docs/development.md. JUnit silently skips test methods that do not retu
 Dependencies are locked (`gradle.lockfile`). After a version change run `./gradlew dependencies --write-locks`, see
 docs/development.md "Updating dependencies". There is deliberately no `verification-metadata.xml`, it broke the IntelliJ sync.
 
+`./gradlew dockerImageTest` with `DIRL_DOCKER_IMAGE` tests the Docker image (`Dockerfile`, `deploy/docker-compose.yml`),
+it needs docker and runs in CI, see docs/development.md.
+
 The fat JAR is `build/libs/dirl.jar`. After changing dependencies or the Shadow config, check that
 `unzip -p build/libs/dirl.jar META-INF/services/org.slf4j.spi.SLF4JServiceProvider` prints
 `bayern.kickner.klogger.slf4j.KloggerServiceProvider`.
