@@ -621,16 +621,7 @@ private fun overviewFacts(chosen: Set<OverviewMetric>, sample: MetricsSample): L
 /** A bar with [label]. [wide] leaves room for a mount point as label, cut with an ellipsis and complete as tooltip. */
 private fun FlowContent.meter(label: String, percent: Double?, wide: Boolean = false) = div(if (wide) "meter wide" else "meter") {
     span { if (wide) title = label; +label }
-    val level = when {
-        percent == null -> ""
-        percent >= 90 -> " critical"
-        percent >= 75 -> " high"
-        else -> ""
-    }
-    // --p scales the fixed green to red gradient, so the end of the bar shows the color of its value.
-    val rounded = (percent ?: 0.0).roundToInt().coerceIn(0, 100)
-    div("bar$level") { span { style = "--v:$rounded%;--p:${rounded.coerceAtLeast(1)}" } }
-    span("val") { +(percent?.let { "${it.roundToInt()}%" } ?: "...") }
+    meterBar(percent, unknown = "...")
 }
 
 /** The connection state in a few words, for the status icon and the warnings of a row. */
@@ -756,7 +747,8 @@ private fun FlowContent.metricsSection(sample: MetricsSample) {
     }
 }
 
-private fun FlowContent.meterBar(percent: Double?) {
+/** The bar of a meter and its value, [unknown] instead of the value while it is not known. */
+private fun FlowContent.meterBar(percent: Double?, unknown: String = "") {
     val level = when {
         percent == null -> ""
         percent >= 90 -> " critical"
@@ -766,7 +758,7 @@ private fun FlowContent.meterBar(percent: Double?) {
     // --p scales the fixed green to red gradient, so the end of the bar shows the color of its value.
     val rounded = (percent ?: 0.0).roundToInt().coerceIn(0, 100)
     div("bar$level") { span { style = "--v:$rounded%;--p:${rounded.coerceAtLeast(1)}" } }
-    span("val") { +(percent?.let { "${it.roundToInt()}%" } ?: "") }
+    span("val") { +(percent?.let { "${it.roundToInt()}%" } ?: unknown) }
 }
 
 private suspend fun ApplicationCall.hostFormPage(content: VaultContent, host: Host?, errors: List<String>, form: Parameters?) {
