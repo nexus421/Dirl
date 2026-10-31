@@ -174,6 +174,20 @@ class HostOverviewTest {
     )
 
     @Test
+    fun `sealing forgets the status, after the unlock no old values show up as current`() {
+        hosts(host("a"))
+        dirl.metrics.record("a", sample)
+        dirl.metrics.recordLatency("a", 3.0)
+        dirl.vault.seal(actor)
+        // While sealed no round runs that could forget them, so the seal itself has to.
+        assertEquals(null, dirl.metrics.latest("a"))
+        assertEquals(null, dirl.metrics.latencyMillis("a"))
+        assertFalse(dirl.metrics.polled("a"))
+        dirl.vault.unlock("correct horse battery staple extra".toCharArray(), actor)
+        assertEquals(null, dirl.metrics.latest("a"))
+    }
+
+    @Test
     fun `a row shows the round trip, warnings, critical values and an offline host`(): Unit = testApplication {
         val closedPort = ServerSocket(0).use { it.localPort }
         val warnings = setOf(OverviewMetric.CPU, OverviewMetric.RAM, OverviewMetric.DISK, OverviewMetric.REBOOT)

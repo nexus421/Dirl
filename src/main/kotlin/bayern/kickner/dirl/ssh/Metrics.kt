@@ -317,8 +317,8 @@ suspend fun roundTripMillis(client: SSHClient): Double? = runCatching {
  *
  * The poll goes through [ConnectionManager.connection], so it also connects every host when somebody arrives and
  * triggers the reconnects with backoff. Once nobody uses Dirl any more, the next round closes all connections with
- * [ConnectionManager.closeAll] and forgets the samples, so stale values are never shown as current. While the vault
- * is sealed it does nothing.
+ * [ConnectionManager.closeAll] and forgets the samples, so stale values are never shown as current. Sealing the vault
+ * forgets them at once, while it is sealed the poller does nothing.
  *
  * A host whose previous poll still runs (a hanging host: connect, login and command can take a minute together) is
  * skipped instead of piling up waiting polls.
@@ -344,7 +344,8 @@ class MetricsPoller(
 
     init {
         // Poll right after an unlock or an arrival instead of waiting up to a full interval with an empty overview.
-        vault.listeners += { state -> if (state is VaultState.Unlocked) pollNow() }
+        // Sealing forgets everything at once, rounds do nothing while sealed and the values would outlive it.
+        vault.listeners += { state -> if (state is VaultState.Unlocked) pollNow() else forgetAll() }
         presence.arrivals += ::pollNow
     }
 

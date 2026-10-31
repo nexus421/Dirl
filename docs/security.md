@@ -95,8 +95,8 @@ access request.
 - Metrics: one `exec` per host and minute while somebody uses Dirl
   ([ssh/Metrics.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Metrics.kt)), plus one right after an arrival, unlock
   or "Connect now". It reads `/proc/stat` twice one second apart, so each poll has the CPU usage on its own. Only the
-  latest sample per host is kept, in memory, and forgotten when nobody uses Dirl. A host whose previous poll still
-  runs is skipped. Bind mounts and btrfs subvolumes of one device are shown once. Pure jump hosts with
+  latest sample per host is kept, in memory, and forgotten when nobody uses Dirl or the vault is sealed. A host whose
+  previous poll still runs is skipped. Bind mounts and btrfs subvolumes of one device are shown once. Pure jump hosts with
   `command="/bin/false"` have no metrics. Every host is asked for all values, the choice per host only decides what
   its overview card shows. Each part of the output carries a marker, a part a host cannot deliver (no systemd, no
   `who`, no kernel under `/boot` in a container) leaves only that value unknown. Text from the server (system name,
