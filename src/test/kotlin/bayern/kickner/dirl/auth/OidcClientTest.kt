@@ -130,6 +130,35 @@ class OidcClientTest {
     }
 
     @Test
+    fun `the query of the authorization endpoint is kept`() {
+        // RFC 6749 section 3.1, e.g. Azure AD B2C names its policy there.
+        val provider = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val issuer = "http://localhost:${provider.address.port}"
+        var endpoint = "$issuer/authorize?p=b2c_signin"
+        provider.createContext("/.well-known/openid-configuration") { ex ->
+            val doc = """{"issuer":"$issuer","authorization_endpoint":"$endpoint","token_endpoint":"$issuer/token"}""".toByteArray()
+            ex.sendResponseHeaders(200, doc.size.toLong())
+            ex.responseBody.use { it.write(doc) }
+        }
+        provider.start()
+        try {
+            fun keys(): List<String> {
+                val client = OidcClient(OidcConfig(issuer = issuer, clientId = "dirl", clientSecret = "secret"), "https://x/cb")
+                val uri = URI(assertIs<ResultOf2.Success<LoginStart>>(client.startLogin()).value.redirectUrl)
+                assertEquals("/authorize", uri.rawPath)
+                return uri.rawQuery.split('&').map { it.substringBefore('=') }
+            }
+            val withQuery = keys()
+            assertEquals("p", withQuery.first())
+            assertTrue("response_type" in withQuery, withQuery.toString())
+            endpoint = "$issuer/authorize"
+            assertEquals("response_type", keys().first())
+        } finally {
+            provider.stop(0)
+        }
+    }
+
+    @Test
     fun `the reason of a denied login cannot forge log lines`() {
         // Anybody gets a login cookie and its state, and writes error_description into the callback URL themselves.
         val provider = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)

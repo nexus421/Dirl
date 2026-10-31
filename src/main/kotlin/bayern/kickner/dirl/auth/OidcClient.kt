@@ -122,6 +122,9 @@ class OidcClient(
      * Anybody on the internet can call this, so it keeps no state on the server: the attempt goes into the signed
      * login cookie instead. Earlier versions kept attempts in a capped map, and a thousand anonymous requests locked
      * every user out of the login.
+     *
+     * An authorization endpoint may come with a query of its own, RFC 6749 section 3.1 requires keeping it, so the
+     * parameters are then appended with `&`.
      */
     fun startLogin(): ResultOf2<LoginStart, LoginError> {
         val provider = providerMetadata().getOrElse { return ResultOf2.Failure(LoginError.ProviderUnavailable(it.message ?: it.toString())) }
@@ -138,7 +141,8 @@ class OidcClient(
             put("code_challenge_method", "S256")
             if (config.forceReauth) put("prompt", "login")
         }
-        return ResultOf2.Success(LoginStart(signAttempt(attempt), provider.authorizationEndpoint + "?" + formEncode(params)))
+        val separator = if ('?' in provider.authorizationEndpoint) "&" else "?"
+        return ResultOf2.Success(LoginStart(signAttempt(attempt), provider.authorizationEndpoint + separator + formEncode(params)))
     }
 
     /**
