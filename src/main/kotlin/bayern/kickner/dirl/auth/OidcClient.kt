@@ -176,11 +176,15 @@ class OidcClient(
     /**
      * Fetches and caches the discovery document. After a failure no new fetch happens for [DISCOVERY_RETRY_AFTER],
      * so a flood of login attempts against an unreachable provider does not turn into a flood of requests.
+     *
+     * A trailing slash of the issuer (Authentik: `https://auth.example.com/application/o/dirl/`) is dropped before the
+     * path is appended, as OpenID Connect Discovery 1.0 section 4 requires. The `iss` check still uses the issuer as
+     * configured.
      */
     private fun providerMetadata(): Result<ProviderMetadata> = metadata?.let { Result.success(it) } ?: runCatching {
         val recentlyFailed = clock() - discoveryFailedAt < DISCOVERY_RETRY_AFTER.inWholeMilliseconds
         check(recentlyFailed.not()) { "Provider discovery failed recently, retrying later" }
-        val request = HttpRequest.newBuilder(URI("${config.issuer}/.well-known/openid-configuration"))
+        val request = HttpRequest.newBuilder(URI("${config.issuer.removeSuffix("/")}/.well-known/openid-configuration"))
             .timeout(Duration.ofSeconds(10)).GET().build()
         val response = limited { http.send(request, HttpResponse.BodyHandlers.ofString()) }
         check(response.statusCode() == 200) { "Discovery returned HTTP ${response.statusCode()}" }

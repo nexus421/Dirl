@@ -61,7 +61,8 @@ decide who may create the vault, otherwise the first user the provider lets thro
 
 Any OpenID Connect provider works if it offers:
 
-- a discovery document at `<issuer>/.well-known/openid-configuration`
+- a discovery document at `<issuer>/.well-known/openid-configuration`, a trailing slash of the issuer is dropped
+  before the path is appended
 - the Authorization Code Flow with PKCE (S256) for a confidential client with `client_secret_basic`
 - `sub`, `aud`, `exp`, `iat` and `nonce` in the ID token, and `name` or `preferred_username` for the display name
 - a token endpoint over `https`. Dirl takes the ID token straight from it and relies on TLS instead of the token

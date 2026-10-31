@@ -108,6 +108,28 @@ class OidcClientTest {
     }
 
     @Test
+    fun `an issuer with a trailing slash finds its discovery document`() {
+        // Authentik's issuer ends with a slash. Discovery 1.0 section 4: drop it before appending the path.
+        val provider = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val issuer = "http://localhost:${provider.address.port}/application/o/dirl/"
+        val paths = mutableListOf<String>()
+        provider.createContext("/") { ex ->
+            paths += ex.requestURI.rawPath
+            val doc = """{"issuer":"$issuer","authorization_endpoint":"${issuer}authorize","token_endpoint":"${issuer}token"}""".toByteArray()
+            ex.sendResponseHeaders(200, doc.size.toLong())
+            ex.responseBody.use { it.write(doc) }
+        }
+        provider.start()
+        try {
+            val client = OidcClient(OidcConfig(issuer = issuer, clientId = "dirl", clientSecret = "secret"), "https://x/cb")
+            assertIs<ResultOf2.Success<LoginStart>>(client.startLogin())
+            assertEquals(listOf("/application/o/dirl/.well-known/openid-configuration"), paths)
+        } finally {
+            provider.stop(0)
+        }
+    }
+
+    @Test
     fun `the reason of a denied login cannot forge log lines`() {
         // Anybody gets a login cookie and its state, and writes error_description into the callback URL themselves.
         val provider = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
