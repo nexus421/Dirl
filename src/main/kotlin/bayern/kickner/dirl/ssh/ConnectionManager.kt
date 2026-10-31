@@ -3,6 +3,7 @@ package bayern.kickner.dirl.ssh
 import bayern.kickner.dirl.audit.Actor
 import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.audit.AuditLog
+import bayern.kickner.dirl.cleanText
 import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.PinnedHostKey
 import bayern.kickner.dirl.vault.Vault
@@ -317,10 +318,17 @@ class ConnectionManager(
     }
 }
 
+/** Longest connect failure reason that is kept, longer ones are cut. */
+const val MAX_FAILURE_REASON = 200
+
 /**
  * Turns a connect exception into a reason a user can act on. A connection closed during the identification exchange
  * usually means the server refused this source address: OpenSSH 9.8 and later do that on their own for a while
  * after failed logins (`PerSourcePenalties`), fail2ban or `MaxStartups` look the same.
+ *
+ * Any other message may be the server's own text, for example the description of an `SSH_MSG_DISCONNECT`, which
+ * arrives before the host key is checked. So it is cleaned with [cleanText] and cut at [MAX_FAILURE_REASON]
+ * characters: it goes into the log, onto pages and into the terminal.
  */
 fun failureReason(error: Throwable): String {
     val message = error.message ?: error.javaClass.simpleName
@@ -330,7 +338,7 @@ fun failureReason(error: Throwable): String {
         error is java.net.ConnectException -> "connection refused, is sshd running on that port?"
         error is java.net.UnknownHostException -> "unknown host name"
         error is java.net.SocketTimeoutException -> "timed out"
-        else -> message
+        else -> cleanText(message, MAX_FAILURE_REASON) ?: error.javaClass.simpleName
     }
 }
 

@@ -63,6 +63,18 @@ class SshTest {
     }
 
     @Test
+    fun `the server's disconnect text cannot forge log lines or reach the terminal raw`() {
+        // sshj passes the description of SSH_MSG_DISCONNECT on as message, before the host key is checked.
+        val disconnect = net.schmizz.sshj.transport.TransportException(
+            net.schmizz.sshj.common.DisconnectReason.PROTOCOL_ERROR,
+            "bye\n31.10.2026 12:00:00 ERROR/Vault: forged\u001b[2J‮",
+        )
+        assertEquals("bye 31.10.2026 12:00:00 ERROR/Vault: forged", failureReason(disconnect))
+        assertEquals(MAX_FAILURE_REASON, failureReason(net.schmizz.sshj.transport.TransportException("x".repeat(5000))).length)
+        assertEquals("TransportException", failureReason(net.schmizz.sshj.transport.TransportException("\r\n")))
+    }
+
+    @Test
     fun `IPv6 addresses are stored without brackets`() {
         val key = generateEd25519Key("k")
         val content = VaultContent(keys = listOf(key))

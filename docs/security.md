@@ -124,7 +124,9 @@ access request.
   heap (which would restart Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries, SFTP packets
   at 1 MiB. sshj alone accepts SFTP packets up to 1 GiB and allocates the buffer as soon as a server announces the
   length, one forged header would end Dirl with an OutOfMemoryError, so Dirl checks the length before sshj reads it.
-  Terminal output and downloads are streamed.
+  Terminal output and downloads are streamed. The reason of a failed connect can be the server's own text, the
+  message of an SSH disconnect arrives before the host key is checked. It loses control, format and escape characters
+  and is cut at 200 characters before it is logged, shown on a page or written into the terminal.
 - sshj has no ML-KEM or sntrup key exchange, connections use curve25519. Fine for internal hops, MINA SSHD would be
   the replacement if post-quantum key exchange becomes a requirement.
 
