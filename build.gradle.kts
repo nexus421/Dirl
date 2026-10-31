@@ -152,6 +152,11 @@ tasks.register<Test>("dockerImageTest") {
     System.getenv("DIRL_DOCKER_IMAGE")?.let { environment("DIRL_DOCKER_IMAGE", it) }
     System.getenv("DIRL_SSHD_ROOT")?.let { environment("DIRL_SSHD_ROOT", it) }
     outputs.upToDateWhen { false }
+    // A failure carries the container log in its message, CI should show it without downloading the report
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
 
 // Local UI development with the mock OIDC provider from the test sources, never part of the fat JAR
