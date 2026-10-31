@@ -14,7 +14,9 @@ LABEL org.opencontainers.image.title="Dirl" \
       org.opencontainers.image.version="$VERSION"
 
 # Same paths as the systemd install. The data directory belongs to the fixed service user 10001, the JAR to root.
-RUN install -d -o 10001 -g 10001 -m 0700 /var/lib/dirl
+# /opt/dirl is created here because COPY --chmod would give a directory it creates the mode of the file, 0444, and
+# the service user could not enter it.
+RUN install -d -o 10001 -g 10001 -m 0700 /var/lib/dirl && install -d -m 0755 /opt/dirl
 COPY --chmod=0444 build/libs/dirl.jar /opt/dirl/dirl.jar
 
 USER 10001:10001
