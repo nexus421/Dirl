@@ -15,10 +15,13 @@ to review alone, managed entirely in the UI.
 | Terminal | Host details |
 |---|---|
 | ![Terminal](docs/images/terminal.png) | ![Host details](docs/images/host.png) |
+| **Snippet with variables** | **Actions mode** |
+| ![Snippet with variables](docs/images/variables.png) | ![Actions mode](docs/images/actions.png) |
 
 ## Features
 
-- Browser terminal (xterm.js) with resize and snippets
+- Browser terminal (xterm.js) with resize and snippets: folders, variables like `{{Container}}` asked for before
+  sending, import and export as JSON
 - Actions mode for phones: snippets, Enter and Cancel instead of the keyboard, tmux snippets for long jobs
 - Installable as an app, without a service worker or any cache
 - SFTP file manager with upload, rename and download
