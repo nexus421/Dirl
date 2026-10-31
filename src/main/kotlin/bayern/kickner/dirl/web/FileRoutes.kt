@@ -77,14 +77,15 @@ private const val MAX_UPLOAD_BYTES = 4L * 1024 * 1024 * 1024
  * - `POST /hosts/{id}/files/mkdir`, `POST /hosts/{id}/files/delete` create directories and delete entries.
  * - `GET /hosts/{id}/files/rename?path=`, `POST /hosts/{id}/files/rename` rename or move an entry.
  *
+ * A host marked jump host only answers every one of them with [jumpOnlyPage], see [fileHostOr404].
+ *
  * Contents are moved as bytes, nothing guesses encodings. There is no editor in the browser, files are changed in the
  * terminal. Uploads write to a temporary file next to the target and rename it, so a broken transfer never leaves a
  * half-written file behind.
  */
 fun Route.fileRoutes(dirl: Dirl) {
     get("/hosts/{id}/files") {
-        val (_, host) = hostOr404(dirl) ?: return@get
-        if (host.jumpOnly) return@get call.jumpOnlyPage(host)
+        val host = fileHostOr404(dirl) ?: return@get
         val requested = call.request.queryParameters["path"]
         val listing = withSftp(dirl, host) { sftp ->
             val dir = sftp.canonicalize(requested?.trim()?.ifBlank { null } ?: ".")
@@ -172,7 +173,7 @@ fun Route.fileRoutes(dirl: Dirl) {
     }
 
     get("/hosts/{id}/files/download") {
-        val (_, host) = hostOr404(dirl) ?: return@get
+        val host = fileHostOr404(dirl) ?: return@get
         val path = call.request.queryParameters["path"].orEmpty()
         val client = connectedClient(dirl, host) ?: return@get
         val sftp = withContext(Dispatchers.IO) { runCatching { client.openSftp() } }.getOrElse {
@@ -199,7 +200,7 @@ fun Route.fileRoutes(dirl: Dirl) {
     }
 
     post("/hosts/{id}/files/upload") {
-        val (_, host) = hostOr404(dirl) ?: return@post
+        val host = fileHostOr404(dirl) ?: return@post
         val dir = call.request.queryParameters["path"].orEmpty()
         val client = connectedClient(dirl, host) ?: return@post
         val uploaded = mutableListOf<String>()
@@ -242,7 +243,7 @@ fun Route.fileRoutes(dirl: Dirl) {
     }
 
     post("/hosts/{id}/files/mkdir") {
-        val (_, host) = hostOr404(dirl) ?: return@post
+        val host = fileHostOr404(dirl) ?: return@post
         val form = call.receiveParameters()
         val dir = form["dir"].orEmpty()
         val name = safeFileName(form["name"]) ?: return@post call.respondRedirect(filesUrl(host, dir))
@@ -253,7 +254,7 @@ fun Route.fileRoutes(dirl: Dirl) {
     }
 
     post("/hosts/{id}/files/delete") {
-        val (_, host) = hostOr404(dirl) ?: return@post
+        val host = fileHostOr404(dirl) ?: return@post
         val form = call.receiveParameters()
         val path = form["path"].orEmpty()
         withSftp(dirl, host) { sftp -> deleteEntry(sftp, path) } ?: return@post
@@ -262,7 +263,7 @@ fun Route.fileRoutes(dirl: Dirl) {
     }
 
     get("/hosts/{id}/files/rename") {
-        val (_, host) = hostOr404(dirl) ?: return@get
+        val host = fileHostOr404(dirl) ?: return@get
         val path = call.request.queryParameters["path"].orEmpty()
         call.page("Rename", call.session, Nav.HOSTS) {
             pageHeader("Rename or move", "on ${host.name}")
@@ -280,7 +281,7 @@ fun Route.fileRoutes(dirl: Dirl) {
     }
 
     post("/hosts/{id}/files/rename") {
-        val (_, host) = hostOr404(dirl) ?: return@post
+        val host = fileHostOr404(dirl) ?: return@post
         val form = call.receiveParameters()
         val path = form["path"].orEmpty()
         val target = form["target"].orEmpty().trim()
@@ -297,6 +298,19 @@ fun Route.fileRoutes(dirl: Dirl) {
         dirl.audit.record(call.session.actor, AuditAction.SFTP_RENAME, host.name, "$path to $target")
         call.respondRedirect(filesUrl(host, parentOf(target)) + "&done=renamed")
     }
+}
+
+/**
+ * Like [hostOr404], but a host marked jump host only gets [jumpOnlyPage] instead: it offers no files, also not to a
+ * request typed by hand. Otherwise only the `authorized_keys` line on the server would stop it.
+ *
+ * @return the host, or `null` after a page was sent.
+ */
+private suspend fun RoutingContext.fileHostOr404(dirl: Dirl): Host? {
+    val (_, host) = hostOr404(dirl) ?: return null
+    if (host.jumpOnly.not()) return host
+    call.jumpOnlyPage(host)
+    return null
 }
 
 /**

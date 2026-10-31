@@ -174,6 +174,22 @@ class HostOverviewTest {
     )
 
     @Test
+    fun `a jump host only offers no files, also not to a request typed by hand`(): Unit = testApplication {
+        // Without the check every route but the listing went on to SFTP, and only the authorized_keys line stopped it.
+        val closedPort = ServerSocket(0).use { it.localPort }
+        hosts(host("j").copy(jumpOnly = true, address = "127.0.0.1", port = closedPort))
+        val browser = browser()
+        val jumpOnly = "is marked as jump host only"
+        listOf("/hosts/j/files", "/hosts/j/files/download?path=/etc/hostname", "/hosts/j/files/rename?path=/tmp/a").forEach { path ->
+            assertTrue(browser.page(path).contains(jumpOnly), path)
+        }
+        listOf("/hosts/j/files/upload?path=/tmp", "/hosts/j/files/mkdir", "/hosts/j/files/delete", "/hosts/j/files/rename").forEach { path ->
+            val response = browser.post(path, parametersOf("dir" to listOf("/tmp"), "name" to listOf("x"), "path" to listOf("/tmp/a"), "target" to listOf("/tmp/b")))
+            assertTrue(response.bodyAsText().contains(jumpOnly), path)
+        }
+    }
+
+    @Test
     fun `sealing forgets the status, after the unlock no old values show up as current`() {
         hosts(host("a"))
         dirl.metrics.record("a", sample)
