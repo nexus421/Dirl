@@ -21,7 +21,7 @@ private val configJson = Json {
 fun loadConfig(file: File): ResultOf2<AppConfig, List<String>> {
     if (file.isFile.not()) return ResultOf2.Failure(listOf("Config file ${file.absolutePath} does not exist"))
 
-    val parsed = runCatching { configJson.decodeFromString(AppConfig.serializer(), file.readText()) }
+    val parsed = runCatching { configJson.decodeFromString<AppConfig>(file.readText()) }
     val config = parsed.getOrElse {
         val reason = if (it is SerializationException) it.message ?: "invalid JSON" else it.toString()
         return ResultOf2.Failure(listOf("Cannot parse ${file.absolutePath}: $reason"))

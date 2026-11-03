@@ -18,11 +18,11 @@ import bayern.kickner.dirl.web.dirlModule
 import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.slf4j.slf4jBridge
 import bayern.kickner.klogger.staticLog
-import io.ktor.server.cio.CIO
-import io.ktor.server.engine.embeddedServer
+import io.ktor.server.cio.*
+import io.ktor.server.engine.*
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotnexlib.ArgsInterpreter
 import kotnexlib.ResultOf2
 import java.io.File
@@ -106,7 +106,7 @@ fun createDirl(
     latestRelease: () -> String? = { null },
     clock: () -> Long = System::currentTimeMillis,
 ): Dirl {
-    val audit = AuditLog(File(dataDir, "audit.jsonl"))
+    val audit = AuditLog(File(dataDir, "audit.jsonl"), clock)
     val keyFile = if (config.unlockMode == UnlockMode.KEYFILE) File(config.keyFile) else null
     val vault = Vault(VaultStore(dataDir), audit, keyFile, clock)
     val connections = ConnectionManager(vault, audit, clock)

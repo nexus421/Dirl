@@ -2,18 +2,14 @@ package bayern.kickner.dirl.vault
 
 import bayern.kickner.dirl.audit.Actor
 import bayern.kickner.dirl.audit.AuditLog
+import bayern.kickner.dirl.crypto.Aead
 import bayern.kickner.dirl.crypto.KdfParams
 import bayern.kickner.dirl.crypto.deriveKek
-import bayern.kickner.dirl.crypto.Aead
 import kotlinx.serialization.json.Json
 import kotnexlib.ResultOf2
 import java.io.File
 import java.nio.file.Files
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class VaultTest {
     private val dir: File = Files.createTempDirectory("dirl-vault").toFile()
@@ -24,7 +20,7 @@ class VaultTest {
     /** Cheap Argon2 parameters, the real ones take a second per derivation. */
     private fun vault(keyFile: File? = null) = Vault(
         store = VaultStore(dir),
-        audit = AuditLog(File(dir, "audit.jsonl")),
+        audit = AuditLog(File(dir, "audit.jsonl"), clock = { now }),
         keyFile = keyFile,
         clock = { now },
         kdfParams = { KdfParams.generate().copy(memKiB = 64, iterations = 1) },
@@ -207,7 +203,7 @@ class VaultTest {
         // Locked: neither the right passphrase changes it nor does the key export check accept it.
         assertIs<UnlockError.LockedOut>(assertIs<ChangePassphraseError.Refused>((change(passphrase) as ResultOf2.Failure).value).reason)
         assertIs<UnlockError.LockedOut>((v.verifyPassphrase(passphrase.toCharArray(), actor) as ResultOf2.Failure).value)
-        val audited = AuditLog(File(dir, "audit.jsonl")).tail(100).map { it.action.name }
+        val audited = AuditLog(File(dir, "audit.jsonl"), clock = { now }).tail(100).map { it.action.name }
         assertEquals(4, audited.count { it == "VAULT_UNLOCK_FAILED" })
         assertEquals(1, audited.count { it == "VAULT_LOCKED_OUT" })
 
@@ -223,7 +219,10 @@ class VaultTest {
         val backup = v.exportEncrypted()!!
 
         val freshDir = Files.createTempDirectory("dirl-restore").toFile()
-        val fresh = Vault(VaultStore(freshDir), AuditLog(File(freshDir, "audit.jsonl")), kdfParams = { KdfParams.generate().copy(memKiB = 64, iterations = 1) })
+        val fresh = Vault(
+            VaultStore(freshDir),
+            AuditLog(File(freshDir, "audit.jsonl"), clock = { now }),
+            kdfParams = { KdfParams.generate().copy(memKiB = 64, iterations = 1) })
         assertTrue(fresh.restore("not a vault".toByteArray(), actor) != null)
         assertNull(fresh.restore(backup, actor))
         assertIs<VaultState.Sealed>(fresh.state)
@@ -273,7 +272,7 @@ class VaultTest {
         val backup = v.exportEncrypted()!!.decodeToString().replace(Regex("\"memKiB\": *\\d+"), "\"memKiB\": 4000000").toByteArray()
 
         val freshDir = Files.createTempDirectory("dirl-restore").toFile()
-        val fresh = Vault(VaultStore(freshDir), AuditLog(File(freshDir, "audit.jsonl")))
+        val fresh = Vault(VaultStore(freshDir), AuditLog(File(freshDir, "audit.jsonl"), clock = { now }))
         assertTrue(fresh.restore(backup, actor).orEmpty().contains("KDF"))
         assertIs<VaultState.Uninitialized>(fresh.state)
         assertTrue(File(freshDir, "vault.json").exists().not())
@@ -287,7 +286,7 @@ class VaultTest {
             repeat(12_000) { i -> out.write("""{"time":"t$i","sub":"s","name":"n","action":"LOGIN","detail":"${"x".repeat(150)}"}""" + "\n") }
         }
         assertTrue(log.length() > AuditLog.TAIL_BYTES)
-        val tail = AuditLog(log).tail(50)
+        val tail = AuditLog(log, clock = { now }).tail(50)
         assertEquals((11_999 downTo 11_950).map { "t$it" }, tail.map { it.time })
     }
 

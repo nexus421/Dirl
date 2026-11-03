@@ -15,7 +15,8 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.toJavaDuration
 
 private const val TAG = "UpdateCheck"
 
@@ -39,7 +40,7 @@ private val plainVersion = Regex("""(\d{1,9})\.(\d{1,9})\.(\d{1,9})""")
 private val releaseJson = Json { ignoreUnknownKeys = true }
 
 /** No redirects (the JDK default), a release answer comes straight from the API. */
-private val http: HttpClient by lazy { HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build() }
+private val http: HttpClient by lazy { HttpClient.newBuilder().connectTimeout(10.seconds.toJavaDuration()).build() }
 
 @Serializable
 private data class Release(@SerialName("tag_name") val tagName: String)
@@ -71,7 +72,7 @@ fun isNewerVersion(candidate: String, current: String): Boolean {
  */
 fun latestReleaseOf(body: ByteArray?): String? {
     if (body == null) return null
-    val release = runCatching { releaseJson.decodeFromString(Release.serializer(), body.decodeToString()) }.getOrNull()
+    val release = runCatching { releaseJson.decodeFromString<Release>(body.decodeToString()) }.getOrNull()
     return release?.let { releaseVersion(it.tagName) }
 }
 
@@ -87,7 +88,7 @@ fun readReleaseAnswer(answer: InputStream): String? = answer.use { latestRelease
  */
 fun fetchLatestRelease(): String? {
     val request = HttpRequest.newBuilder(URI(LATEST_RELEASE_API))
-        .timeout(Duration.ofSeconds(10))
+        .timeout(10.seconds.toJavaDuration())
         .header("Accept", "application/vnd.github+json")
         .GET()
         .build()

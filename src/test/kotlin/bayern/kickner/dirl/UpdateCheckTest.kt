@@ -14,18 +14,14 @@ import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class UpdateCheckTest {
     private val dir: File = Files.createTempDirectory("dirl-update").toFile()
     private var now = 1_000_000L
     private val vault = Vault(
         store = VaultStore(dir),
-        audit = AuditLog(File(dir, "audit.jsonl")),
+        audit = AuditLog(File(dir, "audit.jsonl"), clock = { now }),
         keyFile = null,
         clock = { now },
         kdfParams = { KdfParams.generate().copy(memKiB = 64, iterations = 1) },

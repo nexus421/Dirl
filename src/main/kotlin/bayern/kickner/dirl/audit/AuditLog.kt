@@ -67,14 +67,14 @@ data class AuditEntry(
  * @property file Usually `dataDir/audit.jsonl`.
  * @property clock Source of the timestamp, injectable for tests.
  */
-class AuditLog(private val file: File, private val clock: () -> Instant = Instant::now) {
+class AuditLog(private val file: File, private val clock: () -> Long) {
 
     private val json = Json { explicitNulls = false }
 
     /** Appends one entry. A failing write is logged but never breaks the action that triggered it. */
     @Synchronized
     fun record(actor: Actor, action: AuditAction, host: String? = null, detail: String? = null) {
-        val entry = AuditEntry(clock().toString(), actor.sub, actor.name, action, host, detail)
+        val entry = AuditEntry(Instant.ofEpochMilli(clock()).toString(), actor.sub, actor.name, action, host, detail)
         runCatching {
             file.parentFile?.mkdirs()
             val isNew = file.exists().not()
