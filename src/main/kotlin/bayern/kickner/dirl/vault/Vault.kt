@@ -253,7 +253,7 @@ class Vault(
     fun seal(actor: Actor) {
         val wasUnlocked = synchronized(lock) {
             val unlocked = state is VaultState.Unlocked
-            if (unlocked) state = VaultState.Sealed
+            if (unlocked) state = VaultState.Sealed //Unlocked holds the data. Will be removed here.
             unlocked
         }
         if (wasUnlocked.not()) return

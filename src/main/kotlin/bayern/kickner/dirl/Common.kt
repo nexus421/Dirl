@@ -3,13 +3,12 @@ package bayern.kickner.dirl
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
-import java.nio.file.attribute.PosixFilePermissions
+import java.nio.file.attribute.PosixFilePermission
 import java.security.SecureRandom
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Base64
-import java.util.Locale
+import java.util.*
 
 /**
  * Format of every timestamp this project prints, e.g. `15.10.2026 19:40:12 CEST`. Pinned to [Locale.ENGLISH] so the
@@ -54,7 +53,11 @@ fun CharArray.wipe() = fill('\u0000')
  * systems without POSIX permissions.
  */
 fun restrictToOwner(file: File) {
-    runCatching { Files.setPosixFilePermissions(file.toPath(), PosixFilePermissions.fromString("rw-------")) }
+    runCatching {
+        Files.setPosixFilePermissions(
+            file.toPath(), setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+        )
+    }
 }
 
 /**

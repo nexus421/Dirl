@@ -7,6 +7,7 @@ import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 
 /**
@@ -34,10 +35,10 @@ class VaultStore(private val dir: File, private val backups: Int = 3) {
     }
 
     /** True once a vault has been set up. */
-    fun exists(): Boolean = file.isFile
+    fun exists() = file.isFile
 
     /** Reads the envelope. Throws if the file is missing or not a valid vault. */
-    fun read(): VaultEnvelope = json.decodeFromString(VaultEnvelope.serializer(), file.readText())
+    fun read() = json.decodeFromString<VaultEnvelope>(file.readText())
 
     /**
      * Deletes the backups `vault.json.1` to `vault.json.N`, e.g. after a passphrase change. The files are only
@@ -51,12 +52,17 @@ class VaultStore(private val dir: File, private val backups: Int = 3) {
     fun write(envelope: VaultEnvelope) {
         dir.mkdirs()
         val tmp = File(dir, "vault.json.tmp")
-        val bytes = json.encodeToString(VaultEnvelope.serializer(), envelope).toByteArray(Charsets.UTF_8)
+        val bytes = json.encodeToString<VaultEnvelope>(envelope).toByteArray()
 
         FileChannel.open(
             tmp.toPath(),
             setOf(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE),
-            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")),
+            PosixFilePermissions.asFileAttribute(
+                setOf(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE
+                )
+            ),
         ).use { channel ->
             channel.write(java.nio.ByteBuffer.wrap(bytes))
             channel.force(true)

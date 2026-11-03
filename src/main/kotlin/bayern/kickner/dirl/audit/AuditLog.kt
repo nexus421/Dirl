@@ -79,7 +79,7 @@ class AuditLog(private val file: File, private val clock: () -> Long) {
             file.parentFile?.mkdirs()
             val isNew = file.exists().not()
             FileOutputStream(file, true).use { out ->
-                out.write((json.encodeToString(AuditEntry.serializer(), entry) + "\n").toByteArray(Charsets.UTF_8))
+                out.write((json.encodeToString<AuditEntry>(entry) + "\n").toByteArray())
                 out.fd.sync()
             }
             if (isNew) restrictToOwner(file)
@@ -105,7 +105,7 @@ class AuditLog(private val file: File, private val clock: () -> Long) {
             if (start > 0) text.substringAfter('\n') else text
         }
         return chunk.lineSequence()
-            .mapNotNull { line -> runCatching { json.decodeFromString(AuditEntry.serializer(), line) }.getOrNull() }
+            .mapNotNull { line -> runCatching { json.decodeFromString<AuditEntry>(line) }.getOrNull() }
             .toList()
             .takeLast(limit)
             .reversed()
