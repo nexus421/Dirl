@@ -6,6 +6,8 @@ import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.ssh.describeChannelError
 import bayern.kickner.dirl.ssh.openSftp
 import bayern.kickner.dirl.vault.Host
+import bayern.kickner.klogger.KLogger
+import bayern.kickner.klogger.staticLog
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -24,6 +26,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.html.FlowContent
 import kotlinx.html.FormEncType
@@ -57,6 +60,8 @@ import java.io.InputStream
 import java.net.URLEncoder
 import java.util.EnumSet
 
+private const val TAG = "FileRoutes"
+
 /** Directories with more entries are not listed, a compromised server could otherwise send an endless listing. */
 const val MAX_LIST_ENTRIES = 10_000
 
@@ -80,8 +85,12 @@ private const val MAX_UPLOAD_BYTES = 4L * 1024 * 1024 * 1024
  * A host marked jump host only answers every one of them with [jumpOnlyPage], see [fileHostOr404].
  *
  * Contents are moved as bytes, nothing guesses encodings. There is no editor in the browser, files are changed in the
- * terminal. Uploads write to a temporary file next to the target and rename it, so a broken transfer never leaves a
- * half-written file behind.
+ * terminal. Uploads write to a temporary file next to the target and rename it only once the multipart body shows
+ * that the file arrived completely: the next part starts or the body ends with its closing boundary. Ktor ends a cut
+ * off part like a complete one, so the boundary is the only proof. A transfer that breaks off removes the temporary
+ * file of the file in progress and leaves its target unchanged. Files before it whose next part already started stay,
+ * a break inside the headers of the next part discards the file before it as well. Every replaced target is audited
+ * right after its rename.
  */
 fun Route.fileRoutes(dirl: Dirl) {
     get("/hosts/{id}/files") {
@@ -211,28 +220,56 @@ fun Route.fileRoutes(dirl: Dirl) {
 
         val channel = withContext(Dispatchers.IO) { runCatching { client.openSftp() } }
         channel.getOrElse { return@post call.fileError(host, describeChannelError(it)) }.use { sftp ->
-            call.receiveMultipart(formFieldLimit = MAX_UPLOAD_BYTES).forEachPart { part ->
-                if (part is PartData.FormItem && part.name == "overwrite") overwrite = part.value == "on"
-                if (part is PartData.FileItem) {
-                    val name = safeFileName(part.originalFileName)
-                    val target = "${dir.trimEnd('/')}/$name"
-                    val exists = name != null && withContext(Dispatchers.IO) { runCatching { sftp.statExistence(target) != null }.getOrDefault(false) }
-                    when {
-                        name == null -> failed += (part.originalFileName ?: "unnamed")
-                        exists && overwrite.not() -> skipped += name
-                        else -> {
-                            val error = withContext(Dispatchers.IO) {
-                                runCatching { part.provider().toInputStream().use { writeAtomically(sftp, target, it) } }.exceptionOrNull()
+            // A file waits under its temporary name until the multipart body shows that it arrived completely.
+            var pending: PendingUpload? = null
+
+            suspend fun commitPending() {
+                val upload = pending ?: return
+                pending = null
+                // Not cancellable: once the target is replaced, the change has to reach the audit log.
+                val error = withContext(NonCancellable + Dispatchers.IO) {
+                    runCatching { commitWrite(sftp, upload.write) }
+                        .onSuccess { dirl.audit.record(call.session.actor, AuditAction.SFTP_UPLOAD, host.name, upload.target) }
+                        .exceptionOrNull()
+                }
+                // The reason matters, for example "Permission denied" or a file of another owner.
+                if (error == null) uploaded += upload.target else failed += "${upload.name} (${describeChannelError(error)})"
+            }
+
+            try {
+                call.receiveMultipart(formFieldLimit = MAX_UPLOAD_BYTES).forEachPart { part ->
+                    // A part only starts after the boundary that ends the one before, so the pending file is complete.
+                    commitPending()
+                    if (part is PartData.FormItem && part.name == "overwrite") overwrite = part.value == "on"
+                    if (part is PartData.FileItem) {
+                        val name = safeFileName(part.originalFileName)
+                        val target = "${dir.trimEnd('/')}/$name"
+                        val exists = name != null && withContext(Dispatchers.IO) { runCatching { sftp.statExistence(target) != null }.getOrDefault(false) }
+                        when {
+                            name == null -> failed += (part.originalFileName ?: "unnamed")
+                            exists && overwrite.not() -> skipped += name
+                            else -> {
+                                val error = withContext(Dispatchers.IO) {
+                                    // Kept as pending inside the block, so a cancellation right after the write still finds it.
+                                    runCatching { part.provider().toInputStream().use { pending = PendingUpload(name, target, writeTemporary(sftp, target, it)) } }.exceptionOrNull()
+                                }
+                                if (error != null) failed += "$name (${describeChannelError(error)})"
                             }
-                            // The reason matters, for example "Permission denied" or a file of another owner.
-                            if (error == null) uploaded += target else failed += "$name (${describeChannelError(error)})"
                         }
                     }
+                    part.release()
                 }
-                part.release()
+                // forEachPart only returns normally after the closing boundary, so the last file is complete as well.
+                commitPending()
+            } finally {
+                // The body broke off: Ktor ends a cut off part like a complete one, only the missing boundary shows it.
+                pending?.let { upload ->
+                    val discarded = withContext(NonCancellable + Dispatchers.IO) { discardWrite(sftp, upload.write) }
+                    if (discarded) staticLog(KLogger.Level.WARN, TAG) { "Upload of ${upload.target} to ${host.name} broke off, nothing was changed" }
+                    else staticLog(KLogger.Level.WARN, TAG) { "Upload of ${upload.target} to ${host.name} broke off, cannot remove ${upload.write.tmp}" }
+                }
             }
         }
-        uploaded.forEach { dirl.audit.record(call.session.actor, AuditAction.SFTP_UPLOAD, host.name, it) }
         if (failed.isEmpty() && skipped.isEmpty()) return@post call.respondRedirect(filesUrl(host, dir) + "&done=uploaded")
         val message = listOfNotNull(
             failed.takeIf { it.isNotEmpty() }?.let { "Failed: ${it.joinToString()}." },
@@ -406,8 +443,30 @@ fun deleteEntry(sftp: SFTPClient, path: String) {
 }
 
 /**
- * Writes [input] to `<dir>/.<name>.dirl-tmp` and renames it over [path]. OpenSSH only supports overwriting renames
- * through its `posix-rename` extension, if the server lacks it the target is removed first.
+ * A file of an upload, written under its temporary name and waiting for [commitWrite] or [discardWrite].
+ *
+ * @property name File name as uploaded, for messages.
+ * @property target The path the upload route was asked to write, for the audit log.
+ * @property write The temporary file.
+ */
+private class PendingUpload(val name: String, val target: String, val write: TemporaryWrite)
+
+/**
+ * New content written to [tmp] next to [target], see [writeTemporary]. [target] is unchanged until [commitWrite].
+ *
+ * @property target The file the content is meant for, a symlink already resolved.
+ * @property tmp The temporary file, `<dir>/.<name>.dirl-tmp`.
+ */
+class TemporaryWrite(val target: String, val tmp: String)
+
+/**
+ * Writes [input] to [path] in two steps: [writeTemporary] and [commitWrite]. A caller that cannot tell yet whether
+ * [input] is complete uses the two steps directly and calls [discardWrite] instead of committing.
+ */
+fun writeAtomically(sftp: SFTPClient, path: String, input: InputStream) = commitWrite(sftp, writeTemporary(sftp, path, input))
+
+/**
+ * Writes [input] to `<dir>/.<name>.dirl-tmp` next to [path] and leaves [path] itself unchanged.
  *
  * A symlink as [path] is resolved first, so the file it points to is written and the link stays. Writing to the
  * link path itself would replace the link with a plain file and leave the real file unchanged.
@@ -418,14 +477,13 @@ fun deleteEntry(sftp: SFTPClient, path: String) {
  * needs a login as that user.
  *
  * A failed write removes the temporary file again, a broken upload would otherwise leave a large hidden file on a
- * possibly full file system. Once the target was removed for the fallback rename, the temporary file holds the only
- * copy of the new content and stays if that rename fails. Errors are rethrown.
+ * possibly full file system. Errors are rethrown.
  *
  * The directory is trusted: the temporary name is fixed and opened without `EXCL`, and attributes are set by path.
  * Another user who can write to the directory can plant a symlink there. Accepted, see "Accepted risk" in
  * docs/security.md.
  */
-fun writeAtomically(sftp: SFTPClient, path: String, input: InputStream) {
+fun writeTemporary(sftp: SFTPClient, path: String, input: InputStream): TemporaryWrite {
     val target = resolveLink(sftp, path)
     val tmp = target.substringBeforeLast('/', ".") + "/." + target.substringAfterLast('/') + ".dirl-tmp"
     val existing = sftp.statExistence(target)
@@ -436,11 +494,26 @@ fun writeAtomically(sftp: SFTPClient, path: String, input: InputStream) {
         }
         if (existing != null) keepAttributes(sftp, tmp, target, existing)
     }.onFailure { error -> discardAndThrow(sftp, tmp, error) }
-
-    if (runCatching { sftp.rename(tmp, target, setOf(RenameFlags.OVERWRITE)) }.isSuccess) return
-    runCatching { if (sftp.statExistence(target) != null) sftp.rm(target) }.onFailure { error -> discardAndThrow(sftp, tmp, error) }
-    sftp.rename(tmp, target)
+    return TemporaryWrite(target, tmp)
 }
+
+/**
+ * Renames the temporary file of [write] over its target. OpenSSH only supports overwriting renames through its
+ * `posix-rename` extension, if the server lacks it the target is removed first. Once the target was removed, the
+ * temporary file holds the only copy of the new content and stays if the rename fails. Errors are rethrown.
+ */
+fun commitWrite(sftp: SFTPClient, write: TemporaryWrite) {
+    if (runCatching { sftp.rename(write.tmp, write.target, setOf(RenameFlags.OVERWRITE)) }.isSuccess) return
+    runCatching { if (sftp.statExistence(write.target) != null) sftp.rm(write.target) }.onFailure { error -> discardAndThrow(sftp, write.tmp, error) }
+    sftp.rename(write.tmp, write.target)
+}
+
+/**
+ * Removes the temporary file of [write], its target stays unchanged.
+ *
+ * @return `false` if the temporary file could not be removed and is still there.
+ */
+fun discardWrite(sftp: SFTPClient, write: TemporaryWrite): Boolean = runCatching { sftp.rm(write.tmp) }.isSuccess
 
 /**
  * Gives [tmp] the owner, group and permissions of [original]. The owner comes first because changing it clears the

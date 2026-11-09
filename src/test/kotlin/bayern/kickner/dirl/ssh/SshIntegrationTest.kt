@@ -30,6 +30,8 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.HttpHeaders
 import io.ktor.http.parameters
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.embeddedServer
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readBytes
@@ -48,9 +50,14 @@ import net.schmizz.sshj.sftp.FileMode
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeEach
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.net.Socket
+import java.net.SocketException
+import java.net.URLEncoder
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
@@ -116,6 +123,55 @@ class SshIntegrationTest {
         val forward = RemotePortForwarder.Forward("127.0.0.1", port)
         return runCatching { client.remotePortForwarder.bind(forward, SocketForwardingConnectListener(InetSocketAddress("127.0.0.1", 9))) }.isSuccess
     }
+
+    /** A host for file transfers on its own sshd, host key pinned. */
+    private fun fileHost(name: String): Host {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict,pty ${key.publicKey} dirl")
+        return addHost(name, server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+    }
+
+    /** Dirl on the production engine (CIO) on a free port, [block] gets the port. The test engine cannot cut a request off. */
+    private fun onCio(block: (Int) -> Unit) {
+        val server = embeddedServer(CIO, port = 0, host = "127.0.0.1") { dirlModule(dirl) }.start(wait = false)
+        try {
+            block(runBlocking { server.engine.resolvedConnectors().first().port })
+        } finally {
+            server.stop(100, 1000)
+        }
+    }
+
+    /**
+     * Sends an upload into [dir] over a plain socket: the head announces [declaredLength] bytes, then [body] and whatever
+     * [more] writes follow, then the request ends with a clean FIN like a closed browser tab. Returns Dirl's answer,
+     * which comes once the upload route is done.
+     */
+    private fun rawUpload(port: Int, host: Host, dir: File, declaredLength: Int, body: ByteArray, more: (OutputStream) -> Unit = {}): String {
+        val token = dirl.sessions.create(actor).token
+        val head = "POST /hosts/${host.id}/files/upload?path=${URLEncoder.encode(dir.absolutePath, Charsets.UTF_8)} HTTP/1.1\r\n" +
+            "Host: 127.0.0.1\r\nOrigin: https://ssh.example.com\r\nCookie: $SESSION_COOKIE=$token\r\nConnection: close\r\n" +
+            "Content-Type: multipart/form-data; boundary=BOUNDARY\r\nContent-Length: $declaredLength\r\n\r\n"
+        return Socket("127.0.0.1", port).use { socket ->
+            socket.soTimeout = 30_000
+            val out = socket.getOutputStream()
+            out.write(head.toByteArray())
+            out.write(body)
+            more(out)
+            out.flush()
+            socket.shutdownOutput()
+            val answer = ByteArrayOutputStream()
+            runCatching { socket.getInputStream().copyTo(answer) }.onFailure { if (it !is SocketException) throw it }
+            answer.toString(Charsets.UTF_8)
+        }
+    }
+
+    private fun formPart(name: String, value: String) = "--BOUNDARY\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n"
+
+    private fun fileHeader(fileName: String) =
+        "--BOUNDARY\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$fileName\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+
+    private fun uploadsAudited(dir: File) = dirl.audit.tail(100).filter { it.action == AuditAction.SFTP_UPLOAD && it.detail.orEmpty().startsWith(dir.absolutePath) }.map { it.detail }.toSet()
 
     @Test
     fun `first contact asks for the host key, after pinning commands and metrics work`(): Unit = runBlocking {
@@ -425,6 +481,84 @@ class SshIntegrationTest {
             assertTrue(response.bodyAsBytes().contentEquals(file.readBytes()), "size $size")
         }
         dir.deleteRecursively()
+    }
+
+    @Test
+    fun `an upload that breaks off while it is written leaves the file it would replace unchanged`() {
+        val host = fileHost("cut")
+        val dir = Files.createTempDirectory("dirl-cut").toFile()
+        val target = File(dir, "backup.tar").apply { writeBytes(ByteArray(8 * 1024 * 1024) { 'O'.code.toByte() }) }
+        onCio { port ->
+            val head = (formPart("overwrite", "on") + fileHeader("backup.tar")).toByteArray()
+            // 10 MiB announced, 3 MiB arrive while Dirl writes, then the connection ends. Ktor reports that end as the
+            // normal end of the part, only the missing boundary afterwards shows that the file is incomplete.
+            rawUpload(port, host, dir, head.size + 10 * 1024 * 1024, head) { out ->
+                out.write(ByteArray(3 * 1024 * 1024) { 'N'.code.toByte() })
+                out.flush()
+                Thread.sleep(1500)
+            }
+        }
+        val content = target.readBytes()
+        assertEquals(8 * 1024 * 1024, content.size, "the existing file keeps its size")
+        assertTrue(content.all { it == 'O'.code.toByte() }, "the existing file keeps its content")
+        assertEquals(listOf("backup.tar"), dir.list()!!.toList(), "no temporary file may be left behind")
+        assertEquals(emptySet(), uploadsAudited(dir), "nothing changed, so nothing is audited")
+
+        // The same for a new file: no truncated file that looks complete.
+        val fresh = Files.createTempDirectory("dirl-cut-new").toFile()
+        onCio { port ->
+            val head = fileHeader("new.tar").toByteArray()
+            rawUpload(port, host, fresh, head.size + 10 * 1024 * 1024, head) { out ->
+                out.write(ByteArray(3 * 1024 * 1024) { 'N'.code.toByte() })
+                out.flush()
+                Thread.sleep(1500)
+            }
+        }
+        assertEquals(emptyList(), fresh.list()!!.toList(), "neither the file nor its temporary file may exist")
+        dir.deleteRecursively()
+        fresh.deleteRecursively()
+    }
+
+    @Test
+    fun `files that arrived before an upload broke off are kept and audited`() {
+        val host = fileHost("partial")
+
+        // Control: a complete request with two files.
+        val complete = Files.createTempDirectory("dirl-complete").toFile()
+        onCio { port ->
+            val body = (fileHeader("a.txt") + "A\r\n" + fileHeader("b.txt") + "B\r\n" + "--BOUNDARY--\r\n").toByteArray()
+            val answer = rawUpload(port, host, complete, body.size, body)
+            assertTrue(answer.startsWith("HTTP/1.1 302"), answer.lineSequence().first())
+        }
+        assertEquals("A", File(complete, "a.txt").readText())
+        assertEquals("B", File(complete, "b.txt").readText())
+        assertEquals(setOf("${complete.absolutePath}/a.txt", "${complete.absolutePath}/b.txt"), uploadsAudited(complete))
+
+        // Two complete files, the third breaks off while it is written.
+        val dir = Files.createTempDirectory("dirl-partial").toFile()
+        onCio { port ->
+            val body = (fileHeader("first.txt") + "FIRST\r\n" + fileHeader("second.txt") + "SECOND\r\n" + fileHeader("third.bin")).toByteArray()
+            rawUpload(port, host, dir, body.size + 10 * 1024 * 1024, body) { out ->
+                out.write(ByteArray(3 * 1024 * 1024) { 'N'.code.toByte() })
+                out.flush()
+                Thread.sleep(1500)
+            }
+        }
+        assertEquals("FIRST", File(dir, "first.txt").readText())
+        assertEquals("SECOND", File(dir, "second.txt").readText())
+        assertEquals(setOf("first.txt", "second.txt"), dir.list()!!.toSet(), "the broken file and its temporary file are gone")
+        assertEquals(setOf("${dir.absolutePath}/first.txt", "${dir.absolutePath}/second.txt"), uploadsAudited(dir))
+
+        // The body ends inside the headers of the next part. Ktor hands out a part only with complete headers, so the
+        // file before it is not proven complete and is discarded as well. Nothing changes, nothing is audited.
+        val headers = Files.createTempDirectory("dirl-partial-headers").toFile()
+        onCio { port ->
+            val body = (fileHeader("first.txt") + "FIRST\r\n" + "--BOUNDARY\r\nContent-Disposition: form-da").toByteArray()
+            rawUpload(port, host, headers, body.size + 30_000, body)
+        }
+        assertEquals(emptyList(), headers.list()!!.toList(), "neither the file nor its temporary file may exist")
+        assertEquals(emptySet(), uploadsAudited(headers))
+        listOf(complete, dir, headers).forEach { it.deleteRecursively() }
     }
 
     @Test

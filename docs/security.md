@@ -117,7 +117,12 @@ access request.
   own under `/boot`, there it is only known from the flag.
 - SFTP: bytes only, no encoding guessing. An upload never replaces an existing file unless "Overwrite existing files"
   is ticked, the skipped names are shown at the form. Uploads go to a temporary file and are renamed over the target
-  (`posix-rename`, with a fallback for servers without it). The new file keeps the permissions, owner and group of the
+  (`posix-rename`, with a fallback for servers without it) only once the multipart body shows that the file arrived
+  completely: the next part started or the body ended with its closing boundary. Ktor ends a part that was cut off
+  (closed tab, lost network, a proxy giving up) like a complete one, so without that check the truncated part would
+  replace the target. A transfer that breaks off removes the temporary file of the file in progress and leaves its
+  target unchanged. Files before it whose next part already started stay and are audited, a break inside the headers
+  of the next part discards the file before it as well. The new file keeps the permissions, owner and group of the
   old one and is never readable by others in between. If the login may not keep the owner or group, the write is
   refused and the file stays unchanged, a file of another user is changed by logging in as that user. Downloads keep
   16 reads of 32 KiB in flight and uploads 16 writes, so a long round trip does not throttle a transfer to one block
