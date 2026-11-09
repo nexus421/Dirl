@@ -138,7 +138,7 @@ private fun parseEntry(item: JsonElement): ResultOf2<SnippetEntry, String> {
     }
     val name = when (val r = text("name")) { is ResultOf2.Success -> r.value.orEmpty().trim(); is ResultOf2.Failure -> return r }
     val command = when (val r = text("command")) {
-        is ResultOf2.Success -> r.value.orEmpty().replace("\r\n", "\n").trimEnd('\n')
+        is ResultOf2.Success -> normalizeCommand(r.value.orEmpty())
         is ResultOf2.Failure -> return r
     }
     val folder = when (val r = text("folder")) { is ResultOf2.Success -> r.value?.trim()?.ifEmpty { null }; is ResultOf2.Failure -> return r }

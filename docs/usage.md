@@ -90,7 +90,8 @@ cannot run the command early.
 }
 ```
 
-`folder` and `run` are optional, `run` decides whether the command runs right away or asks first. A plain list of snippets
+`folder` and `run` are optional, `run` decides whether the command runs right away or asks first. Line breaks at the
+end of `command` are dropped, only `run` decides that, and a carriage return counts as line break. A plain list of snippets
 without the outer object is read as well, which makes it easy to have an AI tool write one. There are no IDs, the file
 works on any Dirl.
 

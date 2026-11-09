@@ -5,6 +5,8 @@ import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.config.AppConfig
 import bayern.kickner.dirl.config.OidcConfig
 import bayern.kickner.dirl.createDirl
+import bayern.kickner.dirl.ssh.generateEd25519Key
+import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.Snippet
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.formData
@@ -197,6 +199,38 @@ class SnippetImportWebTest {
         assertEquals(listOf("Disk usage", "logs", "Free"), dirl.snippets().map { it.name }, "Uptime is not in the file")
         assertEquals(existing[0], dirl.snippets()[0], "the unchanged one stays as it is")
         assertEquals("added=1 replaced=1 deleted=1 replaceAll", dirl.lastImport())
+    }
+
+    @Test
+    fun `a carriage return in a command counts as line break, imported or typed`(): Unit = testApplication {
+        val dirl = newDirl(snippets = emptyList())
+        val key = generateEd25519Key("k")
+        dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(Host(id = "h", name = "web", address = "127.0.0.1", port = 1, username = "u", keyId = key.id))) }
+        val browser = browser(dirl)
+        // A bare CR would reach the terminal button raw, and the browser's HTML parser turns it into a line feed. The
+        // button would then run the command at once while Dirl shows it as asking first.
+        val pasted = """[
+            {"name": "Asks", "command": "touch /tmp/asks\r"},
+            {"name": "Runs", "command": "touch /tmp/runs\r", "run": true},
+            {"name": "Lines", "command": "echo a\recho b"}
+        ]"""
+        val preview = browser.preview(pasted = pasted)
+        assertEquals(HttpStatusCode.OK, preview.status, preview.bodyAsText())
+        browser.apply(hiddenData(preview.bodyAsText()), take = listOf(0, 1, 2))
+        val form = browser.client.submitForm("/snippets", parameters {
+            append("name", "Typed")
+            append("command", "touch /tmp/typed\r")
+        }) {
+            header(HttpHeaders.Cookie, browser.cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        assertEquals(HttpStatusCode.Found, form.status)
+
+        val commands = dirl.snippets().associate { it.name to it.command }
+        assertEquals(mapOf("Asks" to "touch /tmp/asks", "Runs" to "touch /tmp/runs\n", "Lines" to "echo a\necho b", "Typed" to "touch /tmp/typed"), commands)
+        val terminal = browser.get("/hosts/h/terminal").bodyAsText()
+        assertFalse(terminal.contains('\r'), "no raw CR reaches the page")
+        assertEquals(1, Regex("snippet-run").findAll(terminal).count() / 2, "only Runs is marked as running at once, in the bar and in the panel")
     }
 
     @Test

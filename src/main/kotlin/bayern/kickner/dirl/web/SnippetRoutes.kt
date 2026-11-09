@@ -186,6 +186,13 @@ fun groupSnippets(snippets: List<Snippet>): SnippetGroups {
 private val Snippet.label: String get() = folder?.let { "$it/$name" } ?: name
 
 /**
+ * A command as Dirl stores it before "run immediately" is applied: every line break as `\n`, a carriage return on its
+ * own included, and none at the end. A bare CR would reach the terminal button raw, the browser's HTML parser turns it
+ * into a line feed, and the button would run a command at once that Dirl shows as asking first.
+ */
+fun normalizeCommand(command: String): String = command.replace("\r\n", "\n").replace('\r', '\n').trimEnd('\n')
+
+/**
  * Builds a snippet from the form. "Run immediately" appends a newline, which executes the command when sent. Too long
  * input is refused, not cut: a shortened command sent to a terminal could do something else than intended. An empty
  * folder means none.
@@ -194,7 +201,7 @@ private val Snippet.label: String get() = folder?.let { "$it/$name" } ?: name
  */
 fun parseSnippet(form: Parameters, id: String): ResultOf2<Snippet, String> {
     val name = form["name"].orEmpty().trim()
-    val command = form["command"].orEmpty().replace("\r\n", "\n").trimEnd('\n')
+    val command = normalizeCommand(form["command"].orEmpty())
     val folder = form["folder"].orEmpty().trim().ifEmpty { null }
     snippetProblem(name, command, folder)?.let { return ResultOf2.Failure(it) }
     return ResultOf2.Success(Snippet(id, name, if (form["run"] == "on") "$command\n" else command, folder))
