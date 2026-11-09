@@ -25,7 +25,9 @@ fun SSHClient.openSftp(): SFTPClient {
     return runCatching { SFTPClient(engine.init()) }.onFailure { runCatching { engine.close() } }.getOrThrow()
 }
 
-/** Hands out sessions whose `sftp` subsystem reads through [SftpPacketLimit]. */
+/**
+ * Hands out sessions whose `sftp` subsystem reads through [SftpPacketLimit].
+ */
 private class LimitedSessions(private val client: SSHClient) : SessionFactory by client {
     override fun startSession(): Session = LimitedSession(client.startSession())
 }
