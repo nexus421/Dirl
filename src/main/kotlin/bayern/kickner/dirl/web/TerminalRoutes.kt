@@ -259,7 +259,7 @@ private fun FlowContent.snippetButton(snippet: Snippet) = button(type = ButtonTy
 private val controlJson = Json { ignoreUnknownKeys = true }
 
 private fun errorJson(message: String): String =
-    controlJson.encodeToString(ErrorMessage.serializer(), ErrorMessage("error", message))
+    controlJson.encodeToString<ErrorMessage>(ErrorMessage("error", message))
 
 @Serializable
 private data class ErrorMessage(val type: String, val message: String)
