@@ -1,16 +1,10 @@
 package bayern.kickner.dirl.auth
 
 import bayern.kickner.dirl.cleanText
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.*
 import kotnexlib.ResultOf2
 import java.security.MessageDigest
-import java.util.Base64
+import java.util.*
 
 /**
  * The claims Dirl uses from a validated ID token.
@@ -85,7 +79,9 @@ fun validateIdToken(
     return ResultOf2.Success(IdTokenClaims(sub, name))
 }
 
-/** Compares two strings without leaking the position of the first difference through timing. */
+/**
+ * Compares two strings without leaking the position of the first difference through timing.
+ */
 fun constantTimeEquals(a: String, b: String): Boolean =
     MessageDigest.isEqual(a.toByteArray(Charsets.UTF_8), b.toByteArray(Charsets.UTF_8))
 

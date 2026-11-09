@@ -73,13 +73,19 @@ class AccessControl(
         vault.listeners += { state -> if (state is VaultState.Unlocked) writeMirror(state.content.settings.allowedUsers) }
     }
 
-    /** Rejected logins, newest first. */
+    /**
+     * Rejected logins, newest first.
+     */
     val requests: List<AccessRequest> get() = pending.sortedByDescending { it.time }
 
-    /** True while no vault exists. Any user passing the provider may set it up, or only `oidc.allowedSubjects` if set. */
+    /**
+     * True while no vault exists. Any user passing the provider may set it up, or only `oidc.allowedSubjects` if set.
+     */
     val isBootstrap: Boolean get() = vault.state == VaultState.Uninitialized
 
-    /** True if [sub] may use Dirl right now. */
+    /**
+     * True if [sub] may use Dirl right now.
+     */
     fun isAllowed(sub: String): Boolean {
         if (sub in config.allowedSubjects) return true
         return when (val state = vault.state) {
@@ -89,14 +95,18 @@ class AccessControl(
         }
     }
 
-    /** Remembers a rejected login for the access requests list. */
+    /**
+     * Remembers a rejected login for the access requests list.
+     */
     fun recordRequest(sub: String, name: String) {
         pending.removeIf { it.sub == sub }
         pending += AccessRequest(sub, name, clock())
         while (pending.size > MAX_REQUESTS) pending.remove(pending.minBy { it.time })
     }
 
-    /** Dismisses a request without granting access. */
+    /**
+     * Dismisses a request without granting access.
+     */
     fun dismissRequest(sub: String) {
         pending.removeIf { it.sub == sub }
     }
@@ -183,7 +193,9 @@ class AccessControl(
     private data class AccessMirror(val users: List<AllowedUser>)
 
     companion object {
-        /** Rejected logins kept for the UI. */
+        /**
+         * Rejected logins kept for the UI.
+         */
         const val MAX_REQUESTS = 20
     }
 }
