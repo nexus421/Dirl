@@ -144,9 +144,9 @@ class ConnectionManager(
      */
     suspend fun connection(hostId: String): ResultOf2<SSHClient, ConnectionState> {
         val content = vault.content ?: return ResultOf2.Failure(ConnectionState.Stopped("Vault is sealed"))
-        val route = when (val r = resolveRoute(content, hostId)) {
-            is ResultOf2.Success -> r.value
-            is ResultOf2.Failure -> return ResultOf2.Failure(ConnectionState.Stopped(r.value))
+        val route = when (val result = resolveRoute(content, hostId)) {
+            is ResultOf2.Success -> result.value
+            is ResultOf2.Failure -> return ResultOf2.Failure(ConnectionState.Stopped(result.value))
         }
         val host = route.last()
         val entry = entries.computeIfAbsent(hostId) { Entry() }

@@ -6,15 +6,8 @@ import bayern.kickner.dirl.vault.Vault
 import bayern.kickner.dirl.vault.VaultState
 import bayern.kickner.klogger.debugLog
 import bayern.kickner.klogger.warnLog
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runInterruptible
-import kotlinx.coroutines.withTimeoutOrNull
 import kotnexlib.ResultOf2
 import net.schmizz.sshj.SSHClient
 import java.util.concurrent.ConcurrentHashMap
@@ -45,12 +38,12 @@ const val METRICS_COMMAND =
         "echo @@vmlinuz; test -e /vmlinuz && readlink -f /vmlinuz; " +
         "echo @@boot; ls -tc /boot 2>/dev/null | grep \"^vmlinuz-\" | head -n1; " +
         "echo @@rebootflag; if test -e /run/reboot-required; then echo yes; else echo no; fi; " +
-        "echo @@failed; timeout 5 systemctl list-units --state=failed --no-legend --plain 2>/dev/null; r=\$?; " +
-        "echo @@failedrc; echo \$r; " +
+            "echo @@failed; timeout 5 systemctl list-units --state=failed --no-legend --plain 2>/dev/null; r=$?; " +
+            $$"echo @@failedrc; echo $r; " +
         "echo @@os; grep -E \"^PRETTY_NAME=\" /etc/os-release 2>/dev/null; " +
         "echo @@kernel; uname -r; " +
         "echo @@users; command -v who >/dev/null && who | wc -l; " +
-        "echo @@zram; for d in \$(grep -o \"^/dev/zram[0-9]*\" /proc/swaps 2>/dev/null); do cat /sys/block/\$(basename \$d)/mm_stat 2>/dev/null; done" +
+            $$"echo @@zram; for d in $(grep -o \"^/dev/zram[0-9]*\" /proc/swaps 2>/dev/null); do cat /sys/block/$(basename $d)/mm_stat 2>/dev/null; done" +
         "'"
 
 /** Upper bound of the metrics command's output. Real output is a few KiB even with many mounts. */
@@ -163,7 +156,9 @@ data class MetricsSample(val time: Long, val raw: RawMetrics) {
 private val markerLine = Regex("@@([a-z]+)")
 private val whitespace = Regex("\\s+")
 
-/** The lines of each `@@name` part. Lines before the first marker are dropped, a repeated marker wins. */
+/**
+ * The lines of each `@@name` part. Lines before the first marker are dropped, a repeated marker wins.
+ */
 private fun sectionsOf(output: String): Map<String, List<String>> {
     val sections = mutableMapOf<String, MutableList<String>>()
     var current: MutableList<String>? = null
@@ -309,6 +304,8 @@ suspend fun roundTripMillis(client: SSHClient): Double? = runCatching {
         // A lost connection fulfills the promise with an error as well, that is no answer.
         millis.takeIf { promise.isFulfilled && client.isConnected }
     }
+}.onFailure {
+    if (it is CancellationException) currentCoroutineContext().ensureActive()
 }.getOrNull()
 
 /**
@@ -350,7 +347,7 @@ class MetricsPoller(
     }
 
     /** Starts the poll loop in [scope]. */
-    fun start(scope: CoroutineScope): Job = scope.launch(Dispatchers.IO) {
+    fun start(scope: CoroutineScope) = scope.launch(Dispatchers.IO) {
         while (isActive) {
             runCatching { round(this) }.onFailure { warnLog { "Status round failed: ${it.message}" } }
             withTimeoutOrNull(interval) { trigger.receive() }
@@ -438,6 +435,8 @@ class MetricsPoller(
                     // The normal output is a few KiB, anything beyond the limit is dropped as unusable.
                     runInterruptible { command.inputStream.readAtMost(MAX_METRICS_OUTPUT)?.decodeToString() }
                 }
+            }.onFailure {
+                if (it is CancellationException) ensureActive()
             }.getOrNull()
         }
         // Nobody is there any more: a late result would show up as current value on the next arrival.
