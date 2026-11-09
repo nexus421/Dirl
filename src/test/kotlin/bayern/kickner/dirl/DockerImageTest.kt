@@ -69,7 +69,7 @@ class DockerImageTest {
             publicUrl = publicUrl,
             oidc = OidcConfig(issuer = mock.issuer, clientId = "dirl", clientSecret = mock.clientSecret),
         )
-        File(dir, "config.json").writeText(Json.encodeToString(AppConfig.serializer(), config))
+        File(dir, "config.json").writeText(Json.encodeToString<AppConfig>(config))
         // The owner and modes docs/deployment.md asks for. The test user cannot chown, a throwaway container can.
         asRoot("chown 10001:10001 /work/data /work/config.json && chmod 0700 /work/data && chmod 0400 /work/config.json")
         docker(

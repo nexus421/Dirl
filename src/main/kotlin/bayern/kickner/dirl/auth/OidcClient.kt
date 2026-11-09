@@ -18,7 +18,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.security.MessageDigest
 import java.time.Duration
-import java.util.Base64
+import java.util.*
 import java.util.concurrent.Semaphore
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -193,7 +193,7 @@ class OidcClient(
         val response = limited { http.send(request, HttpResponse.BodyHandlers.ofString()) }
         check(response.statusCode() == 200) { "Discovery returned HTTP ${response.statusCode()}" }
 
-        val parsed = json.decodeFromString(ProviderMetadata.serializer(), response.body())
+        val parsed = json.decodeFromString<ProviderMetadata>(response.body())
         check(parsed.issuer == config.issuer) { "Discovery issuer \"${parsed.issuer}\" differs from the configured issuer" }
         check(isSecureEndpoint(parsed.tokenEndpoint)) { "Token endpoint must use https" }
         check(isSecureEndpoint(parsed.authorizationEndpoint)) { "Authorization endpoint must use https" }
@@ -235,7 +235,7 @@ class OidcClient(
         val response = limited { http.send(request, HttpResponse.BodyHandlers.ofString()) }
         check(response.statusCode() == 200) { "Token endpoint returned HTTP ${response.statusCode()}" }
 
-        val body = json.decodeFromString(TokenResponse.serializer(), response.body())
+        val body = json.decodeFromString<TokenResponse>(response.body())
         body.idToken ?: error("Token response contains no id_token")
     }
 

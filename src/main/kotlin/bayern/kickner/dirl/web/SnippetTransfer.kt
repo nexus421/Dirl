@@ -2,14 +2,7 @@ package bayern.kickner.dirl.web
 
 import bayern.kickner.dirl.vault.Snippet
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.*
 import kotnexlib.ResultOf2
 
 /** Version of the snippet file format, the value of [SnippetFile.dirlSnippets]. */
@@ -76,12 +69,12 @@ fun Snippet.toEntry(): SnippetEntry = SnippetEntry(name, command.trimEnd('\n'), 
 fun exportSnippets(snippets: List<Snippet>): String {
     val groups = groupSnippets(snippets)
     val sorted = groups.loose + groups.folders.flatMap { it.second }
-    return snippetJson.encodeToString(SnippetFile.serializer(), SnippetFile(SNIPPET_FORMAT_VERSION, sorted.map { it.toEntry() }))
+    return snippetJson.encodeToString<SnippetFile>(SnippetFile(SNIPPET_FORMAT_VERSION, sorted.map { it.toEntry() }))
 }
 
 /** Writes [entries] in the export format, for the preview to send them on to the apply step. */
 fun encodeSnippetEntries(entries: List<SnippetEntry>): String =
-    snippetJson.encodeToString(SnippetFile.serializer(), SnippetFile(SNIPPET_FORMAT_VERSION, entries))
+    snippetJson.encodeToString<SnippetFile>(SnippetFile(SNIPPET_FORMAT_VERSION, entries))
 
 /**
  * Reads a snippet file: the export format, or a bare array of entries as an AI tool may write it. Every entry must

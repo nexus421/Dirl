@@ -45,14 +45,25 @@ class VaultTest {
     @Test
     fun `hosts from before the overview choice keep the default, and the default is not written`() {
         val json = Json { ignoreUnknownKeys = false }
-        val old = json.decodeFromString(Host.serializer(), """{"id":"h","name":"web","address":"10.0.0.1","username":"root","keyId":"k"}""")
+        val old =
+            json.decodeFromString<Host>("""{"id":"h","name":"web","address":"10.0.0.1","username":"root","keyId":"k"}""")
         assertEquals(DEFAULT_OVERVIEW, old.overview)
         assertEquals(setOf(OverviewMetric.CPU, OverviewMetric.RAM, OverviewMetric.DISK), DEFAULT_OVERVIEW, "what the overview showed before")
-        assertTrue("overview" !in json.encodeToString(Host.serializer(), old), "an unchanged host stays readable by older versions")
+        assertTrue("overview" !in json.encodeToString<Host>(old), "an unchanged host stays readable by older versions")
         // Order does not matter, the same choice is the default.
-        assertTrue("overview" !in json.encodeToString(Host.serializer(), old.copy(overview = setOf(OverviewMetric.DISK, OverviewMetric.CPU, OverviewMetric.RAM))))
+        assertTrue(
+            "overview" !in json.encodeToString<Host>(
+                old.copy(
+                    overview = setOf(
+                        OverviewMetric.DISK,
+                        OverviewMetric.CPU,
+                        OverviewMetric.RAM
+                    )
+                )
+            )
+        )
         val chosen = old.copy(overview = setOf(OverviewMetric.LOAD))
-        assertEquals(chosen, json.decodeFromString(Host.serializer(), json.encodeToString(Host.serializer(), chosen)))
+        assertEquals(chosen, json.decodeFromString<Host>(json.encodeToString<Host>(chosen)))
     }
 
     @Test
@@ -142,10 +153,10 @@ class VaultTest {
         vault().setup(passphrase.toCharArray(), actor)
         val file = File(dir, "vault.json")
         val json = Json { prettyPrint = true }
-        val envelope = json.decodeFromString(VaultEnvelope.serializer(), file.readText())
+        val envelope = json.decodeFromString<VaultEnvelope>(file.readText())
         val ct = envelope.data.ct
         val flipped = (if (ct[5] == 'A') 'B' else 'A').let { ct.substring(0, 5) + it + ct.substring(6) }
-        file.writeText(json.encodeToString(VaultEnvelope.serializer(), envelope.copy(data = envelope.data.copy(ct = flipped))))
+        file.writeText(json.encodeToString<VaultEnvelope>(envelope.copy(data = envelope.data.copy(ct = flipped))))
 
         assertIs<UnlockError.Unusable>((vault().unlock(passphrase.toCharArray(), actor) as ResultOf2.Failure).value)
     }

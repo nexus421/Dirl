@@ -196,7 +196,8 @@ fun Route.terminalRoutes(dirl: Dirl) {
                     }
 
                     is Frame.Text -> {
-                        val control = runCatching { controlJson.decodeFromString(TerminalControl.serializer(), frame.readText()) }.getOrNull()
+                        val control =
+                            runCatching { controlJson.decodeFromString<TerminalControl>(frame.readText()) }.getOrNull()
                         if (control?.type == "resize") withContext(Dispatchers.IO) {
                             shell.changeWindowDimensions(control.cols.coerceIn(10, 500), control.rows.coerceIn(5, 300), 0, 0)
                         }

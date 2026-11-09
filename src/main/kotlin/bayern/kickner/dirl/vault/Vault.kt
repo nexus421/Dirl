@@ -234,7 +234,7 @@ class Vault(
     fun restore(bytes: ByteArray, actor: Actor): String? {
         val error = synchronized(lock) {
             if (state != VaultState.Uninitialized || store.exists()) return@synchronized "A vault already exists"
-            val parsed = runCatching { json.decodeFromString(VaultEnvelope.serializer(), bytes.decodeToString()) }
+            val parsed = runCatching { json.decodeFromString<VaultEnvelope>(bytes.decodeToString()) }
                 .getOrElse { return@synchronized "This is not a Dirl vault file" }
             parsed.kdf.problem()?.let { return@synchronized "This backup has unusable KDF parameters: $it" }
             store.write(parsed)
@@ -330,7 +330,7 @@ class Vault(
         val plain = Aead.open(current.data, dek).getOrElse {
             return ResultOf2.Failure(UnlockError.Unusable("The vault data does not match its key, restore a backup"))
         }
-        val content = runCatching { json.decodeFromString(VaultContent.serializer(), plain.decodeToString()) }
+        val content = runCatching { json.decodeFromString<VaultContent>(plain.decodeToString()) }
             .also { plain.wipe() }
             .getOrElse { return ResultOf2.Failure(UnlockError.Unusable("Cannot parse the vault content: ${it.message}")) }
 
@@ -386,7 +386,7 @@ class Vault(
     }
 
     private fun encryptContent(content: VaultContent, dek: SecretKey): SealedBox {
-        val plain = json.encodeToString(VaultContent.serializer(), content).toByteArray(Charsets.UTF_8)
+        val plain = json.encodeToString<VaultContent>(content).toByteArray(Charsets.UTF_8)
         return Aead.seal(plain, dek).also { plain.wipe() }
     }
 

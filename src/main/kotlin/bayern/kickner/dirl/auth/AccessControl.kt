@@ -173,7 +173,7 @@ class AccessControl(
     }
 
     private fun readMirror(): List<AllowedUser> = runCatching {
-        if (mirror.isFile.not()) emptyList() else json.decodeFromString(AccessMirror.serializer(), mirror.readText()).users
+        if (mirror.isFile.not()) emptyList() else json.decodeFromString<AccessMirror>(mirror.readText()).users
     }.getOrElse {
         warnLog { "Cannot read ${mirror.absolutePath}, only break-glass users can log in while sealed: ${it.message}" }
         emptyList()
@@ -183,7 +183,7 @@ class AccessControl(
         runCatching {
             mirror.parentFile?.mkdirs()
             val tmp = File(mirror.parentFile, mirror.name + ".tmp")
-            tmp.writeText(json.encodeToString(AccessMirror.serializer(), AccessMirror(users)))
+            tmp.writeText(json.encodeToString<AccessMirror>(AccessMirror(users)))
             restrictToOwner(tmp)
             Files.move(tmp.toPath(), mirror.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         }.onFailure { warnLog { "Cannot write ${mirror.absolutePath}: ${it.message}" } }
