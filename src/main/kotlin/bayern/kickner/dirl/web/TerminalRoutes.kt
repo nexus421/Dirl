@@ -8,29 +8,11 @@ import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.Snippet
 import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.staticLog
-import io.ktor.server.routing.Route
-import io.ktor.server.routing.get
-import io.ktor.server.websocket.webSocket
-import io.ktor.websocket.CloseReason
-import io.ktor.websocket.Frame
-import io.ktor.websocket.close
-import io.ktor.websocket.readBytes
-import io.ktor.websocket.readText
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.html.ButtonType
-import kotlinx.html.FlowContent
-import kotlinx.html.a
-import kotlinx.html.button
-import kotlinx.html.details
-import kotlinx.html.div
-import kotlinx.html.id
-import kotlinx.html.p
-import kotlinx.html.span
-import kotlinx.html.summary
+import io.ktor.server.routing.*
+import io.ktor.server.websocket.*
+import io.ktor.websocket.*
+import kotlinx.coroutines.*
+import kotlinx.html.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotnexlib.ResultOf2
@@ -54,8 +36,8 @@ data class TerminalControl(val type: String, val cols: Int = 80, val rows: Int =
 
 /** Mobile key bar: label and the bytes it sends. Ctrl is handled in JavaScript as a sticky modifier. */
 private val keyBar = listOf(
-    "Esc" to "\u001b", "Tab" to "\t", "←" to "\u001b[D", "↑" to "\u001b[A", "↓" to "\u001b[B", "→" to "\u001b[C",
-    "|" to "|", "~" to "~", "/" to "/",
+    "Esc" to "\u001b", "Tab" to "\t", "←" to "\u001b[D", "↑" to "\u001b[A", "↓" to "\u001b[B",
+    "→" to "\u001b[C", "|" to "|", "~" to "~", "/" to "/",
 )
 
 /**
@@ -188,6 +170,8 @@ fun Route.terminalRoutes(dirl: Dirl) {
                     if (n < 0) break
                     send(Frame.Binary(true, buffer.copyOf(n)))
                 }
+            }.onFailure {
+                if (it is CancellationException) ensureActive()
             }
             close(CloseReason(CloseReason.Codes.NORMAL, "Shell closed"))
         }
