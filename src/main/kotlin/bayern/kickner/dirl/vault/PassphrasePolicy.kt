@@ -6,6 +6,8 @@ const val MIN_PASSPHRASE_LENGTH = 20
 /** Minimum number of distinct words for a Diceware style passphrase. */
 const val MIN_PASSPHRASE_WORDS = 5
 
+private val wordSeparators = "[\\s\\-._]+".toRegex()
+
 /**
  * Checks a new vault passphrase: at least [MIN_PASSPHRASE_LENGTH] characters, or at least [MIN_PASSPHRASE_WORDS]
  * distinct words of three or more letters (Diceware), separated by spaces, hyphens, dots or underscores.
@@ -21,7 +23,7 @@ const val MIN_PASSPHRASE_WORDS = 5
 fun checkPassphrase(passphrase: CharArray): String? {
     if (passphrase.size >= MIN_PASSPHRASE_LENGTH) return null
 
-    val words = String(passphrase).split(Regex("[\\s\\-._]+")).filter { it.length >= 3 }.toSet()
+    val words = String(passphrase).split(wordSeparators).filter { it.length >= 3 }.toSet()
     val enoughWords = words.size >= MIN_PASSPHRASE_WORDS
     return if (enoughWords) null
     else "Use at least $MIN_PASSPHRASE_LENGTH characters or $MIN_PASSPHRASE_WORDS distinct Diceware words"
