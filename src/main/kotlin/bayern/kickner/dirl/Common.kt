@@ -16,17 +16,25 @@ import java.util.*
  */
 val timestampFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss z", Locale.ENGLISH)
 
-/** Formats Unix milliseconds with [timestampFormat] in the host's time zone. */
+/**
+ * Formats Unix milliseconds with [timestampFormat] in the host's time zone.
+ */
 fun formatTimestamp(epochMillis: Long): String =
     Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).format(timestampFormat)
 
-/** Version and build time for the start banner and the page footer. */
+/**
+ * Version and build time for the start banner and the page footer.
+ */
 val appVersion: String = "${BuildConfig.VERSION} (built ${formatTimestamp(BuildConfig.BUILD_TIME)})"
 
-/** One shared generator. `SecureRandom()` uses the non-blocking system source on Linux. */
+/**
+ * One shared generator. `SecureRandom()` uses the non-blocking system source on Linux.
+ */
 val secureRandom: SecureRandom = SecureRandom()
 
-/** URL-safe Base64 without padding, the encoding of tokens, PKCE values and JWT parts. */
+/**
+ * URL-safe Base64 without padding, the encoding of tokens, PKCE values and JWT parts.
+ */
 private val base64Url = Base64.getUrlEncoder().withoutPadding()
 
 /** Encodes as URL-safe Base64 without padding. */
@@ -39,13 +47,19 @@ fun ByteArray.toBase64Url(): String = base64Url.encodeToString(this)
 fun randomToken(bytes: Int = 32, random: SecureRandom = secureRandom): String =
     ByteArray(bytes).also(random::nextBytes).toBase64Url()
 
-/** Short random ID for hosts, keys and snippets (96 bit, URL-safe). */
+/**
+ * Short random ID for hosts, keys and snippets (96 bit, URL-safe).
+ */
 fun newId(random: SecureRandom = secureRandom): String = randomToken(12, random)
 
-/** Overwrites the array with zeros. Best effort only: the JVM may have copied the contents before. */
+/**
+ * Overwrites the array with zeros. Best effort only: the JVM may have copied the contents before.
+ */
 fun ByteArray.wipe() = fill(0)
 
-/** Overwrites the array with zeros. Best effort only: the JVM may have copied the contents before. */
+/**
+ * Overwrites the array with zeros. Best effort only: the JVM may have copied the contents before.
+ */
 fun CharArray.wipe() = fill('\u0000')
 
 /**
@@ -74,13 +88,19 @@ fun InputStream.readAtMost(max: Int): ByteArray? {
 
 private val whitespace = Regex("\\s+")
 
-/** Terminal escape sequences like colors (`ESC [ 31 m`), dropped as a whole instead of leaving `[31m` behind. */
+/**
+ * Terminal escape sequences like colors (`ESC [ 31 m`), dropped as a whole instead of leaving `[31m` behind.
+ */
 private val ansiEscape = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]|\u001B[@-Z\\\\-_]")
 
-/** Control characters such as line breaks and tabs, they become a space so the words around them stay apart. */
+/**
+ * Control characters such as line breaks and tabs, they become a space so the words around them stay apart.
+ */
 private val controlChar = Regex("\\p{Cc}")
 
-/** Invisible formatting characters such as U+202E, which turns the text after it around on screen. */
+/**
+ * Invisible formatting characters such as U+202E, which turns the text after it around on screen.
+ */
 private val formatChar = Regex("\\p{Cf}")
 
 /**
