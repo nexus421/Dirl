@@ -15,6 +15,10 @@
 | Login     | A terminal that types `dirl scan` and lists what Dirl does, next to the sign in through the identity provider. The motion runs once and stops with the system setting for reduced motion |
 | Setup     | Create the vault, or restore an encrypted backup                                                                         |
 
+Reboot needed compares the installed kernel with the running one, which works where the kernel image is named after
+its version, as on Debian, Ubuntu and Fedora. On Arch and Alpine the image is named after its flavour
+(`vmlinuz-linux`, `vmlinuz-lts`), there a host always shows reboot needed.
+
 ## Actions mode
 
 The terminal page has two modes, the button in the terminal bar switches between them without a reload and names

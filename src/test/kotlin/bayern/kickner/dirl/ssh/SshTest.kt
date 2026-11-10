@@ -353,6 +353,32 @@ class SshTest {
     }
 
     @Test
+    fun `mount points, file system types and installed kernels are cleaned and capped as well`() {
+        fun parsed(section: String, vararg lines: String) = (parseMetrics(withSection(section, lines.toList())) as ResultOf2.Success).value
+        val hidden = Regex("[\\p{Cc}\\p{Cf}]")
+        val header = "Filesystem     Type     1024-blocks     Used Available Capacity Mounted on"
+        val disks = parsed(
+            "df", header,
+            "/dev/sda1 ext4\u001b[31m 100 50 50 50% /srv/‮evil\u0007 dir",
+            "/dev/sdb1 xfs 200 50 150 25% /" + "m".repeat(5000),
+            "/dev/sdc1 ext4 300 50 250 17% ‮\u0007",
+            "/dev/sdd1 ${"t".repeat(5000)} 400 50 350 13% /data",
+        ).disks
+        assertEquals(listOf("/data", "/" + "m".repeat(MAX_METRIC_TEXT - 1), "/srv/evil dir"), disks.map { it.mount }, "a mount point of nothing but hidden characters is dropped")
+        assertEquals(setOf("ext4", "xfs", "t".repeat(MAX_METRIC_TEXT)), disks.map { it.fsType }.toSet())
+        assertTrue(disks.all { hidden.containsMatchIn(it.mount + it.fsType).not() && it.mount.length <= MAX_METRIC_TEXT && it.fsType.length <= MAX_METRIC_TEXT })
+
+        // The installed kernel, from /vmlinuz and from /boot, is shown on the host page as well.
+        val fromLink = parsed("vmlinuz", "/boot/vmlinuz-6.12.41\u001b[2J‮+deb13-amd64").reboot!!
+        assertEquals(RebootStatus(true, "6.12.41+deb13-amd64"), fromLink)
+        val fromBoot = parsed("boot", "vmlinuz-" + "k".repeat(5000)).reboot!!
+        assertEquals("k".repeat(MAX_METRIC_TEXT - "vmlinuz-".length), fromBoot.newerKernel)
+        // A running kernel of the same name with hidden characters still counts as the same kernel.
+        val same = (parseMetrics(withSection("vmlinuz", listOf("/boot/vmlinuz-6.6.147‮-09705-g825c4d3a5018"))) as ResultOf2.Success).value
+        assertEquals(RebootStatus(false, null), same.reboot)
+    }
+
+    @Test
     fun `reads from remote servers stop at the limit`() {
         assertEquals(10, ByteArray(10).inputStream().readAtMost(10)?.size)
         assertNull(ByteArray(11).inputStream().readAtMost(10))

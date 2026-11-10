@@ -111,8 +111,9 @@ access request.
   are shown once. A host marked "jump host only" has no metrics, Dirl runs no command there and only measures the round
   trip. Every host is asked for all values, the choice per host only decides what its overview card shows. Each part of
   the output carries a marker, a part a host cannot deliver (no systemd, no `who`, no kernel under `/boot` in a
-  container) leaves only that value unknown. Text from the server (system name, kernel, unit names) loses control,
-  format and escape characters and is cut at 100 characters, at most 50 failed units are kept.
+  container) leaves only that value unknown. Text from the server (system name, running and installed kernel, unit
+  names, mount points, file system types) loses control, format and escape characters and is cut at 100 characters, at
+  most 50 failed units are kept.
 - Reboot needed is decided like Debian admins do it: the kernel `/vmlinuz` points to, else the last `vmlinuz-*`
   installed in `/boot`, differs from `uname -r`, or `/run/reboot-required` exists. A container has no kernel of its
   own under `/boot`, there it is only known from the flag.

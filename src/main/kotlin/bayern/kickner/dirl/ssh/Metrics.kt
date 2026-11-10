@@ -221,7 +221,10 @@ fun parseMetrics(output: String): ResultOf2<RawMetrics, String> = runCatching {
     val disks = if (dfHeader < 0) emptyList() else dfLines.drop(dfHeader + 1).mapNotNull { line ->
         val cols = line.trim().split(whitespace)
         if (cols.size < 7) return@mapNotNull null
-        DiskUsage(device = cols[0], mount = cols.drop(6).joinToString(" "), fsType = cols[1], totalKiB = cols[2].toLong(), usedKiB = cols[3].toLong())
+        // Shown on the host page and under "All disks", so cleaned like every other text from the server.
+        val mount = cleanText(cols.drop(6).joinToString(" "), MAX_METRIC_TEXT) ?: return@mapNotNull null
+        val fsType = cleanText(cols[1], MAX_METRIC_TEXT) ?: return@mapNotNull null
+        DiskUsage(device = cols[0], mount = mount, fsType = fsType, totalKiB = cols[2].toLong(), usedKiB = cols[3].toLong())
     }.let(::dedupeDisks)
 
     val kernel = single("kernel")?.let { cleanText(it, MAX_METRIC_TEXT) }
@@ -249,7 +252,8 @@ fun parseMetrics(output: String): ResultOf2<RawMetrics, String> = runCatching {
         swapFreeKiB = mem["SwapFree"] ?: 0,
         disks = disks,
         cores = single("cores")?.toIntOrNull()?.takeIf { it in 1..65536 },
-        reboot = rebootStatus(kernel, single("vmlinuz"), single("boot"), flagged),
+        // Cleaned like the running kernel, so both sides of the comparison are treated the same.
+        reboot = rebootStatus(kernel, single("vmlinuz")?.let { cleanText(it, MAX_METRIC_TEXT) }, single("boot")?.let { cleanText(it, MAX_METRIC_TEXT) }, flagged),
         failedUnits = failedUnits,
         osName = single("os")?.removePrefix("PRETTY_NAME=")?.trim()?.removeSurrounding("\"")?.let { cleanText(it, MAX_METRIC_TEXT) },
         kernel = kernel,
