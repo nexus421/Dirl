@@ -83,9 +83,7 @@ sealed interface ConnectionState {
 /** Authentication failures in a row before a host is [ConnectionState.Stopped]. */
 const val MAX_AUTH_FAILURES = 3
 
-/**
- * Wait time after [failures] consecutive failures: 30 s, doubled per failure, at most 15 min.
- */
+/** Wait time after [failures] consecutive failures: 30 s, doubled per failure, at most 15 min. */
 fun backoffDelayMillis(failures: Int): Long {
     val base = 30.seconds.inWholeMilliseconds
     val max = 15.minutes.inWholeMilliseconds

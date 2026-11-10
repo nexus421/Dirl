@@ -114,10 +114,10 @@ fun authorizedKeysLine(host: Host, key: SshKey, allHosts: List<Host>, sourceAddr
 }
 
 /** One entry of a `from="..."` list without CIDR: an address, a host name or a wildcard pattern, `!` excludes it. */
-private val sourceEntryPattern = Regex("^!?[A-Za-z0-9.:*?-]+$")
+private val sourceEntryPattern = "^!?[A-Za-z0-9.:*?-]+$".toRegex()
 
 /** One CIDR entry of a `from="..."` list, the address is checked separately. */
-private val sourceCidrPattern = Regex("^(!?)([0-9A-Fa-f.:]+)/([0-9]{1,3})$")
+private val sourceCidrPattern = "^(!?)([0-9A-Fa-f.:]+)/([0-9]{1,3})$".toRegex()
 
 /** Upper bound for a whole `from="..."` list, a handful of IPv6 ranges fit. */
 private const val MAX_SOURCE_ADDRESS_LENGTH = 500
@@ -174,8 +174,11 @@ private fun ipLiteralBytes(address: String): ByteArray? {
         .map { it.toByte() }.toByteArray()
 }
 
+/** Runs of whitespace between the parts of a public key line. */
+private val whitespace = "\\s+".toRegex()
+
 /** Fingerprint of a public key line (`ssh-ed25519 AAAA...`), or `unknown` if the line cannot be parsed. */
 fun fingerprintOfLine(publicKeyLine: String): String = runCatching {
-    val blob = Base64.getDecoder().decode(publicKeyLine.trim().split(Regex("\\s+"))[1])
+    val blob = Base64.getDecoder().decode(publicKeyLine.trim().split(whitespace)[1])
     "SHA256:" + Base64.getEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(blob))
 }.getOrDefault("unknown")

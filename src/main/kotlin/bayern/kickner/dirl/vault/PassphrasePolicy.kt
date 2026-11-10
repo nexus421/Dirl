@@ -6,7 +6,7 @@ const val MIN_PASSPHRASE_LENGTH = 20
 /** Minimum number of distinct words for a Diceware style passphrase. */
 const val MIN_PASSPHRASE_WORDS = 5
 
-private val wordSeparators = "[\\s\\-._]+".toRegex()
+private val wordSeparators = "[\\s._-]+".toRegex()
 
 /**
  * Checks a new vault passphrase: at least [MIN_PASSPHRASE_LENGTH] characters, or at least [MIN_PASSPHRASE_WORDS]

@@ -79,9 +79,7 @@ fun validateIdToken(
     return ResultOf2.Success(IdTokenClaims(sub, name))
 }
 
-/**
- * Compares two strings without leaking the position of the first difference through timing.
- */
+/** Compares two strings without leaking the position of the first difference through timing. */
 fun constantTimeEquals(a: String, b: String): Boolean =
     MessageDigest.isEqual(a.toByteArray(Charsets.UTF_8), b.toByteArray(Charsets.UTF_8))
 

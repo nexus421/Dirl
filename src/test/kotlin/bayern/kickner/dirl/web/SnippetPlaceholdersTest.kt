@@ -123,4 +123,23 @@ class SnippetPlaceholdersTest {
         assertTrue(button("Free").contains("snippet-").not() && button("Free").contains("sr-only").not(), button("Free"))
         assertTrue(terminal.contains("<script src=\"/static/terminal.js\">"))
     }
+
+    @Test
+    fun `terminal js finds the same placeholders as the server`() {
+        // terminal.js keeps its own copy of the pattern. The JavaScript syntax used there is valid Java regex too, so
+        // both are run on the same inputs here and must agree on every match and both groups.
+        val script = javaClass.getResource("/static/terminal.js")!!.readText()
+        val source = Regex("const placeholderPattern = /(.+)/g;").find(script)?.groupValues?.get(1) ?: error("placeholderPattern not found in terminal.js")
+        val inBrowser = source.toRegex()
+        fun matches(pattern: Regex, text: String) = pattern.findAll(text).map { listOf(it.range, it.groups[1]?.value, it.groups[2]?.value) }.toList()
+        val fixed = listOf(
+            "docker logs --tail {{Lines:100}} -f {{Container}}", "{{Path:\${HOME}/logs}}", "{{.Names}}", "{{ .Status }}", "{{end}}",
+            "{{a:}}", "{{a:b}c}}", "{{a:}}}}", "{{a:{{b}}}}", "{{x:line\nbreak}}", "{{A:\r}}", "{{}}", "tmux new -A -s {{Session:dirl}}",
+        ) + (30..34).map { "{{" + "n".repeat(it) + "}}" } + (198..202).map { "{{a:" + "x".repeat(it) + "}}" }
+        val alphabet = "{}:ab_-. \n\r\$x"
+        val random = kotlin.random.Random(11)
+        val inputs = fixed + List(100_000) { String(CharArray(random.nextInt(0, 24)) { alphabet[random.nextInt(alphabet.length)] }) }
+        val differing = inputs.filter { matches(PLACEHOLDER_PATTERN, it) != matches(inBrowser, it) }
+        assertEquals(emptyList(), differing)
+    }
 }

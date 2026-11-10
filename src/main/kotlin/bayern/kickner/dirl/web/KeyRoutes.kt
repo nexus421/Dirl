@@ -30,6 +30,9 @@ import kotlinx.html.span
 import kotlinx.html.summary
 import kotnexlib.ResultOf2
 
+/** Characters an exported key file name may not contain, each becomes `_`. */
+private val unsafeFileNameChar = "[^A-Za-z0-9._-]".toRegex()
+
 /**
  * SSH key management.
  *
@@ -97,7 +100,7 @@ fun Route.keyRoutes(dirl: Dirl) {
         if (check is ResultOf2.Failure) return@post call.exportPage(key, unlockErrorText(check.value))
 
         dirl.audit.record(call.session.actor, AuditAction.KEY_EXPORTED, detail = key.name)
-        val fileName = key.name.replace(Regex("[^A-Za-z0-9._-]"), "_").ifEmpty { "key" }
+        val fileName = key.name.replace(unsafeFileNameChar, "_").ifEmpty { "key" }
         call.response.header(
             HttpHeaders.ContentDisposition,
             ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "id_$fileName").toString(),

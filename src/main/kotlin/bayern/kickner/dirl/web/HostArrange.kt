@@ -6,9 +6,7 @@ import io.ktor.server.application.*
 import kotlinx.html.*
 import kotnexlib.ResultOf2
 
-/**
- * Form field of a host's position on the arrange page, followed by the host ID.
- */
+/** Form field of a host's position on the arrange page, followed by the host ID. */
 private const val POSITION_FIELD = "pos-"
 
 /**
@@ -28,9 +26,7 @@ fun parseArrangeForm(form: Parameters, hosts: List<Host>): ResultOf2<List<String
     return ResultOf2.Success(positions.sortedWith(compareBy({ it.second }, { it.third })).map { it.first })
 }
 
-/**
- * [hosts] in the [order] of their IDs. Hosts missing from [order], e.g. added in the meantime, come last.
- */
+/** [hosts] in the [order] of their IDs. Hosts missing from [order], e.g. added in the meantime, come last. */
 fun arrangeHosts(hosts: List<Host>, order: List<String>): List<Host> {
     val rank = order.withIndex().associate { it.value to it.index }
     return hosts.sortedBy { rank[it.id] ?: Int.MAX_VALUE }

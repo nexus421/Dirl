@@ -153,12 +153,13 @@ data class MetricsSample(val time: Long, val raw: RawMetrics) {
     val disks: List<DiskUsage> get() = raw.disks
 }
 
-private val markerLine = Regex("@@([a-z]+)")
-private val whitespace = Regex("\\s+")
+private val markerLine = "@@([a-z]+)".toRegex()
+private val whitespace = "\\s+".toRegex()
 
-/**
- * The lines of each `@@name` part. Lines before the first marker are dropped, a repeated marker wins.
- */
+/** A line of `/proc/meminfo` such as `MemTotal:       14725120 kB`. */
+private val memInfoLine = "^(\\w+):\\s+(\\d+) kB".toRegex()
+
+/** The lines of each `@@name` part. Lines before the first marker are dropped, a repeated marker wins. */
 private fun sectionsOf(output: String): Map<String, List<String>> {
     val sections = mutableMapOf<String, MutableList<String>>()
     var current: MutableList<String>? = null
@@ -212,7 +213,7 @@ fun parseMetrics(output: String): ResultOf2<RawMetrics, String> = runCatching {
     val cpuAfter = cpuTimesOf(cpuLines.last())
 
     val mem = required("mem").mapNotNull { line ->
-        val match = Regex("^(\\w+):\\s+(\\d+) kB").find(line) ?: return@mapNotNull null
+        val match = memInfoLine.find(line) ?: return@mapNotNull null
         match.groupValues[1] to match.groupValues[2].toLong()
     }.toMap()
 
@@ -267,7 +268,7 @@ fun parseMetrics(output: String): ResultOf2<RawMetrics, String> = runCatching {
 
 /** The counters of a `cpu ` line from `/proc/stat`. */
 private fun cpuTimesOf(line: String): CpuTimes {
-    val fields = line.trim().split(Regex("\\s+")).drop(1).map { it.toLong() }
+    val fields = line.trim().split(whitespace).drop(1).map { it.toLong() }
     val total = fields.take(8).sum()
     val idle = fields[3] + fields.getOrElse(4) { 0 }
     return CpuTimes(total, total - idle)

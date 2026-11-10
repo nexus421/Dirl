@@ -35,8 +35,8 @@ const val UPDATE_CHECK_INTERVAL_MILLIS = 60L * 60 * 1000
  */
 const val MAX_RELEASE_ANSWER_BYTES = 1024 * 1024
 
-private val releaseTag = Regex("""v(\d{1,9})\.(\d{1,9})\.(\d{1,9})""")
-private val plainVersion = Regex("""(\d{1,9})\.(\d{1,9})\.(\d{1,9})""")
+private val releaseTag = """v(\d{1,9})\.(\d{1,9})\.(\d{1,9})""".toRegex()
+private val plainVersion = """(\d{1,9})\.(\d{1,9})\.(\d{1,9})""".toRegex()
 private val releaseJson = Json { ignoreUnknownKeys = true }
 
 /** No redirects (the JDK default), a release answer comes straight from the API. */

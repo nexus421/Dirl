@@ -25,7 +25,7 @@ private const val MAX_SNIPPET_LENGTH = 4000
 private const val MAX_SNIPPET_NAME = 64
 
 /** Folder names: letters, digits, spaces and a few separators, at most 32 characters, short enough for a menu button. */
-private val folderPattern = Regex("^[\\p{L}\\p{N} ._-]{1,32}$")
+private val folderPattern = "^[\\p{L}\\p{N} ._-]{1,32}$".toRegex()
 
 /**
  * Snippets: commands that the terminal page offers as buttons.

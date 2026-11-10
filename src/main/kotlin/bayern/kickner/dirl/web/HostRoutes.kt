@@ -56,13 +56,13 @@ import java.net.URLEncoder
 import kotlin.math.roundToInt
 
 /** Characters allowed in a user name: what `useradd` accepts, nothing a shell would interpret. */
-private val usernamePattern = Regex("^[a-zA-Z0-9._][a-zA-Z0-9._-]{0,31}$")
+private val usernamePattern = "^[a-zA-Z0-9._][a-zA-Z0-9._-]{0,31}$".toRegex()
 
 /** Host names, IPv4 and IPv6 addresses, IPv6 without brackets. No spaces, no options for `ssh`. */
-private val addressPattern = Regex("^[a-zA-Z0-9.:-]{1,253}$")
+private val addressPattern = "^[a-zA-Z0-9.:-]{1,253}$".toRegex()
 
 /** Tags: letters, digits and a few separators, so they are safe in URLs and readable as chips. */
-private val tagPattern = Regex("^[\\p{L}\\p{N}._-]{1,32}$")
+private val tagPattern = "^[\\p{L}\\p{N}._-]{1,32}$".toRegex()
 
 /** Reload interval of the overview in seconds while hosts are still connecting. */
 const val FAST_REFRESH_SECONDS = 3
