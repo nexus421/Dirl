@@ -16,7 +16,7 @@ data class Placeholder(val name: String, val default: String?)
  * like `{{end}}` in a Go template do count as variables, the snippets page shows them. `terminal.js` uses the same
  * pattern, keep them equal.
  */
-val PLACEHOLDER_PATTERN = Regex("\\{\\{([A-Za-z0-9_-]{1,32})(?::((?:(?!\\}\\})[^\\r\\n]){0,200}))?\\}\\}")
+val PLACEHOLDER_PATTERN = Regex("\\{\\{([A-Za-z0-9_-]{1,32})(?::((?:(?!}})[^\\r\\n]){0,200}))?}}")
 
 /** Most different placeholders in one snippet, more would not fit the question above the terminal. */
 const val MAX_PLACEHOLDERS = 10
