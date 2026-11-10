@@ -10,6 +10,9 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.utils.io.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.html.*
 import kotlinx.io.readByteArray
 import kotnexlib.ResultOf2
@@ -48,7 +51,9 @@ fun Route.snippetRoutes(dirl: Dirl) {
     }
 
     post("/snippets/import") {
-        val text = when (val received = runCatching { call.receiveSnippetFile() }.getOrElse { ResultOf2.Failure("The upload could not be read.") }) {
+        val text = when (val received = runCatching { call.receiveSnippetFile() }.onFailure {
+            if (it is CancellationException) currentCoroutineContext().ensureActive()
+        }.getOrElse { ResultOf2.Failure("The upload could not be read.") }) {
             is ResultOf2.Success -> received.value
             is ResultOf2.Failure -> return@post call.snippetsPage(dirl, null, null, ImportInput("", listOf(received.value)))
         }
@@ -227,14 +232,16 @@ private suspend fun ApplicationCall.receiveSnippetFile(): ResultOf2<String, Stri
     var tooLarge = false
     // The pasted text may be somewhat larger than the file limit, parseSnippetFile refuses it with a message.
     receiveMultipart(formFieldLimit = 4L * MAX_SNIPPET_FILE_LENGTH).forEachPart { part ->
-        when {
-            part is PartData.FileItem && part.name == "file" && file == null -> {
+        when (part) {
+            is PartData.FileItem if part.name == "file" && file == null -> {
                 val channel = part.provider()
-                val bytes = channel.readRemaining(MAX_SNIPPET_FILE_LENGTH + 1L).readByteArray()
+                val bytes = channel.readBuffer(MAX_SNIPPET_FILE_LENGTH + 1L).readByteArray()
                 if (bytes.size > MAX_SNIPPET_FILE_LENGTH) tooLarge = true.also { channel.discard() }
                 else file = bytes.decodeToString()
             }
-            part is PartData.FormItem && part.name == "json" -> pasted = part.value
+
+            is PartData.FormItem if part.name == "json" -> pasted = part.value
+            else -> Unit
         }
         part.release()
     }
@@ -281,7 +288,7 @@ private suspend fun ApplicationCall.snippetsPage(dirl: Dirl, error: String?, for
 }
 
 /** Export of all snippets and the import form, with the problems of a refused [import]. */
-private fun kotlinx.html.FlowContent.importCard(count: Int, import: ImportInput?) = card("Import and export") {
+private fun FlowContent.importCard(count: Int, import: ImportInput?) = card("Import and export") {
     div("btn-row") {
         if (count > 0) linkButton("/snippets/export", "Export all $count snippets")
         else span("muted small") { +"Nothing to export yet." }
@@ -362,7 +369,7 @@ private suspend fun ApplicationCall.importPreviewPage(entries: List<SnippetEntry
 }
 
 /** One row of the import preview: checkbox, name, state and the command, for a replacement also the old one. */
-private fun kotlinx.html.FlowContent.importRow(row: ImportRow) = div("import-row") {
+private fun FlowContent.importRow(row: ImportRow) = div("import-row") {
     val state = row.state
     val checkboxId = "import-${row.index}"
     checkBoxInput(name = "take") {
@@ -399,7 +406,8 @@ private fun kotlinx.html.FlowContent.importRow(row: ImportRow) = div("import-row
 }
 
 /** A folded folder of the snippets page with the number of its snippets, [open] for the one just changed. */
-private fun kotlinx.html.FlowContent.snippetFolder(title: String, snippets: List<Snippet>, open: Boolean) = details("snippet-folder") {
+private fun FlowContent.snippetFolder(title: String, snippets: List<Snippet>, open: Boolean) =
+    details("snippet-folder") {
     if (open) attributes["open"] = "open"
     summary {
         span("snippet-folder-name") { +title }
@@ -409,13 +417,13 @@ private fun kotlinx.html.FlowContent.snippetFolder(title: String, snippets: List
 }
 
 /** A pill naming the variables [command] asks for before it is sent, nothing without variables. */
-private fun kotlinx.html.FlowContent.variablesPill(command: String) {
+private fun FlowContent.variablesPill(command: String) {
     val variables = placeholdersOf(command)
     if (variables.isNotEmpty()) pill("accent", "variables: ${variables.joinToString { it.name }}")
 }
 
 /** One snippet as a compact row: name, whether it runs, the command on one line (complete as tooltip), actions. */
-private fun kotlinx.html.FlowContent.snippetRow(snippet: Snippet) = div("snippet-row") {
+private fun FlowContent.snippetRow(snippet: Snippet) = div("snippet-row") {
     val command = snippet.command.trimEnd('\n')
     div("snippet-main") {
         div("snippet-title") {
@@ -438,7 +446,13 @@ private fun kotlinx.html.FlowContent.snippetRow(snippet: Snippet) = div("snippet
  * Add or edit form. A submitted [form] wins over [snippet], so a refused input is not lost. The folder field suggests
  * the folders of [all] snippets, which avoids two folders through a typo.
  */
-private fun kotlinx.html.FlowContent.snippetForm(action: String, snippet: Snippet?, label: String, form: Parameters?, all: List<Snippet>) =
+private fun FlowContent.snippetForm(
+    action: String,
+    snippet: Snippet?,
+    label: String,
+    form: Parameters?,
+    all: List<Snippet>
+) =
     form(action = action, method = FormMethod.post, classes = "form") {
         textField("Name", "name", form?.get("name") ?: snippet?.name.orEmpty(), placeholder = "Disk usage")
         textField(
