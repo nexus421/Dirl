@@ -201,7 +201,8 @@ fun Route.fileRoutes(dirl: Dirl) {
         )
         call.respondOutputStream(ContentType.Application.OctetStream) {
             try {
-                // 16 reads of 32 KiB in flight instead of one 8 KiB read per round trip, like the upload's 16 writes.
+                // Up to 17 reads of 32 KiB in flight (sshj sends one more than the number given) instead of one 8 KiB
+                // read per round trip, like the upload's writes.
                 remote.ReadAheadRemoteFileInputStream(16).use { it.copyTo(this, 32 * 1024) }
             } finally {
                 runCatching { remote.close() }

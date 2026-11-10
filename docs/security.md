@@ -57,7 +57,8 @@ access request.
 - Rejected logins appear under Settings as access requests (in memory, the latest 20), always with the subject. Anybody
   can pick their display name at the provider, so a request under the name of an allowed user is marked. Display
   names lose control and formatting characters (which could reorder text on screen or forge log lines) and are cut
-  to 80 characters.
+  to 80 characters. Without a usable `name` or `preferred_username` the display name is the subject as the provider
+  sent it, uncleaned and uncut.
 - You cannot remove yourself and the last user cannot be removed.
 - There are no roles. Every allowed user can do everything: use all hosts, change hosts, keys and snippets, export
   keys (with the vault passphrase), allow and remove users, end sessions, seal the vault and change the passphrase
@@ -130,10 +131,10 @@ access request.
   before it whose next part already started stay and are audited, a break inside the headers of the next part
   discards the file before it as well. The new file keeps the permissions, owner and group of the old one and is
   never readable by others in between. If the login may not keep the owner or group, the write is refused and the
-  file stays unchanged, a file of another user is changed by logging in as that user. Downloads keep
-  16 reads of 32 KiB in flight and uploads 16 writes, so a long round trip does not throttle a transfer to one block
-  at a time. There is no editor in the browser: a textarea cannot give every file back unchanged (browsers turn CR
-  into LF and NUL into U+FFFD), files are changed in the terminal.
+  file stays unchanged, a file of another user is changed by logging in as that user. Downloads keep up to 17 reads
+  of 32 KiB in flight and uploads up to 17 writes, so a long round trip does not throttle a transfer to one block at a
+  time. There is no editor in the browser: a textarea cannot give every file back unchanged (browsers turn CR into LF
+  and NUL into U+FFFD), files are changed in the terminal.
 - Accepted risk: uploads trust the target directory. The temporary file has a fixed name (`.<name>.dirl-tmp`) and is
   opened without `O_EXCL`, and a symlink as the target is followed on purpose. Another user who can write to the
   directory can therefore plant a symlink and make a more privileged login write to, and when overwriting change the

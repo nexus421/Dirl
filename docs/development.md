@@ -213,7 +213,7 @@ Verified:
 - Login against a real Pocket ID instance as confidential client with PKCE.
 - In production in an Incus LXC (1 GiB, autostart) behind Zoraxy: a terminal idle for ten minutes stays usable, the
   hardened unit runs without sandboxing errors, `memory.swap.max` is `0` with `limits.memory.swap false`.
-- 185 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
+- 191 tests: vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase
   opening nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC
   (token checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous
   logins, a failing and a slow provider), backup restore through the UI up to the unlock, access control (including
@@ -228,7 +228,7 @@ Verified:
   session and origin), metrics (real output, missing parts, text from the server, the reboot rule, the choice per host
   and what each card shows), the update check (version rules, answer limit, at most once an hour, the switch, the
   footer, no version before the login), SSH integration as listed above and the limits on data read from servers.
-  Without an `sshd` the 25 SSH integration tests are skipped.
+  Without an `sshd` the 27 SSH integration tests are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
   provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
   target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all

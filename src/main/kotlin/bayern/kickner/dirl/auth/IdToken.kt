@@ -10,7 +10,8 @@ import java.util.*
  * The claims Dirl uses from a validated ID token.
  *
  * @property sub Stable user ID at the provider, checked against `oidc.allowedSubjects`.
- * @property name Display name (`name`, falling back to `preferred_username`, then `sub`), cleaned with [cleanText].
+ * @property name Display name: `name`, falling back to `preferred_username`, both cleaned with [cleanText]. If neither
+ *   is left after cleaning, the raw `sub`, uncleaned.
  */
 data class IdTokenClaims(val sub: String, val name: String)
 

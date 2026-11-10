@@ -21,8 +21,9 @@ The config file only holds what is needed before anybody can log in: where to li
 provider and how the vault is unlocked. Everything else (users, hosts, keys, snippets, Dirl's source address,
 passphrase) is managed in the UI and stored in the encrypted vault.
 
-The file is read once at startup. Unknown keys are errors and all problems are reported at once. It holds no secret
-except the OIDC client secret, so `0400` and owned by the service user.
+The file is read once at startup. Unknown keys are errors. A file that is no valid JSON or has an unknown key or a
+wrong type reports only the first such error, a file that reads fine reports all its other problems at once. It holds
+no secret except the OIDC client secret, so `0400` and owned by the service user.
 
 | Field        | Type   | Default         | Description                                                                              |
 |--------------|--------|-----------------|------------------------------------------------------------------------------------------|
