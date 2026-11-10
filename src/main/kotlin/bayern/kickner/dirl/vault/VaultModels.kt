@@ -156,14 +156,14 @@ data class PinnedHostKey(
 )
 
 /**
- * An SSH key pair, private part in OpenSSH format (unencrypted, the vault encrypts it).
+ * An SSH key pair, private part unencrypted (the vault encrypts it).
  *
- * Generated and imported keys are stored the same way, so there is exactly one way to load them into sshj and every
- * key can be exported again.
+ * Generated keys are stored in OpenSSH format, imported ones as pasted (OpenSSH, PEM or PuTTY), only line endings
+ * normalized. sshj loads every one of them, and the export gives a key back in the format it came in.
  *
  * @property id Random ID.
  * @property name Display name.
- * @property privateKeyPem `-----BEGIN OPENSSH PRIVATE KEY-----` block.
+ * @property privateKeyPem The private key, `-----BEGIN OPENSSH PRIVATE KEY-----` for generated keys.
  * @property publicKey Public key line without comment, e.g. `ssh-ed25519 AAAA...`.
  * @property createdAt Unix milliseconds of generation or import.
  */
