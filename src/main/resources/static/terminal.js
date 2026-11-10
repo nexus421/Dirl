@@ -156,9 +156,10 @@
   });
 
   // Placeholders: {{Name}} or {{Name:default}}, the same pattern as PLACEHOLDER_PATTERN in SnippetPlaceholders.kt.
+  // The u flag makes {0,200} count characters like Kotlin does, without it an emoji would count twice.
   // A snippet with placeholders first asks for their values above the terminal, then sends the filled command. A
   // snippet that does not run immediately shows its command there with Send and Cancel, Send runs it.
-  const placeholderPattern = /\{\{([A-Za-z0-9_-]{1,32})(?::((?:(?!\}\})[^\r\n]){0,200}))?\}\}/g;
+  const placeholderPattern = /\{\{([A-Za-z0-9_-]{1,32})(?::((?:(?!\}\})[^\r\n]){0,200}))?\}\}/gu;
   function placeholdersOf(command) {
     const byName = new Map();
     command.replace(placeholderPattern, function (all, name, value) {
@@ -214,7 +215,8 @@
   let asking = null;
 
   function askValues() {
-    const values = {};
+    // No prototype, so a placeholder named __proto__ or constructor is an ordinary key.
+    const values = Object.create(null);
     askFields.querySelectorAll('input').forEach(function (input) { values[input.name] = cleanValue(input.value); });
     return values;
   }

@@ -127,9 +127,11 @@ class SnippetPlaceholdersTest {
     @Test
     fun `terminal js finds the same placeholders as the server`() {
         // terminal.js keeps its own copy of the pattern. The JavaScript syntax used there is valid Java regex too, so
-        // both are run on the same inputs here and must agree on every match and both groups.
+        // both are run on the same inputs here and must agree on every match and both groups. This runs the copy with
+        // Java's engine, not with JavaScript's. Java counts characters like JavaScript with the u flag, so the line
+        // has to end in /gu or the test fails.
         val script = javaClass.getResource("/static/terminal.js")!!.readText()
-        val source = Regex("const placeholderPattern = /(.+)/g;").find(script)?.groupValues?.get(1) ?: error("placeholderPattern not found in terminal.js")
+        val source = Regex("const placeholderPattern = /(.+)/gu;").find(script)?.groupValues?.get(1) ?: error("placeholderPattern not found in terminal.js")
         val inBrowser = source.toRegex()
         fun matches(pattern: Regex, text: String) = pattern.findAll(text).map { listOf(it.range, it.groups[1]?.value, it.groups[2]?.value) }.toList()
         val fixed = listOf(
