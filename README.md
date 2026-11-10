@@ -35,6 +35,11 @@ to review alone, managed entirely in the UI.
 - Encrypted vault (AES-256-GCM, Argon2id), audit log, OIDC login with PKCE
 - Users, sessions, keys and settings managed in the browser
 
+## Status
+
+Dirl is feature complete for what it is meant to do. It is maintained: security fixes, bug fixes and dependency
+updates keep coming, new features only rarely. Issues and bug reports are welcome.
+
 ## Quick start
 
 Requires JDK 25 to build, Java 21 to run.
