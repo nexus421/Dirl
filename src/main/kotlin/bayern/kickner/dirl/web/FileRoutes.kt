@@ -90,7 +90,9 @@ private const val MAX_UPLOAD_BYTES = 4L * 1024 * 1024 * 1024
  * off part like a complete one, so the boundary is the only proof. A transfer that breaks off removes the temporary
  * file of the file in progress and leaves its target unchanged. Files before it whose next part already started stay,
  * a break inside the headers of the next part discards the file before it as well. Every replaced target is audited
- * right after its rename.
+ * right after its rename. Ktor only checks for the closing boundary when the request carries a `Content-Length`, which
+ * browsers always send. Without it (chunked, or a body that ends with the connection) a cut off body looks complete,
+ * the truncated file replaces its target and is audited as a normal upload. Accepted, such clients are scripts.
  */
 fun Route.fileRoutes(dirl: Dirl) {
     get("/hosts/{id}/files") {
@@ -259,7 +261,8 @@ fun Route.fileRoutes(dirl: Dirl) {
                     }
                     part.release()
                 }
-                // forEachPart only returns normally after the closing boundary, so the last file is complete as well.
+                // With a Content-Length forEachPart only returns normally after the closing boundary, so the last file
+                // is complete as well. Without one a cut off body also ends here, see the KDoc of fileRoutes.
                 commitPending()
             } finally {
                 // The body broke off: Ktor ends a cut off part like a complete one, only the missing boundary shows it.

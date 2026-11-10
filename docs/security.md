@@ -122,11 +122,15 @@ access request.
   (`posix-rename`, with a fallback for servers without it) only once the multipart body shows that the file arrived
   completely: the next part started or the body ended with its closing boundary. Ktor ends a part that was cut off
   (closed tab, lost network, a proxy giving up) like a complete one, so without that check the truncated part would
-  replace the target. A transfer that breaks off removes the temporary file of the file in progress and leaves its
-  target unchanged. Files before it whose next part already started stay and are audited, a break inside the headers
-  of the next part discards the file before it as well. The new file keeps the permissions, owner and group of the
-  old one and is never readable by others in between. If the login may not keep the owner or group, the write is
-  refused and the file stays unchanged, a file of another user is changed by logging in as that user. Downloads keep
+  replace the target. Ktor only notices the missing boundary when the request announces its size with
+  `Content-Length`, which browsers always do. A client without it (chunked, for example a script piping into
+  `curl -T -`) is not protected: a cut off upload replaces the target with the truncated part and is audited as a
+  normal upload. Behind a reverse proxy the protection holds only if the proxy passes `Content-Length` on. With it a
+  transfer that breaks off removes the temporary file of the file in progress and leaves its target unchanged. Files
+  before it whose next part already started stay and are audited, a break inside the headers of the next part
+  discards the file before it as well. The new file keeps the permissions, owner and group of the old one and is
+  never readable by others in between. If the login may not keep the owner or group, the write is refused and the
+  file stays unchanged, a file of another user is changed by logging in as that user. Downloads keep
   16 reads of 32 KiB in flight and uploads 16 writes, so a long round trip does not throttle a transfer to one block
   at a time. There is no editor in the browser: a textarea cannot give every file back unchanged (browsers turn CR
   into LF and NUL into U+FFFD), files are changed in the terminal.
