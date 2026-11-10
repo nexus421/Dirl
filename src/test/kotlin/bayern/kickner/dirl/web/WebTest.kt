@@ -4,6 +4,7 @@ import bayern.kickner.dirl.audit.Actor
 import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.config.AppConfig
 import bayern.kickner.dirl.config.OidcConfig
+import bayern.kickner.dirl.config.UnlockMode
 import bayern.kickner.dirl.config.validateConfig
 import bayern.kickner.dirl.createDirl
 import io.ktor.client.plugins.websocket.WebSockets
@@ -624,5 +625,65 @@ class WebTest {
         assertEquals(null, safeFileName(".."))
         assertEquals("a__b_c_.txt", headerSafeFileName("a\r\nb\"c\\.txt"))
         assertEquals("parent", parentOf("/parent/child").removePrefix("/"))
+    }
+
+    /** `/unlock` as Ada sees it, she is on the break-glass list of [config]. */
+    private fun unlockPage(dirl: Dirl): String {
+        var page = ""
+        testApplication {
+            application { dirlModule(dirl) }
+            val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+            page = noRedirects().get("/unlock") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        }
+        return page
+    }
+
+    @Test
+    fun `the unlock page names the reason the vault is sealed`() {
+        val actor = Actor("user-1", "Ada")
+        val passphrase = "correct horse battery staple extra"
+        val restarted = "Dirl was restarted and is sealed."
+        val keyFileFailed = "the automatic unlock at startup failed"
+
+        // A restart in passphrase mode: a new instance on the same data.
+        val plainDir = Files.createTempDirectory("dirl-sealed").toFile()
+        val plainConfig = config.copy(dataDir = plainDir.absolutePath)
+        createDirl(plainConfig, plainDir).vault.setup(passphrase.toCharArray(), actor)
+        val afterRestart = unlockPage(createDirl(plainConfig, plainDir))
+        assertTrue(afterRestart.contains(restarted), afterRestart)
+        assertFalse(afterRestart.contains(keyFileFailed))
+
+        // Key file mode, the key file does not fit at startup.
+        val keyDir = Files.createTempDirectory("dirl-sealed-key").toFile()
+        val keyFile = java.io.File(keyDir, "kek").apply { writeBytes(ByteArray(32) { 7 }) }
+        val keyConfig = config.copy(dataDir = keyDir.absolutePath, unlockMode = UnlockMode.KEYFILE, keyFile = keyFile.absolutePath)
+        createDirl(keyConfig, keyDir).vault.setup(passphrase.toCharArray(), actor)
+        keyFile.writeBytes(ByteArray(32) { 9 })
+        val wrongKey = createDirl(keyConfig, keyDir).also { assertIs<kotnexlib.ResultOf2.Failure<*>>(it.vault.unlockWithKeyFile()) }
+        val failedPage = unlockPage(wrongKey)
+        assertTrue(failedPage.contains(keyFileFailed), failedPage)
+        assertTrue(failedPage.contains(restarted))
+
+        // Key file mode, unlocked at startup and then sealed under Settings: no restart, no failed unlock.
+        keyFile.writeBytes(ByteArray(32) { 7 })
+        val sealedByHand = createDirl(keyConfig, keyDir).also {
+            assertIs<kotnexlib.ResultOf2.Success<*>>(it.vault.unlockWithKeyFile())
+            it.vault.seal(actor)
+        }
+        val byHandPage = unlockPage(sealedByHand)
+        assertTrue(byHandPage.contains("The vault was sealed under Settings."), byHandPage)
+        assertTrue(byHandPage.contains("restart Dirl to unlock it with the key file"), byHandPage)
+        assertFalse(byHandPage.contains(restarted))
+        assertFalse(byHandPage.contains(keyFileFailed))
+
+        // A restored backup, here in key file mode as well.
+        val backup = java.io.File(plainDir, "vault.json").readBytes()
+        val restoreDir = Files.createTempDirectory("dirl-sealed-restore").toFile()
+        val restored = createDirl(keyConfig.copy(dataDir = restoreDir.absolutePath), restoreDir).also { assertEquals(null, it.vault.restore(backup, actor)) }
+        val restoredPage = unlockPage(restored)
+        assertTrue(restoredPage.contains("The vault was restored from a backup."), restoredPage)
+        assertFalse(restoredPage.contains(restarted))
+        assertFalse(restoredPage.contains(keyFileFailed))
+        listOf(plainDir, keyDir, restoreDir).forEach { it.deleteRecursively() }
     }
 }

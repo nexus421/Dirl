@@ -4,6 +4,7 @@ import bayern.kickner.dirl.config.UnlockMode
 import bayern.kickner.dirl.formatTimestamp
 import bayern.kickner.dirl.vault.MIN_PASSPHRASE_LENGTH
 import bayern.kickner.dirl.vault.MIN_PASSPHRASE_WORDS
+import bayern.kickner.dirl.vault.SealReason
 import bayern.kickner.dirl.vault.SetupError
 import bayern.kickner.dirl.vault.UnlockError
 import bayern.kickner.dirl.vault.VaultState
@@ -148,10 +149,18 @@ private suspend fun ApplicationCall.unlockPage(dirl: Dirl, error: String?) =
         centerCard {
             pageHeader("Unlock vault")
             if (error != null) notice("error", error)
-            if (dirl.config.unlockMode == UnlockMode.KEYFILE && error == null) {
+            val reason = dirl.vault.sealReason
+            if (reason == SealReason.KEY_FILE_FAILED && error == null) {
                 notice("warn", "Key file mode is configured, but the automatic unlock at startup failed. See the log.")
             }
-            p("muted") { +"Dirl was restarted and is sealed. Enter the vault passphrase to load hosts and keys." }
+            p("muted") {
+                +when (reason) {
+                    SealReason.STARTED, SealReason.KEY_FILE_FAILED -> "Dirl was restarted and is sealed. Enter the vault passphrase to load hosts and keys."
+                    SealReason.BY_USER -> "The vault was sealed under Settings. Enter the vault passphrase to load hosts and keys." +
+                        if (dirl.config.unlockMode == UnlockMode.KEYFILE) " Or restart Dirl to unlock it with the key file." else ""
+                    SealReason.RESTORED -> "The vault was restored from a backup. Enter the passphrase it was created with to load hosts and keys."
+                }
+            }
             form(action = "/unlock", method = FormMethod.post, classes = "form") {
                 passwordField("Passphrase", "passphrase", "current-password")
                 submit("Unlock")

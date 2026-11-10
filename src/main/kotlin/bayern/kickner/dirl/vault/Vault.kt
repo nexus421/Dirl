@@ -34,6 +34,21 @@ sealed interface VaultState {
     class Unlocked internal constructor(internal val dek: SecretKey, val content: VaultContent) : VaultState
 }
 
+/** Why the vault is [VaultState.Sealed], so the unlock page can say what happened. */
+enum class SealReason {
+    /** Dirl started with an existing vault, nothing unlocked it since. */
+    STARTED,
+
+    /** The automatic unlock with the key file at startup failed, the log has the reason. */
+    KEY_FILE_FAILED,
+
+    /** Somebody sealed it under Settings. */
+    BY_USER,
+
+    /** A backup was restored, it opens with the passphrase it was created with. */
+    RESTORED,
+}
+
 /** Why [Vault.setup] was rejected. */
 sealed interface SetupError {
     /** A vault already exists. Setup never overwrites one. */
@@ -116,6 +131,11 @@ class Vault(
     /** Current state. Reads are lock-free, changes happen under the lock. */
     @Volatile
     var state: VaultState = if (store.exists()) VaultState.Sealed else VaultState.Uninitialized
+        private set
+
+    /** Why the vault is sealed. Only a hint for the unlock page, it means nothing while [state] is not [VaultState.Sealed]. */
+    @Volatile
+    var sealReason: SealReason = SealReason.STARTED
         private set
 
     /** Called after every state change, outside the lock. The connection manager closes everything on seal. */
@@ -204,7 +224,7 @@ class Vault(
         if (result is ResultOf2.Success) {
             audit.record(Actor.SYSTEM, AuditAction.VAULT_UNLOCKED, detail = "key file")
             notifyListeners()
-        }
+        } else if (state == VaultState.Sealed) sealReason = SealReason.KEY_FILE_FAILED
         return result
     }
 
@@ -239,6 +259,7 @@ class Vault(
             parsed.kdf.problem()?.let { return@synchronized "This backup has unusable KDF parameters: $it" }
             store.write(parsed)
             envelope = null
+            sealReason = SealReason.RESTORED
             state = VaultState.Sealed
             null
         }
@@ -253,7 +274,10 @@ class Vault(
     fun seal(actor: Actor) {
         val wasUnlocked = synchronized(lock) {
             val unlocked = state is VaultState.Unlocked
-            if (unlocked) state = VaultState.Sealed //Unlocked holds the data. Will be removed here.
+            if (unlocked) {
+                sealReason = SealReason.BY_USER
+                state = VaultState.Sealed //Unlocked holds the data. Will be removed here.
+            }
             unlocked
         }
         if (wasUnlocked.not()) return
