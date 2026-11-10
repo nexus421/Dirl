@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 /**
  * Contents of `config.json`, read once at startup. It only holds what is needed before anybody can log in: where to
  * listen, how to reach the identity provider and how the vault is unlocked. Everything else is managed in the UI
- * and stored in the encrypted vault. The file holds no secret apart from an optional OIDC client secret, so it is
+ * and stored in the encrypted vault. The file holds no secret apart from an OIDC client secret, so it is
  * `0400` and owned by the service user.
  *
  * @property host Address the HTTP server binds to. Defaults to loopback because TLS is terminated by the reverse
