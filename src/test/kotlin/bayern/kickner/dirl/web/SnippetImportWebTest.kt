@@ -8,20 +8,12 @@ import bayern.kickner.dirl.createDirl
 import bayern.kickner.dirl.ssh.generateEd25519Key
 import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.Snippet
-import io.ktor.client.HttpClient
-import io.ktor.client.request.forms.formData
-import io.ktor.client.request.forms.submitForm
-import io.ktor.client.request.forms.submitFormWithBinaryData
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.Headers
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.parameters
-import io.ktor.server.testing.ApplicationTestBuilder
-import io.ktor.server.testing.testApplication
+import io.ktor.client.*
+import io.ktor.client.request.*
+import io.ktor.client.request.forms.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.server.testing.*
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -305,15 +297,20 @@ class SnippetImportWebTest {
             assertTrue(page.contains("<h1>Add tmux snippets</h1>"), page)
             assertTrue(page.contains("2 ready-made snippets: 2 new"), page)
             assertTrue(page.contains("Start tmux") && page.contains("Stop tmux"))
-            assertTrue(page.contains("tmux new -A -s dirl") && page.contains("tmux kill-session -t dirl"))
+            assertTrue(
+                page.contains("tmux new -A -s {{Session:dirl}}") && page.contains("tmux kill-session -t {{Session:dirl}}"),
+                page
+            )
             assertTrue(page.contains("name=\"replaceAll\"").not(), "adding ready-made snippets never offers to delete the others")
 
             val redirect = browser.apply(hiddenData(page), take = listOf(0, 1))
             assertEquals("/snippets?done=snippets-imported", redirect.headers[HttpHeaders.Location])
         }
         val tmux = dirl.snippets().filter { it.folder == "tmux" }.associateBy { it.name }
-        assertEquals("tmux new -A -s dirl\n", tmux["Start tmux"]?.command, "Start runs on the tap")
-        assertEquals("tmux kill-session -t dirl", tmux["Stop tmux"]?.command, "Stop ends a running job, so it asks first")
+        // Both ask for the session name first, prefilled with dirl, so a tap and Enter use the default session.
+        assertEquals("tmux new -A -s {{Session:dirl}}\n", tmux["Start tmux"]?.command)
+        assertEquals("tmux kill-session -t {{Session:dirl}}", tmux["Stop tmux"]?.command)
+        assertEquals(listOf("Session"), tmux.values.flatMap { placeholdersOf(it.command) }.map { it.name }.distinct())
         assertEquals(existing.size + 2, dirl.snippets().size, "the other snippets stay")
         assertEquals("added=2 replaced=0 deleted=0", dirl.lastImport())
     }

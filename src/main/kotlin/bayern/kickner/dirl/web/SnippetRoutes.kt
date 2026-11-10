@@ -3,46 +3,15 @@ package bayern.kickner.dirl.web
 import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.newId
 import bayern.kickner.dirl.vault.Snippet
-import io.ktor.http.ContentDisposition
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.Parameters
-import io.ktor.http.content.PartData
-import io.ktor.http.content.forEachPart
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.receiveMultipart
-import io.ktor.server.request.receiveParameters
-import io.ktor.server.response.header
-import io.ktor.server.response.respondRedirect
-import io.ktor.server.response.respondText
-import io.ktor.server.routing.Route
-import io.ktor.server.routing.get
-import io.ktor.server.routing.post
-import io.ktor.utils.io.discard
-import io.ktor.utils.io.readRemaining
+import io.ktor.http.*
+import io.ktor.http.content.*
+import io.ktor.server.application.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+import io.ktor.utils.io.*
+import kotlinx.html.*
 import kotlinx.io.readByteArray
-import kotlinx.html.FormEncType
-import kotlinx.html.FormMethod
-import kotlinx.html.checkBoxInput
-import kotlinx.html.dataList
-import kotlinx.html.details
-import kotlinx.html.div
-import kotlinx.html.fileInput
-import kotlinx.html.form
-import kotlinx.html.hiddenInput
-import kotlinx.html.id
-import kotlinx.html.label
-import kotlinx.html.li
-import kotlinx.html.option
-import kotlinx.html.p
-import kotlinx.html.pre
-import kotlinx.html.radioInput
-import kotlinx.html.span
-import kotlinx.html.style
-import kotlinx.html.summary
-import kotlinx.html.title
-import kotlinx.html.ul
 import kotnexlib.ResultOf2
 import java.time.LocalDate
 
@@ -300,7 +269,8 @@ private suspend fun ApplicationCall.snippetsPage(dirl: Dirl, error: String?, for
             card("Ready-made snippets") {
                 p("muted small") {
                     +"tmux keeps a job running when the connection drops, for example when the phone locks. Tap Start tmux before a long job "
-                    +"and again to get back to it, Stop tmux ends it. tmux must be installed on the host."
+                    +"and again to get back to it, Stop tmux ends it. Both ask for the session name, dirl unless you type another. "
+                    +"tmux must be installed on the host."
                 }
                 div("btn-row") { linkButton("/snippets/tmux", "Add tmux snippets", "sm") }
             }

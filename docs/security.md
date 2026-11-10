@@ -95,10 +95,11 @@ access request.
   reconnect through the backoff.
 - Keys: Ed25519 generated with BouncyCastle in OpenSSH format, imports of unencrypted OpenSSH or PEM keys.
 - Terminal: `xterm-256color` PTY with a plain login shell. The ready-made tmux snippets on the Snippets page (see
-  [usage](usage.md#long-jobs-with-tmux)) use one session name, `dirl`. Every Dirl user logs in to a host with the same
-  account, so whoever taps Start tmux while the job of another user runs there joins that shell, sees it and can type
-  into it. That is deliberate: the users share that account, its files and its shell history anyway, there are no roles,
-  and a job one user started can be picked up by another. Change the name in both snippets for a session of your own.
+  [usage](usage.md#long-jobs-with-tmux)) ask for the session name, prefilled with `dirl`. Every Dirl user logs in to a
+  host with the same account, so whoever starts the session of the same name while the job of another user runs there
+  joins that shell, sees it and can type into it. That is deliberate: the users share that account, its files and its
+  shell history anyway, there are no roles, and a job one user started can be picked up by another. Another name gives
+  a session of your own, it is no protection against the other users of the account.
   Terminal input counts as session activity. A watchdog closes the terminal when the session ends or access is removed,
   sealing the vault closes all of them at once. After a disconnect, Enter reloads the page, which leads to the login
   when the session ended.

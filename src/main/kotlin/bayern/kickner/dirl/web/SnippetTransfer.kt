@@ -53,13 +53,14 @@ data class SnippetEntry(val name: String, val command: String, val folder: Strin
 
 /**
  * Ready-made snippets for tmux, which keeps a job running when the connection drops, for example when a phone locks.
- * Start attaches to the session `dirl` if it runs, so tapping it again after a disconnect shows the job again. Stop
- * ends the session from inside and outside of it, and asks first because it ends a running job. Added through the
- * import preview as ordinary snippets, so they can be changed or deleted like any other.
+ * Both ask for the session name first, prefilled with `dirl`: a tap and Enter use that session, and every user can
+ * pick one of their own. Start attaches to the session if it runs, so starting it again after a disconnect shows the
+ * job again. Stop ends the session from inside and outside of it, the form is the question before it ends a running
+ * job. Added through the import preview as ordinary snippets, so they can be changed or deleted like any other.
  */
 val tmuxSnippets = listOf(
-    SnippetEntry("Start tmux", "tmux new -A -s dirl", "tmux", run = true),
-    SnippetEntry("Stop tmux", "tmux kill-session -t dirl", "tmux", run = false),
+    SnippetEntry("Start tmux", "tmux new -A -s {{Session:dirl}}", "tmux", run = true),
+    SnippetEntry("Stop tmux", "tmux kill-session -t {{Session:dirl}}", "tmux", run = false),
 )
 
 /** The entry for [this] snippet. */
@@ -90,13 +91,14 @@ fun parseSnippetFile(text: String): ResultOf2<List<SnippetEntry>, List<String>> 
     if (text.isBlank()) return ResultOf2.Failure(listOf("Choose a file or paste the snippets."))
     val root = runCatching { Json.parseToJsonElement(text) }
         .getOrElse { return ResultOf2.Failure(listOf("This is not valid JSON.")) }
-    val items = when {
-        root is JsonArray -> root
-        root is JsonObject && "dirlSnippets" in root -> {
+    val items = when (root) {
+        is JsonArray -> root
+        is JsonObject if "dirlSnippets" in root -> {
             val version = (root["dirlSnippets"] as? JsonPrimitive)?.intOrNull
             if (version != SNIPPET_FORMAT_VERSION) return ResultOf2.Failure(listOf("Unknown format version, this Dirl reads version $SNIPPET_FORMAT_VERSION."))
             root["snippets"] as? JsonArray ?: return ResultOf2.Failure(listOf("\"snippets\" must be a list."))
         }
+
         else -> return ResultOf2.Failure(listOf("This is not a Dirl snippet file. Expected {\"dirlSnippets\": 1, \"snippets\": [...]} or a list of snippets."))
     }
     if (items.isEmpty()) return ResultOf2.Failure(listOf("The file contains no snippets."))

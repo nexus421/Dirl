@@ -38,19 +38,21 @@ The shell ends with the connection, when the phone locks or the network changes 
 `apt upgrade`. "Add tmux snippets" on the Snippets page adds two ordinary snippets in the folder `tmux`, through the
 import preview:
 
-| Snippet    | Command                     | What it does                                                                      |
-|------------|-----------------------------|-----------------------------------------------------------------------------------|
-| Start tmux | `tmux new -A -s dirl`       | Runs on the tap. Starts the tmux session `dirl` or attaches to it if it runs      |
-| Stop tmux  | `tmux kill-session -t dirl` | Asks first, because it ends a running job. Ends the session, inside or outside it |
+| Snippet    | Command                                 | What it does                                                      |
+|------------|-----------------------------------------|-------------------------------------------------------------------|
+| Start tmux | `tmux new -A -s {{Session:dirl}}`       | Starts the tmux session or attaches to it if it runs              |
+| Stop tmux  | `tmux kill-session -t {{Session:dirl}}` | Ends the session, inside or outside it, and with it a running job |
 
-Tap Start tmux, then run the long job. After a disconnect, open the terminal again and tap Start tmux: the job is still
-there with its output. Cancel stops the job and leaves the session open. Leaving the page detaches from tmux without
+Both ask for the session name first, like every snippet with a [placeholder](#placeholders-in-snippets), prefilled with
+`dirl`. The form is the question before Stop ends a running job. Tap Start tmux and Enter, then run the long job. After
+a disconnect, open the terminal again and start the same session: the job is still there with its output. Cancel stops
+the job and leaves the session open. Leaving the page detaches from tmux without
 ending it. Start tmux inside the session only prints a warning about nesting. tmux must be installed on the host. Inside
 tmux the output scrolls with tmux, not with the browser: to scroll back, switch to the classic terminal and use the copy
 mode of tmux (Ctrl+B, then `[`). The snippets can be changed or deleted like any other, Dirl does not treat them
-differently. All Dirl users log in to a host with the same account and so share the session `dirl`: Start tmux joins a
-job another user runs there, see [Security](security.md#ssh). Change the name in both snippets for a session of your
-own.
+differently. All Dirl users log in to a host with the same account and so share a session of the same name: Start tmux
+with `dirl` joins a job another user runs there, see [Security](security.md#ssh). Type another name for a session of
+your own, a name without spaces.
 
 ## Install as an app
 
