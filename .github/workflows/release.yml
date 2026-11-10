@@ -19,11 +19,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check that the tag matches the version
+        # The v is required: the update check in Dirl only sees tags like v1.2.0, a release tagged 1.2.0 would reach
+        # nobody.
         run: |
-          tag="${GITHUB_REF_NAME#v}"
           version="$(sed -n 's/^version = "\(.*\)"$/\1/p' build.gradle.kts)"
-          if [ "$tag" != "$version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in build.gradle.kts"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match v$version from build.gradle.kts"
             exit 1
           fi
 
