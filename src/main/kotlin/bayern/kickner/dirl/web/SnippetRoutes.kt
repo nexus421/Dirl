@@ -406,8 +406,7 @@ private fun FlowContent.importRow(row: ImportRow) = div("import-row") {
 }
 
 /** A folded folder of the snippets page with the number of its snippets, [open] for the one just changed. */
-private fun FlowContent.snippetFolder(title: String, snippets: List<Snippet>, open: Boolean) =
-    details("snippet-folder") {
+private fun FlowContent.snippetFolder(title: String, snippets: List<Snippet>, open: Boolean) = details("snippet-folder") {
     if (open) attributes["open"] = "open"
     summary {
         span("snippet-folder-name") { +title }
@@ -446,13 +445,7 @@ private fun FlowContent.snippetRow(snippet: Snippet) = div("snippet-row") {
  * Add or edit form. A submitted [form] wins over [snippet], so a refused input is not lost. The folder field suggests
  * the folders of [all] snippets, which avoids two folders through a typo.
  */
-private fun FlowContent.snippetForm(
-    action: String,
-    snippet: Snippet?,
-    label: String,
-    form: Parameters?,
-    all: List<Snippet>
-) =
+private fun FlowContent.snippetForm(action: String, snippet: Snippet?, label: String, form: Parameters?, all: List<Snippet>) =
     form(action = action, method = FormMethod.post, classes = "form") {
         textField("Name", "name", form?.get("name") ?: snippet?.name.orEmpty(), placeholder = "Disk usage")
         textField(

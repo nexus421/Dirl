@@ -3,6 +3,7 @@ package bayern.kickner.dirl.vault
 import bayern.kickner.klogger.warnLog
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -64,7 +65,7 @@ class VaultStore(private val dir: File, private val backups: Int = 3) {
                 )
             ),
         ).use { channel ->
-            channel.write(java.nio.ByteBuffer.wrap(bytes))
+            channel.write(ByteBuffer.wrap(bytes))
             channel.force(true)
         }
 

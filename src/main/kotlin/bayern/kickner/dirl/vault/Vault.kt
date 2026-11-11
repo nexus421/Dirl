@@ -276,7 +276,8 @@ class Vault(
             val unlocked = state is VaultState.Unlocked
             if (unlocked) {
                 sealReason = SealReason.BY_USER
-                state = VaultState.Sealed //Unlocked holds the data. Will be removed here.
+                // Drops the only reference to the key and the content. The GC frees them later, nothing is overwritten.
+                state = VaultState.Sealed
             }
             unlocked
         }

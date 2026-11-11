@@ -16,8 +16,9 @@ private val configJson = Json {
  * Reads and validates the config file.
  *
  * @return the config, or the problems found. A parse error (invalid JSON, an unknown key, a wrong type) is reported
- *   alone, it stops at the first one. A file that parses reports every problem of [validateConfig] at once. Messages
- *   never contain the client secret.
+ *   alone, it stops at the first one. A file that parses reports every problem of [validateConfig] at once. The
+ *   messages of [validateConfig] never contain the client secret, a parse error quotes the file around the error and
+ *   can. Accepted, whoever reads that output has access to the server and its config anyway.
  */
 fun loadConfig(file: File): ResultOf2<AppConfig, List<String>> {
     if (file.isFile.not()) return ResultOf2.Failure(listOf("Config file ${file.absolutePath} does not exist"))
