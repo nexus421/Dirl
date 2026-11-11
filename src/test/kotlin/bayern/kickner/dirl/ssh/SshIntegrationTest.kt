@@ -862,7 +862,9 @@ class SshIntegrationTest {
     fun `the terminal websocket runs a real shell`(): Unit = testApplication {
         val server = sshd()
         val key = newKey()
-        server.authorize("restrict,pty,from=\"127.0.0.1\" ${key.publicKey} dirl")
+        // A fixed shell instead of the login shell of whoever runs the tests: fish 4 asks the terminal for its features at
+        // startup, waits two seconds for an answer this test never gives and can swallow the command sent meanwhile.
+        server.authorize("restrict,pty,command=\"/bin/sh -i\",from=\"127.0.0.1\" ${key.publicKey} dirl")
         val host = addHost("term", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
         val session = dirl.sessions.create(actor)
         application { dirlModule(dirl) }
