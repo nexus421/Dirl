@@ -2,6 +2,7 @@ package bayern.kickner.dirl.web
 
 import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.formatTimestamp
+import bayern.kickner.dirl.ssh.MAX_LIST_BYTES
 import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.ssh.describeChannelError
 import bayern.kickner.dirl.ssh.openSftp
@@ -56,6 +57,7 @@ import net.schmizz.sshj.sftp.RenameFlags
 import net.schmizz.sshj.sftp.Response
 import net.schmizz.sshj.sftp.SFTPClient
 import net.schmizz.sshj.sftp.SFTPException
+import java.io.IOException
 import java.io.InputStream
 import java.net.URLEncoder
 import java.util.EnumSet
@@ -98,7 +100,7 @@ fun Route.fileRoutes(dirl: Dirl) {
     get("/hosts/{id}/files") {
         val host = fileHostOr404(dirl) ?: return@get
         val requested = call.request.queryParameters["path"]
-        val listing = withSftp(dirl, host) { sftp ->
+        val listing = withSftp(dirl, host, maxTotalBytes = MAX_LIST_BYTES) { sftp ->
             val dir = sftp.canonicalize(requested?.trim()?.ifBlank { null } ?: ".")
             dir to listEntries(sftp, dir).sortedWith(compareBy({ it.isDirectory.not() }, { it.name.lowercase() }))
         } ?: return@get
@@ -359,9 +361,9 @@ private suspend fun RoutingContext.fileHostOr404(dirl: Dirl): Host? {
  *
  * @return the block's result, or `null` after an error page was sent.
  */
-private suspend fun <T : Any> RoutingContext.withSftp(dirl: Dirl, host: Host, block: (SFTPClient) -> T): T? {
+private suspend fun <T : Any> RoutingContext.withSftp(dirl: Dirl, host: Host, maxTotalBytes: Long = Long.MAX_VALUE, block: (SFTPClient) -> T): T? {
     val client = connectedClient(dirl, host) ?: return null
-    return withContext(Dispatchers.IO) { runCatching { client.openSftp().use(block) } }
+    return withContext(Dispatchers.IO) { runCatching { client.openSftp(maxTotalBytes).use(block) } }
         .getOrElse { error -> call.fileError(host, describeChannelError(error)); null }
 }
 
@@ -397,17 +399,28 @@ private fun FlowContent.breadcrumbs(host: Host, dir: String) = div("crumbs") {
 
 /**
  * Lists [dir], at most [max] entries. sshj collects the whole listing in memory, so the filter aborts the read once
- * the limit is passed instead of letting a hostile server fill the heap.
+ * the limit is passed instead of letting a hostile server fill the heap. The bytes are capped by the channel, see
+ * [MAX_LIST_BYTES].
  *
  * @throws IllegalStateException with a message for the user if the directory has more than [max] entries.
+ * @throws IOException if reading failed, for example at the byte limit. The channel is unusable then, close it.
  */
 fun listDirectory(sftp: SFTPClient, dir: String, max: Int = MAX_LIST_ENTRIES): List<RemoteResourceInfo> {
     var count = 0
-    return sftp.ls(dir, RemoteResourceFilter {
-        count++
-        check(count <= max) { "This directory has more than $max entries. Dirl does not list it, use the terminal instead." }
-        true
-    })
+    val listing = sftp.sftpEngine.openDir(dir)
+    val entries = runCatching {
+        listing.scan(RemoteResourceFilter {
+            count++
+            check(count <= max) { "This directory has more than $max entries. Dirl does not list it, use the terminal instead." }
+            true
+        })
+    }.onFailure { error ->
+        // A failed read ends sshj's reader thread, a CLOSE would wait 30 seconds for an answer nobody reads. Closing
+        // the whole channel, as the caller does, releases the handle on the server as well.
+        if (error !is IOException) runCatching { listing.close() }
+    }.getOrThrow()
+    listing.close()
+    return entries
 }
 
 /**

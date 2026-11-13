@@ -145,8 +145,9 @@ access request.
   attributes through the open handle) was left out: with one service per container the gain is small and the write path
   already has many special cases.
 - A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust the
-  heap (which would restart Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries, SFTP packets
-  at 1 MiB. sshj alone accepts SFTP packets up to 1 GiB and allocates the buffer as soon as a server announces the
+  heap (which would restart Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries and 16 MiB
+  (sshj keeps every entry until the listing ends, each with up to 32 KiB of name and more of extended attributes),
+  SFTP packets at 1 MiB. A listing over the byte limit ends with a warning that the server may be compromised. sshj alone accepts SFTP packets up to 1 GiB and allocates the buffer as soon as a server announces the
   length, one forged header would end Dirl with an OutOfMemoryError, so Dirl checks the length before sshj reads it.
   Terminal output and downloads are streamed. The reason of a failed connect can be the server's own text, the
   message of an SSH disconnect arrives before the host key is checked. It loses control, format and escape characters
