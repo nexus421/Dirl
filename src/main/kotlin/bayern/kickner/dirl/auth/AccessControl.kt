@@ -104,13 +104,18 @@ class AccessControl(
     /**
      * Grants access to [sub]. Used by the UI and for the user who creates the vault.
      *
-     * @return false if the vault is not unlocked.
+     * @return false if the vault is not unlocked or [actor] is no longer allowed.
      */
     fun allow(sub: String, name: String, actor: Actor): Boolean {
+        // Decided again inside the update like revoke: an actor removed a moment ago must not grant access any more.
+        var permitted = false
         val updated = vault.update { content ->
+            permitted = actor.sub in config.allowedSubjects || content.settings.allowedUsers.any { it.sub == actor.sub }
+            if (permitted.not()) return@update content
             val users = content.settings.allowedUsers.filterNot { it.sub == sub } + AllowedUser(sub, name, clock())
             content.copy(settings = content.settings.copy(allowedUsers = users))
         } ?: return false
+        if (permitted.not()) return false
         writeMirror(updated.settings.allowedUsers)
         pending.removeIf { it.sub == sub }
         audit.record(actor, AuditAction.USER_ALLOWED, detail = "$name ($sub)")

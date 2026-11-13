@@ -47,7 +47,10 @@ users. Providers without such a restriction let every account through to the sec
 access request.
 
 - While the vault is unlocked, the list in the vault decides, checked on every request. Removing a user ends their
-  sessions at once and their open terminals at the next input, at the latest 30 seconds later.
+  sessions at once and their open terminals at the next input, at the latest 30 seconds later. A request already on
+  its way is checked again once its body arrived and between the files of an upload, so a form held back over the
+  removal (or a logout) changes nothing and an upload writes no further file. A grant is decided again inside the
+  vault lock, a user removed a moment ago cannot allow anybody any more.
 - While the vault is sealed, a plain copy (`dataDir/access.json`, `0600`) decides who reaches the unlock page.
   Tampering with it gives access to the passphrase prompt and nothing else. It is rewritten on every unlock.
 - Before a vault exists, everybody the provider lets through may create it or restore a backup (first-run

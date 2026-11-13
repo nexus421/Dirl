@@ -245,6 +245,9 @@ fun Route.fileRoutes(dirl: Dirl) {
 
             try {
                 call.receiveMultipart(formFieldLimit = MAX_UPLOAD_BYTES).forEachPart { part ->
+                    // A slow upload may outlast the user's access, nothing more is written after it ended. The pending
+                    // file is discarded below.
+                    call.ensureStillAuthorized(dirl)
                     // A part only starts after the boundary that ends the one before, so the pending file is complete.
                     commitPending()
                     if (part is PartData.FormItem && part.name == "overwrite") overwrite = part.value == "on"
@@ -268,6 +271,7 @@ fun Route.fileRoutes(dirl: Dirl) {
                 }
                 // With a Content-Length forEachPart only returns normally after the closing boundary, so the last file
                 // is complete as well. Without one a cut off body also ends here, see the KDoc of fileRoutes.
+                call.ensureStillAuthorized(dirl)
                 commitPending()
             } finally {
                 // The body broke off: Ktor ends a cut off part like a complete one, only the missing boundary shows it.

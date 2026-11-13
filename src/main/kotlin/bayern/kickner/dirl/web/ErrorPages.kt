@@ -10,6 +10,7 @@ import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.path
+import io.ktor.server.response.respond
 import kotlinx.html.p
 
 private const val TAG = "ErrorPages"
@@ -36,6 +37,8 @@ fun Application.installErrorPages() {
             staticLog(KLogger.Level.DEBUG, TAG) { "Unreadable body ${call.request.path()}: ${cause.message}" }
             call.errorPage(HttpStatusCode.BadRequest, "Bad request", "The request was malformed.")
         }
+        // Like the login check of the guards for a request that is not a page: no page, nothing to log.
+        exception<AccessEndedException> { call, _ -> call.respond(HttpStatusCode.Unauthorized, "Not logged in") }
         exception<Throwable> { call, cause ->
             staticLog(KLogger.Level.ERROR, TAG) { "Request ${call.request.path()} failed: ${cause.stackTraceToString()}" }
             call.errorPage(HttpStatusCode.InternalServerError, "Something went wrong", "The error was logged. Try again, or check the log on the server.")

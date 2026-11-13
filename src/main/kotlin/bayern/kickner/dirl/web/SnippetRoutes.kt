@@ -53,10 +53,13 @@ fun Route.snippetRoutes(dirl: Dirl) {
     post("/snippets/import") {
         val text = when (val received = runCatching { call.receiveSnippetFile() }.onFailure {
             if (it is CancellationException) currentCoroutineContext().ensureActive()
+            if (it is AccessEndedException) throw it
         }.getOrElse { ResultOf2.Failure("The upload could not be read.") }) {
             is ResultOf2.Success -> received.value
             is ResultOf2.Failure -> return@post call.snippetsPage(dirl, null, null, ImportInput("", listOf(received.value)))
         }
+        // The file may have arrived slowly, the preview shows the snippets of the vault.
+        call.ensureStillAuthorized(dirl)
         val entries = when (val parsed = parseSnippetFile(text)) {
             is ResultOf2.Success -> parsed.value
             // A pasted text comes back into the field for correcting, an uploaded file is too large to echo.

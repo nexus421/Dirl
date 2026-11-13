@@ -1108,4 +1108,26 @@ class SshIntegrationTest {
         )
         dir.deleteRecursively()
     }
+
+    @Test
+    fun `an upload that outlasts the session writes nothing after it ended`() {
+        val host = fileHost("outlast")
+        val dir = Files.createTempDirectory("dirl-outlast").toFile()
+        val first = (fileHeader("first.txt") + "FIRST\r\n").toByteArray()
+        val rest = (fileHeader("second.txt") + "SECOND\r\n--BOUNDARY--\r\n").toByteArray()
+        lateinit var answer: String
+        onCio { port ->
+            // The first file is on its way when the user logs out or is removed, the second one follows afterwards.
+            answer = rawUpload(port, host, dir, first.size + rest.size, first) { out ->
+                out.flush()
+                Thread.sleep(500)
+                dirl.sessions.removeAllFor(actor.sub)
+                out.write(rest)
+            }
+        }
+        assertTrue(answer.startsWith("HTTP/1.1 401"), answer.lineSequence().first())
+        assertEquals(emptyList(), dir.list()!!.toList(), "nothing is written once the session ended, no temporary file stays")
+        assertEquals(emptySet(), uploadsAudited(dir))
+        dir.deleteRecursively()
+    }
 }

@@ -10,6 +10,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
+import io.ktor.server.request.ApplicationReceivePipeline
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import io.ktor.server.response.respond
@@ -77,6 +78,8 @@ val ApplicationCall.session: Session get() = attributes[SessionKey]
  * 4. Vault check: while the vault is not unlocked only the unlock and setup pages work.
  * 5. Presence: every request that passed the checks counts as somebody using Dirl until it is done, a WebSocket until
  *    it is closed, see [bayern.kickner.dirl.ssh.Presence]. Public paths and rejected requests do not count.
+ * 6. Login check again once a body was received: the headers can arrive long before the body, and a user removed or
+ *    logged out in between must not act with the rest of the request, see [ensureStillAuthorized].
  */
 fun Application.installGuards(dirl: Dirl) {
     intercept(ApplicationCallPipeline.Plugins) {
@@ -125,6 +128,28 @@ fun Application.installGuards(dirl: Dirl) {
 
         dirl.presence.hold { proceed() }
     }
+
+    // After the transformation: a form is read completely by then, a multipart body only starts and its handler checks
+    // again between the parts.
+    receivePipeline.intercept(ApplicationReceivePipeline.After) {
+        // A WebSocket upgrade takes the raw stream through here as well, possibly only later. WebSockets check the
+        // session with their own watchdog.
+        if (call.request.headers[HttpHeaders.Upgrade].equals("websocket", ignoreCase = true).not()) call.ensureStillAuthorized(dirl)
+    }
+}
+
+/** The session or the access of the user ended while the request was still arriving. Answered with 401. */
+class AccessEndedException : RuntimeException("The session ended while the request was still arriving")
+
+/**
+ * Checks again that the session of this call exists and its user is allowed, as [installGuards] did when the headers
+ * arrived. Calls on public paths have no session and pass.
+ *
+ * @throws AccessEndedException if the user was removed or the session ended since.
+ */
+fun ApplicationCall.ensureStillAuthorized(dirl: Dirl) {
+    val session = attributes.getOrNull(SessionKey) ?: return
+    if (dirl.sessions.peek(session.token) == null || dirl.access.isAllowed(session.actor.sub).not()) throw AccessEndedException()
 }
 
 /** Origin (`scheme://host[:port]`) of a URL, the form browsers send in the `Origin` header. */
