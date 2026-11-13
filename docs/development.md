@@ -94,7 +94,8 @@ DIRL_SSHD_ROOT="$HOME/sshd-root" ./gradlew test
 The tests cover trust on first use, a changed host key, the stop after three rejected logins, both jump host variants
 including refused TCP remote forwarding, an IPv6 target behind a restricted jump host (skipped without IPv6 loopback),
 a target that sees the jump host's address instead of Dirl's (skipped without a non-loopback IPv4 address), atomic
-SFTP writes including broken transfers and kept permissions and group, downloads byte for byte around the read-ahead
+SFTP writes including broken transfers and kept permissions and group, entries planted under the temporary name, a
+failed commit that keeps the target, normal uploads through the page, downloads byte for byte around the read-ahead
 block size, symlinks in listing, overwrite and delete, upload overwrite protection and the reason of a failed upload,
 rename onto an existing entry or a dangling symlink, a hostile SFTP server announcing a 1 GiB packet, the terminal
 WebSocket including resize, a refused terminal not using up the sessions of a connection and the explanation beyond
@@ -215,7 +216,7 @@ Verified:
 - Login against a real Pocket ID instance as confidential client with PKCE.
 - In production in an Incus LXC (1 GiB, autostart) behind Zoraxy: a terminal idle for ten minutes stays usable, the
   hardened unit runs without sandboxing errors, `memory.swap.max` is `0` with `limits.memory.swap false`.
-- 208 tests: every route against the login, access, origin and vault checks (read from the routing tree, so a new
+- 211 tests: every route against the login, access, origin and vault checks (read from the routing tree, so a new
   route is covered too, WebSockets on the real engine), owner only permissions of vault, backups, audit log and access
   list, vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase opening
   nothing, tampering, backups, key file, restore, KDF parameter bounds, the key file after a mode change, a new key
@@ -233,7 +234,8 @@ Verified:
   refused and oversized input, session and origin), metrics (real output, missing parts, text from the server, the
   reboot rule, the choice per host and what each card shows), the update check (version rules, answer limit, at most
   once an hour, the switch, the footer, no version before the login), SSH integration as listed above, the limits
-  on data read from servers and directory listings from a scripted hostile SFTP server (no sshd needed). Without an `sshd` the 27 SSH integration tests are skipped.
+  on data read from servers and directory listings from a scripted hostile SFTP server (no sshd needed). Without an
+  `sshd` the 30 SSH integration tests are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
   provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
   target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all

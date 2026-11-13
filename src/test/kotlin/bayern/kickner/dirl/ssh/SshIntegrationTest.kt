@@ -11,12 +11,14 @@ import bayern.kickner.dirl.vault.PinnedHostKey
 import bayern.kickner.dirl.vault.SshKey
 import bayern.kickner.dirl.web.Dirl
 import bayern.kickner.dirl.web.SESSION_COOKIE
+import bayern.kickner.dirl.web.commitWrite
 import bayern.kickner.dirl.web.dirlModule
 import bayern.kickner.dirl.web.deleteEntry
 import bayern.kickner.dirl.web.listDirectory
 import bayern.kickner.dirl.web.listEntries
 import bayern.kickner.dirl.web.roundTripText
 import bayern.kickner.dirl.web.writeAtomically
+import bayern.kickner.dirl.web.writeTemporary
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.forms.formData
@@ -704,7 +706,7 @@ class SshIntegrationTest {
             assertEquals("new", shared.readText())
             assertEquals(other, Files.getAttribute(shared.toPath(), "unix:gid"))
         }
-        assertTrue(dir.list()!!.none { it.endsWith(".dirl-tmp") }, "no temporary file may be left behind")
+        assertTrue(dir.list()!!.none { it.contains(".dirl-tmp") }, "no temporary file may be left behind")
         dir.deleteRecursively()
     }
 
@@ -988,5 +990,122 @@ class SshIntegrationTest {
         assertTrue(connects())
         assertEquals("192.0.2.9", dirl.vault.content!!.settings.sshSourceAddress)
         assertEquals("sshSourceAddress=192.0.2.9 sshSourceUnrestricted=on", dirl.audit.tail().first { it.action == AuditAction.SETTINGS_CHANGED }.detail)
+    }
+
+    @Test
+    fun `entries planted under the temporary name are never followed or written`(): Unit = runBlocking {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict ${key.publicKey} dirl")
+        val host = addHost("planted", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val dir = Files.createTempDirectory("dirl-planted").toFile()
+        val client = (dirl.connections.connection(host.id) as ResultOf2.Success).value
+        fun mode(f: File) = (Files.getAttribute(f.toPath(), "unix:mode") as Int).and("7777".toInt(8)).toString(8)
+        fun setMode(f: File, m: String) = Files.setAttribute(f.toPath(), "unix:mode", m.toInt(8))
+
+        // Another user who can write to the directory plants links under the names Dirl used to use, towards a file
+        // of the login, and a file of their own they keep open to read along.
+        val victim = File(dir, "victim").apply { writeText("victim") }.also { setMode(it, "644") }
+        val conf = File(dir, "app.conf").apply { writeText("old") }.also { setMode(it, "600") }
+        val secret = File(dir, "id_ed25519").apply { writeText("old") }.also { setMode(it, "600") }
+        val planted = listOf(".new.txt.dirl-tmp", ".app.conf.dirl-tmp").map { File(dir, it) }
+        planted.forEach { Files.createSymbolicLink(it.toPath(), victim.toPath()) }
+        val spyFile = File(dir, ".id_ed25519.dirl-tmp").apply { writeText("") }.also { setMode(it, "666") }
+
+        java.io.FileInputStream(spyFile).use { spy ->
+            client.openSftp().use { sftp ->
+                writeAtomically(sftp, File(dir, "new.txt").absolutePath, "upload".byteInputStream())
+                writeAtomically(sftp, conf.absolutePath, "new conf".byteInputStream())
+                writeAtomically(sftp, secret.absolutePath, "PRIVATE KEY".byteInputStream())
+            }
+            assertEquals("", spy.readAllBytes().decodeToString(), "a planted file must not see the upload")
+        }
+        assertEquals("victim", victim.readText(), "a planted link must not redirect the write")
+        assertEquals("644", mode(victim), "a planted link must not redirect the permissions")
+        assertEquals("upload", File(dir, "new.txt").readText())
+        assertTrue(Files.isSymbolicLink(File(dir, "new.txt").toPath()).not())
+        assertEquals("new conf", conf.readText())
+        assertTrue(Files.isSymbolicLink(conf.toPath()).not())
+        assertEquals("600", mode(conf))
+        assertEquals("PRIVATE KEY", secret.readText())
+        assertEquals("600", mode(secret))
+        assertTrue(planted.all { Files.isSymbolicLink(it.toPath()) } && spyFile.readText().isEmpty(), "planted entries stay untouched")
+        assertEquals(listOf("app.conf", "id_ed25519", "new.txt", "victim"), dir.list()!!.filterNot { File(dir, it) in planted + spyFile }.sorted())
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun `a failed commit never costs the target, without overwrite a file created meanwhile stays`(): Unit = runBlocking {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict ${key.publicKey} dirl")
+        val host = addHost("commit", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val dir = Files.createTempDirectory("dirl-commit").toFile()
+        val target = File(dir, "data.txt").apply { writeText("precious") }
+        val client = (dirl.connections.connection(host.id) as ResultOf2.Success).value
+        client.openSftp().use { sftp ->
+            // The temporary file vanishes before the commit, e.g. removed by somebody else. The rename fails, the
+            // target must not have been removed for it.
+            val vanished = writeTemporary(sftp, target.absolutePath, "new".byteInputStream())
+            File(vanished.tmp).delete()
+            assertTrue(runCatching { commitWrite(sftp, vanished, overwrite = true) }.isFailure)
+            assertEquals("precious", target.readText())
+
+            // Without overwrite a file that appeared after the upload checked for it is kept, the temporary file goes.
+            val fresh = File(dir, "fresh.txt")
+            val write = writeTemporary(sftp, fresh.absolutePath, "mine".byteInputStream())
+            fresh.writeText("theirs")
+            val error = runCatching { commitWrite(sftp, write, overwrite = false) }.exceptionOrNull()
+            assertTrue(error?.message.orEmpty().contains("created by somebody else during the upload"), "was: $error")
+            assertEquals("theirs", fresh.readText())
+        }
+        assertEquals(listOf("data.txt", "fresh.txt"), dir.list()!!.sorted(), "no temporary file may be left behind")
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun `normal uploads through the page write new files, overwrite keeping the mode and leave nothing behind`(): Unit = testApplication {
+        val server = sshd()
+        val key = newKey()
+        server.authorize("restrict,pty ${key.publicKey} dirl")
+        val host = addHost("normal", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val dir = Files.createTempDirectory("dirl-normal").toFile()
+        fun mode(f: File) = (Files.getAttribute(f.toPath(), "unix:mode") as Int).and("7777".toInt(8)).toString(8)
+        val existing = File(dir, "id_ed25519").apply { writeText("old") }
+        Files.setAttribute(existing.toPath(), "unix:mode", "600".toInt(8))
+        val real = File(dir, "real.conf").apply { writeText("old") }
+        Files.createSymbolicLink(File(dir, "link.conf").toPath(), real.toPath())
+        val session = dirl.sessions.create(actor)
+        application { dirlModule(dirl) }
+        val client = createClient { followRedirects = false }
+        val big = ByteArray(5 * 1024 * 1024 + 123).also { java.util.Random(7).nextBytes(it) }
+
+        val response = client.submitFormWithBinaryData(
+            url = "/hosts/${host.id}/files/upload?path=${dir.absolutePath}",
+            formData = formData {
+                append("overwrite", "on")
+                append("file", big, Headers.build { append(HttpHeaders.ContentDisposition, "filename=\"big.bin\"") })
+                append("file", "new key".toByteArray(), Headers.build { append(HttpHeaders.ContentDisposition, "filename=\"id_ed25519\"") })
+                append("file", "through the link".toByteArray(), Headers.build { append(HttpHeaders.ContentDisposition, "filename=\"link.conf\"") })
+                append("file", "äöü\r\n".toByteArray(), Headers.build { append(HttpHeaders.ContentDisposition, "filename=\"notes.txt\"") })
+            },
+        ) {
+            header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}")
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        assertEquals(HttpStatusCode.Found, response.status, response.bodyAsText().substringAfter("notice").take(200))
+        assertTrue(response.headers[HttpHeaders.Location].orEmpty().endsWith("&done=uploaded"))
+        assertTrue(File(dir, "big.bin").readBytes().contentEquals(big), "a large binary file arrives byte for byte")
+        assertEquals("new key", existing.readText())
+        assertEquals("600", mode(existing), "an overwritten private key stays private")
+        assertEquals("through the link", real.readText())
+        assertTrue(Files.isSymbolicLink(File(dir, "link.conf").toPath()), "the link stays a link")
+        assertEquals("äöü\r\n", File(dir, "notes.txt").readText())
+        assertEquals(listOf("big.bin", "id_ed25519", "link.conf", "notes.txt", "real.conf"), dir.list()!!.sorted(), "no temporary file may be left behind")
+        assertEquals(
+            setOf("big.bin", "id_ed25519", "link.conf", "notes.txt").map { "${dir.absolutePath}/$it" }.toSet(),
+            uploadsAudited(dir),
+        )
+        dir.deleteRecursively()
     }
 }

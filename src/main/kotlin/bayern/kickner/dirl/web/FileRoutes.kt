@@ -2,6 +2,7 @@ package bayern.kickner.dirl.web
 
 import bayern.kickner.dirl.audit.AuditAction
 import bayern.kickner.dirl.formatTimestamp
+import bayern.kickner.dirl.randomToken
 import bayern.kickner.dirl.ssh.MAX_LIST_BYTES
 import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.ssh.describeChannelError
@@ -51,6 +52,7 @@ import kotnexlib.ResultOf2
 import net.schmizz.sshj.sftp.FileAttributes
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
+import net.schmizz.sshj.sftp.RemoteFile
 import net.schmizz.sshj.sftp.RemoteResourceFilter
 import net.schmizz.sshj.sftp.RemoteResourceInfo
 import net.schmizz.sshj.sftp.RenameFlags
@@ -233,7 +235,7 @@ fun Route.fileRoutes(dirl: Dirl) {
                 pending = null
                 // Not cancellable: once the target is replaced, the change has to reach the audit log.
                 val error = withContext(NonCancellable + Dispatchers.IO) {
-                    runCatching { commitWrite(sftp, upload.write) }
+                    runCatching { commitWrite(sftp, upload.write, overwrite) }
                         .onSuccess { dirl.audit.record(call.session.actor, AuditAction.SFTP_UPLOAD, host.name, upload.target) }
                         .exceptionOrNull()
                 }
@@ -472,18 +474,21 @@ private class PendingUpload(val name: String, val target: String, val write: Tem
  * New content written to [tmp] next to [target], see [writeTemporary]. [target] is unchanged until [commitWrite].
  *
  * @property target The file the content is meant for, a symlink already resolved.
- * @property tmp The temporary file, `<dir>/.<name>.dirl-tmp`.
+ * @property tmp The temporary file, `<dir>/.<name>.dirl-tmp-<random>`.
  */
 class TemporaryWrite(val target: String, val tmp: String)
 
 /**
  * Writes [input] to [path] in two steps: [writeTemporary] and [commitWrite]. A caller that cannot tell yet whether
  * [input] is complete uses the two steps directly and calls [discardWrite] instead of committing.
+ *
+ * @param overwrite Replace an existing [path]. Without it the write fails if [path] exists by the time of the commit.
  */
-fun writeAtomically(sftp: SFTPClient, path: String, input: InputStream) = commitWrite(sftp, writeTemporary(sftp, path, input))
+fun writeAtomically(sftp: SFTPClient, path: String, input: InputStream, overwrite: Boolean = true) =
+    commitWrite(sftp, writeTemporary(sftp, path, input), overwrite)
 
 /**
- * Writes [input] to `<dir>/.<name>.dirl-tmp` next to [path] and leaves [path] itself unchanged.
+ * Writes [input] to `<dir>/.<name>.dirl-tmp-<random>` next to [path] and leaves [path] itself unchanged.
  *
  * A symlink as [path] is resolved first, so the file it points to is written and the link stays. Writing to the
  * link path itself would replace the link with a plain file and leave the real file unchanged.
@@ -493,34 +498,45 @@ fun writeAtomically(sftp: SFTPClient, path: String, input: InputStream) = commit
  * target's owner or group, the write is refused and the target stays unchanged. Changing a file of another user
  * needs a login as that user.
  *
+ * The directory may be writable by others. The temporary name is random and created with `EXCL`, so an entry planted
+ * there beforehand, a symlink or a file somebody keeps open, is never written. Owner and permissions are set through
+ * the open handle, so swapping the temporary file for a symlink cannot redirect them either.
+ *
  * A failed write removes the temporary file again, a broken upload would otherwise leave a large hidden file on a
  * possibly full file system. Errors are rethrown.
- *
- * The directory is trusted: the temporary name is fixed and opened without `EXCL`, and attributes are set by path.
- * Another user who can write to the directory can plant a symlink there. Accepted, see "Accepted risk" in
- * docs/security.md.
  */
 fun writeTemporary(sftp: SFTPClient, path: String, input: InputStream): TemporaryWrite {
     val target = resolveLink(sftp, path)
-    val tmp = target.substringBeforeLast('/', ".") + "/." + target.substringAfterLast('/') + ".dirl-tmp"
+    val tmp = target.substringBeforeLast('/', ".") + "/." + target.substringAfterLast('/') + ".dirl-tmp-" + randomToken(6)
     val existing = sftp.statExistence(target)
     val permissions = existing?.let { FileAttributes.Builder().withPermissions(it.mode.permissionsMask).build() }
+    // Fails without creating anything if the name is taken, so there is nothing of ours to remove then.
+    val file = sftp.open(tmp, EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.EXCL), permissions ?: FileAttributes.EMPTY)
     runCatching {
-        sftp.open(tmp, EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC), permissions ?: FileAttributes.EMPTY).use { file ->
+        file.use {
             file.RemoteFileOutputStream(0, 16).use { input.copyTo(it) }
+            if (existing != null) keepAttributes(file, target, existing)
         }
-        if (existing != null) keepAttributes(sftp, tmp, target, existing)
     }.onFailure { error -> discardAndThrow(sftp, tmp, error) }
     return TemporaryWrite(target, tmp)
 }
 
 /**
- * Renames the temporary file of [write] over its target. OpenSSH only supports overwriting renames through its
- * `posix-rename` extension, if the server lacks it the target is removed first. Once the target was removed, the
- * temporary file holds the only copy of the new content and stays if the rename fails. Errors are rethrown.
+ * Renames the temporary file of [write] to its target. With [overwrite] an existing target is replaced through
+ * OpenSSH's `posix-rename` extension. Only a server without that extension gets the target removed first, then the
+ * temporary file holds the only copy of the new content and stays if the rename fails. Without [overwrite] a plain
+ * rename is used, which OpenSSH refuses for an existing target, so a file created since the upload checked stays.
+ * Any other failure removes the temporary file and leaves the target unchanged. Errors are rethrown.
  */
-fun commitWrite(sftp: SFTPClient, write: TemporaryWrite) {
-    if (runCatching { sftp.rename(write.tmp, write.target, setOf(RenameFlags.OVERWRITE)) }.isSuccess) return
+fun commitWrite(sftp: SFTPClient, write: TemporaryWrite, overwrite: Boolean) {
+    if (overwrite.not() || sftp.sftpEngine.supportsServerExtension("posix-rename", "openssh.com")) {
+        val flags = if (overwrite) setOf(RenameFlags.OVERWRITE) else emptySet()
+        runCatching { sftp.rename(write.tmp, write.target, flags) }.onFailure { error ->
+            val appeared = overwrite.not() && runCatching { entryExists(sftp, write.target) }.getOrDefault(false)
+            discardAndThrow(sftp, write.tmp, if (appeared) IllegalStateException("it was created by somebody else during the upload and is not overwritten", error) else error)
+        }
+        return
+    }
     runCatching { if (sftp.statExistence(write.target) != null) sftp.rm(write.target) }.onFailure { error -> discardAndThrow(sftp, write.tmp, error) }
     sftp.rename(write.tmp, write.target)
 }
@@ -533,19 +549,20 @@ fun commitWrite(sftp: SFTPClient, write: TemporaryWrite) {
 fun discardWrite(sftp: SFTPClient, write: TemporaryWrite): Boolean = runCatching { sftp.rm(write.tmp) }.isSuccess
 
 /**
- * Gives [tmp] the owner, group and permissions of [original]. The owner comes first because changing it clears the
- * setuid and setgid bits, and the permissions are set again because the server's umask applies when creating.
+ * Gives the open [file] the owner, group and permissions of [original], through the handle and never by path. The
+ * owner comes first because changing it clears the setuid and setgid bits, and the permissions are set again because
+ * the server's umask applies when creating.
  *
  * @throws IllegalStateException with a message for the user if the owner or group cannot be kept.
  */
-private fun keepAttributes(sftp: SFTPClient, tmp: String, target: String, original: FileAttributes) {
-    val created = sftp.stat(tmp)
+private fun keepAttributes(file: RemoteFile, target: String, original: FileAttributes) {
+    val created = file.fetchAttributes()
     if (created.uid != original.uid || created.gid != original.gid) runCatching {
-        sftp.setattr(tmp, FileAttributes.Builder().withUIDGID(original.uid, original.gid).build())
+        file.setAttributes(FileAttributes.Builder().withUIDGID(original.uid, original.gid).build())
     }.onFailure { error ->
         throw IllegalStateException("$target belongs to another user or group (${original.uid}:${original.gid}) that this login cannot keep. Log in as its owner to change it.", error)
     }
-    sftp.setattr(tmp, FileAttributes.Builder().withPermissions(original.mode.permissionsMask).build())
+    file.setAttributes(FileAttributes.Builder().withPermissions(original.mode.permissionsMask).build())
 }
 
 /** Whether anything exists at [path], a dangling symlink included. `stat` follows links and misses a dangling one. */

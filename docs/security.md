@@ -121,7 +121,8 @@ access request.
   installed in `/boot`, differs from `uname -r`, or `/run/reboot-required` exists. A container has no kernel of its
   own under `/boot`, there it is only known from the flag.
 - SFTP: bytes only, no encoding guessing. An upload never replaces an existing file unless "Overwrite existing files"
-  is ticked, the skipped names are shown at the form. Uploads go to a temporary file and are renamed over the target
+  is ticked, the skipped names are shown at the form. Without it a file somebody else creates while the upload runs
+  is not replaced either. Uploads go to a temporary file and are renamed over the target
   (`posix-rename`, with a fallback for servers without it) only once the multipart body shows that the file arrived
   completely: the next part started or the body ended with its closing boundary. Ktor ends a part that was cut off
   (closed tab, lost network, a proxy giving up) like a complete one, so without that check the truncated part would
@@ -137,13 +138,13 @@ access request.
   of 32 KiB in flight and uploads up to 17 writes, so a long round trip does not throttle a transfer to one block at a
   time. There is no editor in the browser: a textarea cannot give every file back unchanged (browsers turn CR into LF
   and NUL into U+FFFD), files are changed in the terminal.
-- Accepted risk: uploads trust the target directory. The temporary file has a fixed name (`.<name>.dirl-tmp`) and is
-  opened without `O_EXCL`, and a symlink as the target is followed on purpose. Another user who can write to the
-  directory can therefore plant a symlink and make a more privileged login write to, and when overwriting change the
-  owner and permissions of, a file elsewhere. `scp` and `sftp put` share most of this. Do not upload with a privileged
-  login into directories that less privileged users can write to. Hardening the write path (random name, `O_EXCL`,
-  attributes through the open handle) was left out: with one service per container the gain is small and the write path
-  already has many special cases.
+- Uploads into a directory that other users can write to: the temporary file has a random name
+  (`.<name>.dirl-tmp-<random>`) and is created with `O_EXCL`, owner and permissions are set through the open handle.
+  A symlink or a file another user planted there is never written, followed or read along, and a failed rename never
+  costs the target (removing it first is left to servers without `posix-rename`). Remaining risk, shared with `scp`
+  and `sftp put`: a symlink as the target itself is followed on purpose, so another user who can write to the
+  directory can replace a file there with a link and make a more privileged login overwrite the file it points to. Do
+  not upload with a privileged login into directories that less privileged users can write to.
 - A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust the
   heap (which would restart Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries and 16 MiB
   (sshj keeps every entry until the listing ends, each with up to 32 KiB of name and more of extended attributes),
