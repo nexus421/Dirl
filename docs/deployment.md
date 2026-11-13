@@ -18,7 +18,10 @@ systemctl enable --now dirl
 Then open `publicUrl` right away and create the vault, see [Quick start](../README.md#quick-start).
 
 [deploy/dirl.service](../deploy/dirl.service) runs with `-Xmx256m` (Argon2 briefly needs 64 MiB), `UMask=0077`, no
-core dumps and systemd sandboxing. In an unprivileged container the sandboxing options can fail with
+core dumps, no swap (`MemorySwapMax=0`, the decrypted keys never reach the disk) and systemd sandboxing. Without swap
+the kernel cannot move Dirl out of memory: on a machine that runs out of memory it ends Dirl instead, which restarts
+sealed in passphrase mode. An existing install gets the line by copying the unit again, check it with
+`systemctl show dirl -p MemorySwapMax`. In an unprivileged container the sandboxing options can fail with
 `status=226/NAMESPACE`. Then enable `security.nesting` for the container or drop the failing options.
 
 Without the unit, for example with a plain `java -jar`, the data directory, `logs/` and `logs/app.log` follow the

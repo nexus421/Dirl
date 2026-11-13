@@ -12,6 +12,8 @@ Restart=on-failure
 RestartPreventExitStatus=78
 UMask=0077
 LimitCORE=0
+# The decrypted vault holds the private keys, they must never be written to swap. Needs cgroup v2, ignored without.
+MemorySwapMax=0
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
