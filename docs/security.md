@@ -304,4 +304,14 @@ visible there, only that the terminal was opened. Never terminal contents, passp
 and filters the latest entries and only reads the last MiB of the file, so a log that grows for years stays cheap to
 view.
 
+## Logs
+
+The console (journald) and `dataDir/logs/app.log` get text from servers, users and the identity provider in many
+places: error messages of sshj, file names, display names. Every line goes through one format
+([logLine](../src/main/kotlin/bayern/kickner/dirl/Common.kt)) instead of each place cleaning its part. Control and
+formatting characters become visible escapes such as `\x1b` or `\u202e`, so nothing in a message can run escape
+sequences in the terminal of whoever reads the log with `cat` or `tail -f` (clear the screen, set the title, write
+the clipboard through OSC 52). Line breaks stay for stack traces, but every further line of a message is indented, so
+no part of it can pass for a log line of its own.
+
 [Back to the README](../README.md)

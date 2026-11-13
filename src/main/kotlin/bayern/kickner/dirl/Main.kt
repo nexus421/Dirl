@@ -128,6 +128,8 @@ fun createDirl(
 /**
  * Console plus a rotating file in [logDir]. Libraries log through SLF4J into Klogger: sshj and Ktor only from WARN
  * and INFO on, because sshj logs every packet type at DEBUG. Terminal data, passphrases and keys are never logged.
+ * Every line goes through [logLine], so text from servers, users or the provider cannot run escape sequences in the
+ * terminal of whoever reads the log or forge log lines, wherever it is logged.
  *
  * Three sshj loggers are off: they report a closed connection and an unconfirmed host key as ERROR with a stack
  * trace. Both are normal here, Dirl closes the connections whenever nobody uses it and asks for every new host key.
@@ -135,6 +137,7 @@ fun createDirl(
  */
 private fun configureLogging(logDir: File) {
     KLogger.configure {
+        format(::logLine)
         logToConsole()
         logToFile(File(logDir, "app.log"), maxFileSize = 5L * 1024 * 1024)
         slf4jBridge {

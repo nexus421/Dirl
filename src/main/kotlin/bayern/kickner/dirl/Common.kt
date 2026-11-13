@@ -1,5 +1,6 @@
 package bayern.kickner.dirl
 
+import bayern.kickner.klogger.KLogger
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
@@ -95,3 +96,19 @@ fun cleanText(raw: String, max: Int): String? = raw
     .replace(controlChar, " ")
     .replace(formatChar, "")
     .replace(whitespace, " ").trim().take(max).trim().ifEmpty { null }
+
+/** Control characters except line break and tab, invisible formatting characters and the Unicode line separators. */
+private val logUnsafe = "[\\p{Cc}\\p{Cf}\\u2028\\u2029&&[^\\n\\t]]".toRegex()
+
+/**
+ * A log message as it may reach the console and `app.log`, see [logLine]. Control and formatting characters become
+ * visible escapes such as `\x1b`, so text from a server or a user cannot run escape sequences in the terminal of
+ * whoever reads the log. Line breaks stay for stack traces, but every further line is indented, so no part of a
+ * message can pass for a log line of its own.
+ */
+fun logSafe(message: String): String = message
+    .replace(logUnsafe) { match -> match.value[0].code.let { if (it <= 0xff) "\\x%02x".format(it) else "\\u%04x".format(it) } }
+    .replace("\n", "\n    ")
+
+/** The line format of the console and `app.log`: Klogger's default with the message made safe by [logSafe]. */
+fun logLine(level: KLogger.Level, tag: String, message: String): String = KLogger.formatLogDefault(level, tag, logSafe(message))

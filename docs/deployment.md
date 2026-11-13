@@ -104,6 +104,7 @@ directory. The next login creates a new vault. Without the passphrase the old da
 
 Logs go to the console (journald) and to `dataDir/logs/app.log` (5 MiB, rotated). Libraries log through Klogger's
 SLF4J provider, sshj only from WARN on. Three sshj loggers are off, they report every normal disconnect and every new
-host key as ERROR with a stack trace. Dirl logs the cases that matter itself.
+host key as ERROR with a stack trace. Dirl logs the cases that matter itself. Control characters in a message show as
+escapes such as `\x1b` and further lines of a message are indented, see [security](security.md#logs).
 
 [Back to the README](../README.md)
