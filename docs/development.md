@@ -72,6 +72,9 @@ integration tests below, or an unpacked `openssh-server` in `build/sshd-root`. E
 `build/demo`. [DemoServer.kt](../src/test/kotlin/bayern/kickner/dirl/dev/DemoServer.kt) lives in the test sources and
 never ends up in the JAR.
 
+Not on shared machines: `devRun` and `demoRun` listen on loopback only, but there anyone on the machine is logged in
+without a password, `demoRun` as the owner of a vault with shells on the demo hosts.
+
 ## SSH integration tests
 
 [SshIntegrationTest.kt](../src/test/kotlin/bayern/kickner/dirl/ssh/SshIntegrationTest.kt) starts real OpenSSH
