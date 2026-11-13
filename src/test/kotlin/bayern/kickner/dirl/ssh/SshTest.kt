@@ -243,6 +243,21 @@ class SshTest {
     """.trimIndent()
 
     @Test
+    fun `the round trip is the smallest of three, a host without an answer is not asked again`(): Unit = kotlinx.coroutines.runBlocking {
+        // The first answer after a login waits for the server, the next ones show the real round trip.
+        val answers = ArrayDeque(listOf(412.0, 6.0, 7.5))
+        assertEquals(6.0, smallestRoundTrip { answers.removeFirst() })
+        assertTrue(answers.isEmpty(), "three measurements")
+
+        var asked = 0
+        assertNull(smallestRoundTrip { asked++; null })
+        assertEquals(1, asked, "no answer, no second wait of five seconds")
+
+        val lost = ArrayDeque(listOf(300.0, 9.0, null))
+        assertEquals(9.0, smallestRoundTrip { lost.removeFirst() }, "an answer before a lost one still counts")
+    }
+
+    @Test
     fun `metrics output is parsed`() {
         val raw = (parseMetrics(realMetrics) as ResultOf2.Success).value
         assertEquals(7015.26, raw.uptimeSeconds)

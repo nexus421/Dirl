@@ -64,11 +64,11 @@ private val addressPattern = "^[a-zA-Z0-9.:-]{1,253}$".toRegex()
 /** Tags: letters, digits and a few separators, so they are safe in URLs and readable as chips. */
 private val tagPattern = "^[\\p{L}\\p{N}._-]{1,32}$".toRegex()
 
-/** Reload interval of the overview in seconds while hosts are still connecting. */
-const val FAST_REFRESH_SECONDS = 3
+/** Update interval of the overview in seconds while hosts are still connecting. */
+const val FAST_REFRESH_SECONDS = 1
 
-/** Fast reloads in a row at most, then the overview falls back to once a minute. */
-const val MAX_FAST_REFRESHES = 10
+/** Fast updates in a row at most (half a minute), then the overview falls back to once a minute. */
+const val MAX_FAST_REFRESHES = 30
 
 /** Query parameter counting the fast reloads in a row. */
 private const val FAST_PARAM = "wait"
@@ -77,8 +77,9 @@ private const val FAST_PARAM = "wait"
  * Host overview, detail page and editing.
  *
  * - `GET /?tag=` overview as rows with connection state, round trip and the latest metrics, pinned hosts on top,
- *   in the order of the vault, reloaded every minute, every
- *   [FAST_REFRESH_SECONDS] while hosts are still connecting (see [waitingForStatus]).
+ *   in the order of the vault, updated in place every minute, every [FAST_REFRESH_SECONDS] while hosts are still
+ *   connecting (see [waitingForStatus]). `app.js` swaps the content without reloading the page
+ *   ([LIVE_URL_ATTRIBUTE]), without JavaScript the page reloads itself.
  * - `GET /hosts/new`, `POST /hosts` add a host.
  * - `GET /hosts/{id}` details: connection, host key, `authorized_keys` line, latest metrics, disks.
  * - `GET /hosts/{id}/edit`, `POST /hosts/{id}` edit, `POST /hosts/{id}/delete` delete.
@@ -96,9 +97,9 @@ fun Route.hostRoutes(dirl: Dirl) {
         val hosts = content.hosts.filter { tag == null || tag in it.tags }
         val (pinned, others) = hosts.partition { it.pinned }
 
-        // The automatic reload carries AUTO_REFRESH_PARAM, so it does not count as activity for the idle timeout.
+        // The automatic update carries AUTO_REFRESH_PARAM, so it does not count as activity for the idle timeout.
         // While hosts are still connecting it comes faster, at most MAX_FAST_REFRESHES times in a row: a host that
-        // stays Idle for a reason nobody foresaw must not reload the page every few seconds forever.
+        // stays Idle for a reason nobody foresaw must not update the page every second forever.
         val fastSoFar = call.request.queryParameters[FAST_PARAM]?.toIntOrNull() ?: 0
         val fast = fastSoFar < MAX_FAST_REFRESHES && content.hosts.any { waitingForStatus(dirl, it) }
         val reloadUrl = "/?" + listOfNotNull(
@@ -107,26 +108,12 @@ fun Route.hostRoutes(dirl: Dirl) {
             if (fast) "$FAST_PARAM=${fastSoFar + 1}" else null,
         ).joinToString("&")
         val seconds = if (fast) FAST_REFRESH_SECONDS else 60
-        call.page("Hosts", call.session, Nav.HOSTS, refresh = "$seconds; url=$reloadUrl") {
-            pageHeader("Hosts", if (content.hosts.isEmpty()) null else "${content.hosts.size} host(s), status refreshes every minute") {
-                if (content.hosts.size > 1) linkButton("/hosts/arrange", "Arrange")
-                linkButton("/hosts/new", "Add host", "primary")
+        call.page("Hosts", call.session, Nav.HOSTS, scriptlessRefresh = "$seconds; url=$reloadUrl") {
+            div {
+                attributes[LIVE_URL_ATTRIBUTE] = reloadUrl
+                attributes[LIVE_SECONDS_ATTRIBUTE] = seconds.toString()
+                overview(dirl, content, tag, allTags, hosts, pinned, others)
             }
-            if (content.hosts.isEmpty()) return@page gettingStarted(content)
-
-            if (allTags.isNotEmpty()) div("chips") {
-                style = "margin-bottom:16px"
-                a(href = "/", classes = if (tag == null) "chip active" else "chip") { +"All" }
-                allTags.forEach { t -> a(href = "/?tag=${URLEncoder.encode(t, Charsets.UTF_8)}", classes = if (t == tag) "chip active" else "chip") { +"#$t" } }
-            }
-            if (pinned.isNotEmpty()) {
-                div("host-group") { span("icon icon-pin") { }; +"Pinned" }
-                div("host-list") { pinned.forEach { hostRow(dirl, content, it, tag) } }
-            }
-            // The divider only appears when there is something to tell apart.
-            if (pinned.isNotEmpty() && others.isNotEmpty()) div("host-group") { +"Other hosts" }
-            if (others.isNotEmpty()) div("host-list") { others.forEach { hostRow(dirl, content, it, tag) } }
-            if (hosts.isEmpty()) notice("info", "No host has this tag.")
         }
     }
 
@@ -909,4 +896,35 @@ private fun uptime(seconds: Double): String {
     val days = (seconds / 86400).toInt()
     val hours = ((seconds % 86400) / 3600).toInt()
     return if (days > 0) "$days d $hours h" else "$hours h ${((seconds % 3600) / 60).toInt()} min"
+}
+
+/** The overview below the app bar: header, tag filter and the host rows. Rendered in the part `app.js` updates in place. */
+private fun FlowContent.overview(
+    dirl: Dirl,
+    content: VaultContent,
+    tag: String?,
+    allTags: List<String>,
+    hosts: List<Host>,
+    pinned: List<Host>,
+    others: List<Host>,
+) {
+    pageHeader("Hosts", if (content.hosts.isEmpty()) null else "${content.hosts.size} host(s), status refreshes every minute") {
+        if (content.hosts.size > 1) linkButton("/hosts/arrange", "Arrange")
+        linkButton("/hosts/new", "Add host", "primary")
+    }
+    if (content.hosts.isEmpty()) return gettingStarted(content)
+
+    if (allTags.isNotEmpty()) div("chips") {
+        style = "margin-bottom:16px"
+        a(href = "/", classes = if (tag == null) "chip active" else "chip") { +"All" }
+        allTags.forEach { t -> a(href = "/?tag=${URLEncoder.encode(t, Charsets.UTF_8)}", classes = if (t == tag) "chip active" else "chip") { +"#$t" } }
+    }
+    if (pinned.isNotEmpty()) {
+        div("host-group") { span("icon icon-pin") { }; +"Pinned" }
+        div("host-list") { pinned.forEach { hostRow(dirl, content, it, tag) } }
+    }
+    // The divider only appears when there is something to tell apart.
+    if (pinned.isNotEmpty() && others.isNotEmpty()) div("host-group") { +"Other hosts" }
+    if (others.isNotEmpty()) div("host-list") { others.forEach { hostRow(dirl, content, it, tag) } }
+    if (hosts.isEmpty()) notice("info", "No host has this tag.")
 }

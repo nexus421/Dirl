@@ -23,11 +23,11 @@
     });
   }
 
-  // Confirmation before destructive actions: <form data-confirm="Delete this host?">
-  document.querySelectorAll('form[data-confirm]').forEach(function (form) {
-    form.addEventListener('submit', function (event) {
-      if (!window.confirm(form.dataset.confirm)) event.preventDefault();
-    });
+  // Confirmation before destructive actions: <form data-confirm="Delete this host?">. Listened for on the document,
+  // so forms that arrive later through a live update (see below) ask as well.
+  document.addEventListener('submit', function (event) {
+    const form = event.target;
+    if (form instanceof HTMLFormElement && form.dataset.confirm && !window.confirm(form.dataset.confirm)) event.preventDefault();
   });
 
   // Arrange hosts: the arrows move a row and renumber every position, a typed number moves the row there. Saving
@@ -105,18 +105,53 @@
     });
   });
 
-  // Copy buttons: <button data-copy="id-of-element">
-  document.querySelectorAll('[data-copy]').forEach(function (button) {
-    button.addEventListener('click', function () {
-      const source = document.getElementById(button.dataset.copy);
-      if (!source || !navigator.clipboard) return;
-      navigator.clipboard.writeText(source.textContent).then(function () {
-        const label = button.textContent;
-        button.textContent = 'Copied';
-        setTimeout(function () { button.textContent = label; }, 1500);
-      });
+  // Copy buttons: <button data-copy="id-of-element">. Listened for on the document like the confirmation.
+  document.addEventListener('click', function (event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-copy]') : null;
+    if (!button) return;
+    const source = document.getElementById(button.dataset.copy);
+    if (!source || !navigator.clipboard) return;
+    navigator.clipboard.writeText(source.textContent).then(function () {
+      const label = button.textContent;
+      button.textContent = 'Copied';
+      setTimeout(function () { button.textContent = label; }, 1500);
     });
   });
+
+  // Live update: <div data-live-url="/?autorefresh=1" data-live-seconds="60">. After that many seconds the URL is
+  // fetched and this part is replaced by the same part of the answer, so the scroll position and the presence socket
+  // stay instead of a page reload. The answer carries the next URL and interval. When the answer is no such page any
+  // more (the session ended, the vault was sealed), the whole page reloads and shows what the server says now. Without
+  // JavaScript a <noscript> refresh reloads the page instead. The answer is parsed by DOMParser, which runs no
+  // scripts, and only the marked part is taken over.
+  const live = document.querySelector('[data-live-url]');
+  if (live) {
+    let current = live;
+    const schedule = function () {
+      const seconds = parseInt(current.dataset.liveSeconds, 10);
+      setTimeout(update, (seconds > 0 ? seconds : 60) * 1000);
+    };
+    const update = function () {
+      fetch(current.dataset.liveUrl, { credentials: 'same-origin' }).then(function (response) {
+        if (!response.ok || response.redirected) return null;
+        return response.text();
+      }).then(function (html) {
+        const next = html === null ? null : new DOMParser().parseFromString(html, 'text/html').querySelector('[data-live-url]');
+        if (!next) {
+          location.reload();
+          return;
+        }
+        const adopted = document.adoptNode(next);
+        current.replaceWith(adopted);
+        current = adopted;
+        schedule();
+      }).catch(function () {
+        // Dirl is not reachable right now, for example during a restart: try again after the same time.
+        schedule();
+      });
+    };
+    schedule();
+  }
 
   // Upload with progress: <form data-upload> with a .progress > span inside.
   document.querySelectorAll('form[data-upload]').forEach(function (form) {

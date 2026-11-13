@@ -289,6 +289,27 @@ fun cpuPercent(previous: CpuTimes, current: CpuTimes): Double? {
     return busy * 100.0 / total
 }
 
+/**
+ * Round trip measurements per poll, the smallest counts. The first answer after a login often waits for work the server
+ * still does for the new session and comes back many times slower, the ones right after it show the real round trip.
+ */
+const val ROUND_TRIP_SAMPLES = 3
+
+/**
+ * Runs [measure] up to [samples] times in a row and returns the smallest result. Stops at the first `null`: a host
+ * that does not answer is not waited for again, the measurements before it still count.
+ *
+ * @return the smallest round trip, `null` if the first measurement got no answer.
+ */
+suspend fun smallestRoundTrip(samples: Int = ROUND_TRIP_SAMPLES, measure: suspend () -> Double?): Double? {
+    var smallest: Double? = null
+    repeat(samples) {
+        val millis = measure() ?: return smallest
+        smallest = minOf(smallest ?: millis, millis)
+    }
+    return smallest
+}
+
 /** How long [roundTripMillis] waits for the answer. */
 private val ROUND_TRIP_TIMEOUT = 5.seconds
 
@@ -422,9 +443,12 @@ class MetricsPoller(
         polled.clear()
     }
 
-    /** Measures the round trip of [client], forgets the old value if there is no connection or no answer. */
+    /**
+     * Measures the round trip of [client] (the smallest of [ROUND_TRIP_SAMPLES]), forgets the old value if there is no
+     * connection or no answer.
+     */
     private suspend fun measure(hostId: String, client: SSHClient?) {
-        val millis = client?.let { roundTripMillis(it) }
+        val millis = client?.let { smallestRoundTrip { roundTripMillis(it) } }
         if (presence.present.not()) return
         if (millis == null) latency.remove(hostId) else latency[hostId] = millis
     }

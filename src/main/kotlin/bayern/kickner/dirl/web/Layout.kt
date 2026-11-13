@@ -7,6 +7,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.html.respondHtml
 import kotlinx.html.ButtonType
+import kotlinx.html.asMetaDataContent
 import kotlinx.html.DIV
 import kotlinx.html.FlowContent
 import kotlinx.html.FormMethod
@@ -32,6 +33,7 @@ import kotlinx.html.label
 import kotlinx.html.link
 import kotlinx.html.main
 import kotlinx.html.meta
+import kotlinx.html.noScript
 import kotlinx.html.nav
 import kotlinx.html.p
 import kotlinx.html.pre
@@ -99,6 +101,16 @@ private val flashMessages = mapOf(
     "keyfile-added" to "Unlocked. The key file was added, Dirl unlocks itself with it at the next start.",
 )
 
+/**
+ * Marks the part of a page that `app.js` replaces in place: it fetches the URL in this attribute after
+ * [LIVE_SECONDS_ATTRIBUTE] seconds and swaps in the same part of the answer, without reloading the page. The scroll
+ * position, the presence WebSocket and anything typed elsewhere on the page stay.
+ */
+const val LIVE_URL_ATTRIBUTE = "data-live-url"
+
+/** Seconds until the next update of the part marked with [LIVE_URL_ATTRIBUTE]. */
+const val LIVE_SECONDS_ATTRIBUTE = "data-live-seconds"
+
 /** Counter for unique element IDs within a response, e.g. for copy buttons. */
 private val elementCounter = AtomicLong()
 
@@ -110,8 +122,9 @@ private val elementCounter = AtomicLong()
  * @param session The logged-in user, `null` on pages before login. Controls whether navigation is shown.
  * @param nav The highlighted navigation entry.
  * @param frame Page framing, see [PageFrame].
- * @param refresh Content of a `<meta http-equiv="refresh">`, e.g. `60` to reload the overview for fresh metrics
- *   without script, or `0; url=/` to continue to another page.
+ * @param refresh Content of a `<meta http-equiv="refresh">`, e.g. `0; url=/` to continue to another page.
+ * @param scriptlessRefresh The same, but only for browsers without JavaScript (inside `<noscript>`). Pages that
+ *   update themselves through `app.js` (see [LIVE_URL_ATTRIBUTE]) use it as fallback.
  * @param assets Extra script and stylesheet files from `/static`.
  * @param status HTTP status of the response.
  * @param content The page body.
@@ -122,6 +135,7 @@ suspend fun ApplicationCall.page(
     nav: Nav? = null,
     frame: PageFrame = PageFrame.APP,
     refresh: String? = null,
+    scriptlessRefresh: String? = null,
     assets: List<String> = emptyList(),
     status: HttpStatusCode = HttpStatusCode.OK,
     content: FlowContent.() -> Unit,
@@ -137,6 +151,7 @@ suspend fun ApplicationCall.page(
             meta(name = "viewport", content = "width=device-width, initial-scale=1, viewport-fit=cover")
             meta(name = "color-scheme", content = "light dark")
             if (refresh != null) meta { httpEquiv = "refresh"; this.content = refresh }
+            if (scriptlessRefresh != null) noScript { asMetaDataContent.meta { httpEquiv = "refresh"; this.content = scriptlessRefresh } }
             title("$title | Dirl")
             link(rel = "icon", href = "/static/favicon.svg") { attributes["type"] = "image/svg+xml" }
             // Installable as an app from the browser menu, without a service worker and so without any cache.

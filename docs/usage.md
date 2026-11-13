@@ -4,7 +4,7 @@
 
 | Page      | What you can do                                                                                                          |
 |-----------|--------------------------------------------------------------------------------------------------------------------------|
-| Hosts     | One row per host: a status bar in green, yellow (a warning, a value at 90 % or more, a round trip of 100 ms or more, a host key to confirm) or red (no connection), warnings and tags below the name, the values chosen per host (CPU, RAM and fullest disk by default, also swap, every disk, load with cores, uptime, reboot needed, failed services, zram, system and kernel, logged in users), the SSH round trip and Terminal and Files. A click on the row opens the host. Pin hosts to the top, change the order under "Arrange", filter by tag. Add, edit, delete, connect now. A host can be marked "jump host only", a jump host takes the address the hosts behind it see it coming from |
+| Hosts     | One row per host: a status bar in green, yellow (a warning, a value at 90 % or more, a round trip of 100 ms or more, a host key to confirm) or red (no connection), warnings and tags below the name, the values chosen per host (CPU, RAM and fullest disk by default, also swap, every disk, load with cores, uptime, reboot needed, failed services, zram, system and kernel, logged in users), the SSH round trip and Terminal and Files. A click on the row opens the host. The overview updates itself in place, every second while hosts are still connecting (at most half a minute), then every minute, without reloading the page or losing the scroll position. Pin hosts to the top, change the order under "Arrange", filter by tag. Add, edit, delete, connect now. A host can be marked "jump host only", a jump host takes the address the hosts behind it see it coming from |
 | Host      | Connection details, host key confirmation and pin removal, the restricted `authorized_keys` line with copy button, every value of the latest poll, disks |
 | Terminal  | xterm.js with resize, snippet buttons (`⏎` runs on the click, `{ }` asks for values first, an unmarked one shows its command with Send and Cancel), a key bar with Ctrl, Esc, Tab, arrows on touch devices, Enter reloads after a disconnect. While connected, the browser asks before leaving the page (also on Ctrl+W), because leaving ends the shell. An Actions mode for phones without the keyboard, see below. Run long jobs in `tmux` or `screen` |
 | Files     | Breadcrumbs, path input, download, upload with progress (existing files only with "Overwrite existing files"), new directory, rename or move, delete. There is no editor, files are changed in the terminal. Symlinks are marked with →, they open, download and get overwritten like their target, deleting one removes only the link |
@@ -119,7 +119,8 @@ snippet form, two snippets with the same folder and name, unknown fields. At mos
 ## Round trip
 
 The overview shows how long an SSH request to each host and its answer take, measured on every status poll over the
-existing connection (OpenSSH's `keepalive@openssh.com`). Through jump hosts it is the whole way from Dirl to the
+existing connection (OpenSSH's `keepalive@openssh.com`). Each poll measures three times in a row and shows the
+smallest: right after a login the first answer often waits for the server's own work on the new session. Through jump hosts it is the whole way from Dirl to the
 host, from Dirl's point of view, not from the browser. Green below 100 ms, yellow from 100 ms on, `offline` in red
 without a connection. No ICMP, so it needs no rights and works where ping is blocked.
 

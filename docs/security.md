@@ -256,8 +256,8 @@ not depend on Dirl: your own keys in the password manager and the provider's con
   Dirl reads from SSH servers and GitHub. The provider is the party Dirl trusts with the login itself. A broken or
   compromised one could at worst exhaust the heap, Dirl then restarts sealed.
 - Session: `__Host-session` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`), 256 bit random token, in memory, 60
-  minutes idle, 12 hours at most (both configurable). The automatic reload of the host overview and the presence
-  WebSocket it opens do not count as activity, so an unattended browser still reaches the idle timeout. The callback
+  minutes idle, 12 hours at most (both configurable). The automatic update of the host overview and the presence
+  WebSocket do not count as activity, so an unattended browser still reaches the idle timeout. The callback
   answers with a page that refreshes to `/`, because a redirect would belong to the cross-site navigation and the
   browser would not send the Strict cookie. For the same reason the callback cannot end an older session of the same
   browser: a new login only replaces the cookie, the old session stays valid on the server until it expires. Logging

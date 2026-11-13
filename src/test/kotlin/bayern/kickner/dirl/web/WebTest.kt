@@ -527,7 +527,7 @@ class WebTest {
     }
 
     @Test
-    fun `the overview reloads fast only while hosts are on their way to a status, and not forever`(): Unit = testApplication {
+    fun `the overview updates fast only while hosts are on their way to a status, and not forever`(): Unit = testApplication {
         dirl.vault.setup("correct horse battery staple extra".toCharArray(), Actor("user-1", "Ada"))
         val key = bayern.kickner.dirl.ssh.generateEd25519Key("k")
         // Port 1 on loopback refuses at once, so the host fails without waiting for a timeout.
@@ -536,14 +536,20 @@ class WebTest {
         application { dirlModule(dirl) }
         val client = noRedirects()
         val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        /** The next update as `seconds; url` from the live part, after checking the fallback without JavaScript says the same. */
         suspend fun refresh(url: String): String {
             val page = client.get(url) { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
-            return Regex("http-equiv=\"refresh\" content=\"([^\"]+)\"").find(page)!!.groupValues[1].replace("&amp;", "&")
+            val live = Regex("<div data-live-url=\"([^\"]+)\" data-live-seconds=\"(\\d+)\">").find(page)!!.groupValues
+            val fallback = Regex("<noscript>\\s*<meta http-equiv=\"refresh\" content=\"([^\"]+)\">\\s*</noscript>").find(page)!!.groupValues[1]
+            val next = "${live[2]}; url=${live[1]}".replace("&amp;", "&")
+            assertEquals(next, fallback.replace("&amp;", "&"), "without JavaScript the page reloads with the same timing")
+            assertEquals(1, Regex("http-equiv=\"refresh\"").findAll(page).count(), "no reload for browsers with JavaScript")
+            return next
         }
 
-        assertEquals("3; url=/?autorefresh=1&wait=1", refresh("/"), "a host not tried yet is on its way")
-        assertEquals("3; url=/?autorefresh=1&wait=10", refresh("/?autorefresh=1&wait=9"))
-        assertEquals("60; url=/?autorefresh=1", refresh("/?autorefresh=1&wait=10"), "after ten fast reloads back to once a minute")
+        assertEquals("1; url=/?autorefresh=1&wait=1", refresh("/"), "a host not tried yet is on its way")
+        assertEquals("1; url=/?autorefresh=1&wait=30", refresh("/?autorefresh=1&wait=29"))
+        assertEquals("60; url=/?autorefresh=1", refresh("/?autorefresh=1&wait=30"), "after half a minute of fast updates back to once a minute")
 
         dirl.connections.connection(host.id)
         assertIs<bayern.kickner.dirl.ssh.ConnectionState.Failed>(dirl.connections.state(host.id))
