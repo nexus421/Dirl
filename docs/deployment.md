@@ -96,7 +96,7 @@ Outgoing, Dirl connects to the identity provider, the SSH hosts and, for the upd
 443. The update check can be turned off under Settings, see [security](security.md#update-check).
 
 Backup: the encrypted download under Settings, or `tar czf dirl-$(date +%F).tgz -C /var/lib/dirl .`. Both are
-useless without the passphrase.
+useless without the passphrase, and in key file mode without the key file. Either of the two opens them.
 
 Starting over: if the vault cannot be unlocked any more (forgotten passphrase, or a restored file that does not
 belong to its passphrase), stop the service and delete `vault.json`, `vault.json.*` and `access.json` in the data

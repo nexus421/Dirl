@@ -49,6 +49,28 @@ enum class SealReason {
     RESTORED,
 }
 
+/**
+ * How the key file wrap in the vault fits the configured unlock mode, see [Vault.keyFileWrap]. The wrap is only
+ * written by setup and a passphrase change, so a mode change, a replaced key file or a restored backup can leave one
+ * that does not fit.
+ */
+enum class KeyFileWrap {
+    /** Passphrase mode without a wrap, or key file mode with a wrap the configured key file opens. */
+    FITS,
+
+    /** No readable vault, or key file mode with an unreadable key file. */
+    UNKNOWN,
+
+    /** Passphrase mode, but a key file from before still opens the vault. */
+    LEFT_OVER,
+
+    /** Key file mode, but the configured key file does not open the vault, another one does. */
+    FOREIGN,
+
+    /** Key file mode, but the vault has no key file wrap yet, e.g. it was set up in passphrase mode. */
+    MISSING,
+}
+
 /** Why [Vault.setup] was rejected. */
 sealed interface SetupError {
     /** A vault already exists. Setup never overwrites one. */
@@ -97,7 +119,8 @@ sealed interface ChangePassphraseError {
  * A random 256 bit data encryption key (DEK) encrypts the whole content with AES-256-GCM, with a new nonce on every
  * write. The DEK itself is stored only wrapped: encrypted with a key encryption key (KEK) derived from the passphrase
  * with Argon2id, and in key file mode additionally with the key file. Changing the passphrase creates a new DEK and
- * deletes the local backups, see [changePassphrase].
+ * deletes the local backups, see [changePassphrase]. After a mode change, a replaced key file or a restore the key
+ * file wrap may not fit the mode any more, see [keyFileWrap], and an unlock the user confirmed fixes it.
  *
  * After [MAX_ATTEMPTS] wrong passphrases, whether at unlock, key export or passphrase change, further attempts are
  * refused for [lockoutDuration] without even running Argon2. The counter is kept in memory only, a restart resets
@@ -182,8 +205,14 @@ class Vault(
         return result
     }
 
-    /** Unlocks with the passphrase. [passphrase] is wiped before returning. */
-    fun unlock(passphrase: CharArray, actor: Actor): ResultOf2<Unit, UnlockError> {
+    /**
+     * Unlocks with the passphrase. [passphrase] is wiped before returning.
+     *
+     * @param fixKeyFileWrap Also bring the key file wrap in line with the unlock mode, see [fixKeyFileWrap]. Only
+     *   when the user chose it on the unlock page, after [keyFileWrap] reported a mismatch.
+     */
+    fun unlock(passphrase: CharArray, actor: Actor, fixKeyFileWrap: Boolean = false): ResultOf2<Unit, UnlockError> {
+        var fixed: String? = null
         val result = synchronized(lock) {
             if (state != VaultState.Sealed) return@synchronized ResultOf2.Failure(UnlockError.NotSealed)
             val now = clock()
@@ -194,16 +223,30 @@ class Vault(
             val dek = Aead.open(current.wrappedDek.passphrase, Aead.keyOf(kek)).also { kek.wipe() }
 
             dek.fold(
-                onSuccess = { openWith(current, it) },
+                onSuccess = {
+                    openWith(current, it).also { opened ->
+                        if (opened is ResultOf2.Success && fixKeyFileWrap) fixed = fixKeyFileWrap(passphrase)
+                    }
+                },
                 onFailure = { registerFailure(now, actor) },
             )
         }
         passphrase.wipe()
         if (result is ResultOf2.Success) {
-            audit.record(actor, AuditAction.VAULT_UNLOCKED)
+            audit.record(actor, AuditAction.VAULT_UNLOCKED, detail = fixed)
             notifyListeners()
         }
         return result
+    }
+
+    /**
+     * How the key file wrap in the vault fits the configured unlock mode. Needs no passphrase, so the unlock page can
+     * explain a mismatch before anything changes. [KeyFileWrap.UNKNOWN] if there is no readable vault or key file.
+     */
+    fun keyFileWrap(): KeyFileWrap = synchronized(lock) {
+        val current = (if (state is VaultState.Unlocked) envelope else readEnvelope().getOrNull()) ?: return@synchronized KeyFileWrap.UNKNOWN
+        val kek = keyFile?.let { readKeyFile(it).getOrNull() }
+        checkWrap(current, kek).also { kek?.wipe() }
     }
 
     /** Unlocks with the key file, used once at startup in key file mode. */
@@ -328,26 +371,87 @@ class Vault(
             val keyFileKek = keyFile?.let { file ->
                 readKeyFile(file).getOrElse { return@synchronized ResultOf2.Failure(ChangePassphraseError.KeyFileUnavailable(it.message ?: "unreadable")) }
             }
-            val dek = Aead.generateKey()
-            val params = kdfParams()
-            val newEnvelope = VaultEnvelope(
-                kdf = params,
-                wrappedDek = WrappedDek(
-                    passphrase = wrapDek(dek, new, params),
-                    keyfile = keyFileKek?.let { kek -> wrapWith(dek, kek).also { kek.wipe() } },
-                ),
-                data = encryptContent(unlocked.content, dek),
-            )
-            store.write(newEnvelope)
-            store.deleteBackups()
-            envelope = newEnvelope
-            state = VaultState.Unlocked(dek, unlocked.content)
+            rekey(unlocked.content, new, keyFileKek)
             ResultOf2.Success(Unit)
         }
         old.wipe()
         new.wipe()
         if (result is ResultOf2.Success) audit.record(actor, AuditAction.PASSPHRASE_CHANGED)
         return result
+    }
+
+    /**
+     * Writes [content] under a new random DEK, wrapped with [passphrase] and, if given, with [keyFileKek], and deletes
+     * the local backups, which hold the old DEK. Leaves the vault unlocked with the new DEK. [keyFileKek] is wiped,
+     * [passphrase] is not. Must run under [lock].
+     */
+    private fun rekey(content: VaultContent, passphrase: CharArray, keyFileKek: ByteArray?) {
+        val dek = Aead.generateKey()
+        val params = kdfParams()
+        val newEnvelope = VaultEnvelope(
+            kdf = params,
+            wrappedDek = WrappedDek(
+                passphrase = wrapDek(dek, passphrase, params),
+                keyfile = keyFileKek?.let { kek -> wrapWith(dek, kek).also { kek.wipe() } },
+            ),
+            data = encryptContent(content, dek),
+        )
+        store.write(newEnvelope)
+        store.deleteBackups()
+        envelope = newEnvelope
+        state = VaultState.Unlocked(dek, content)
+    }
+
+    /**
+     * Makes the key file wrap follow the configured unlock mode after a passphrase unlock, see [KeyFileWrap]:
+     *
+     * - [KeyFileWrap.LEFT_OVER] and [KeyFileWrap.FOREIGN]: the retired key file would still open the vault and
+     *   everything written later. Every older copy carries the same DEK, so this re-keys like [changePassphrase]
+     *   instead of only dropping or rewriting the wrap, and deletes the local backups.
+     * - [KeyFileWrap.MISSING]: no other key file can open the vault, so the configured one is only added to the
+     *   current DEK and the backups stay.
+     *
+     * The data and the passphrase stay the same. A failed write leaves the old file, the vault stays unlocked with it.
+     * Must run under [lock] right after a successful [openWith].
+     *
+     * @return the audit detail if something changed, otherwise `null`.
+     */
+    private fun fixKeyFileWrap(passphrase: CharArray): String? {
+        val unlocked = state as? VaultState.Unlocked ?: return null
+        val current = envelope ?: return null
+        val kek = keyFile?.let { readKeyFile(it).getOrNull() }
+        val wrap = checkWrap(current, kek)
+        return runCatching {
+            when (wrap) {
+                KeyFileWrap.FITS, KeyFileWrap.UNKNOWN -> null
+                KeyFileWrap.LEFT_OVER, KeyFileWrap.FOREIGN -> {
+                    rekey(unlocked.content, passphrase, kek)
+                    warnLog { "The key file wrap did not match the unlock mode ($wrap), the vault was re-keyed and the local backups deleted" }
+                    "re-keyed, the old key file opens nothing any more"
+                }
+                KeyFileWrap.MISSING -> {
+                    val added = current.copy(wrappedDek = current.wrappedDek.copy(keyfile = wrapWith(unlocked.dek, checkNotNull(kek))))
+                    store.write(added)
+                    envelope = added
+                    infoLog { "The configured key file was added to the vault" }
+                    "key file added"
+                }
+            }
+        }.onFailure { warnLog { "Fixing the key file wrap ($wrap) failed, the vault stays as it was: ${it.message}" } }
+            .getOrNull()
+            .also { kek?.wipe() }
+    }
+
+    /** Compares the key file wrap of [current] with the configured mode. [kek] is the configured key file, if readable. */
+    private fun checkWrap(current: VaultEnvelope, kek: ByteArray?): KeyFileWrap {
+        val wrapped = current.wrappedDek.keyfile
+        return when {
+            keyFile == null -> if (wrapped == null) KeyFileWrap.FITS else KeyFileWrap.LEFT_OVER
+            kek == null -> KeyFileWrap.UNKNOWN
+            wrapped == null -> KeyFileWrap.MISSING
+            Aead.open(wrapped, Aead.keyOf(kek)).onSuccess { it.wipe() }.isSuccess -> KeyFileWrap.FITS
+            else -> KeyFileWrap.FOREIGN
+        }
     }
 
     private fun openWith(current: VaultEnvelope, dekBytes: ByteArray): ResultOf2<Unit, UnlockError> {

@@ -342,7 +342,11 @@ private suspend fun ApplicationCall.settingsPage(dirl: Dirl, error: String?, ssh
 
             div("columns") {
                 card("Backup") {
-                    p("muted") { +"Download the encrypted vault. It can only be opened with the passphrase and is restored on the setup page of a fresh installation." }
+                    p("muted") {
+                        +if (dirl.config.unlockMode == UnlockMode.KEYFILE) "Download the encrypted vault. The passphrase opens it, and so does the key file ${dirl.config.keyFile}. "
+                        else "Download the encrypted vault. It can only be opened with the passphrase. "
+                        +"It is restored on the setup page of a fresh installation."
+                    }
                     linkButton("/settings/backup", "Download encrypted backup")
                 }
 

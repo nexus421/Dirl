@@ -2,6 +2,7 @@ package bayern.kickner.dirl.web
 
 import bayern.kickner.dirl.config.UnlockMode
 import bayern.kickner.dirl.formatTimestamp
+import bayern.kickner.dirl.vault.KeyFileWrap
 import bayern.kickner.dirl.vault.MIN_PASSPHRASE_LENGTH
 import bayern.kickner.dirl.vault.MIN_PASSPHRASE_WORDS
 import bayern.kickner.dirl.vault.SealReason
@@ -21,9 +22,13 @@ import io.ktor.server.routing.post
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.html.ButtonType
+import kotlinx.html.FlowContent
 import kotlinx.html.FormEncType
 import kotlinx.html.FormMethod
+import kotlinx.html.button
 import kotlinx.html.details
+import kotlinx.html.div
 import kotlinx.html.fileInput
 import kotlinx.html.form
 import kotlinx.html.label
@@ -41,7 +46,8 @@ private const val MAX_RESTORE_BYTES = 10L * 1024 * 1024
  * - `GET /unlock` shows the setup form (no vault yet) or the unlock form (sealed).
  * - `POST /setup` creates the vault, the current user becomes its first allowed user.
  * - `POST /setup/restore` restores an encrypted backup instead (only while no vault exists).
- * - `POST /unlock` unlocks. Argon2 runs on a worker thread.
+ * - `POST /unlock` unlocks. Argon2 runs on a worker thread. With `keyfile=fix` it also brings the key file wrap in
+ *   line with the unlock mode, see [KeyFileWrap], the unlock page explains that first.
  *
  * Passphrases arrive as form fields, which Ktor hands over as `String`. Those cannot be wiped, the arrays derived
  * from them are. The real protection is that the passphrase never leaves the request handling and is never logged.
@@ -95,14 +101,29 @@ fun Route.vaultRoutes(dirl: Dirl) {
     }
 
     post("/unlock") {
-        val passphrase = call.receiveParameters()["passphrase"].orEmpty()
-        val result = withContext(Dispatchers.Default) { dirl.vault.unlock(passphrase.toCharArray(), call.session.actor) }
+        val form = call.receiveParameters()
+        val passphrase = form["passphrase"].orEmpty()
+        // Only the button under the explanation on the unlock page sends this, never the Enter key.
+        val fix = form["keyfile"] == "fix"
+        val (result, done) = withContext(Dispatchers.Default) {
+            val before = if (fix) dirl.vault.keyFileWrap() else KeyFileWrap.FITS
+            val result = dirl.vault.unlock(passphrase.toCharArray(), call.session.actor, fixKeyFileWrap = fix)
+            val done = when {
+                before !in keyFileMismatch || dirl.vault.keyFileWrap() != KeyFileWrap.FITS -> ""
+                before == KeyFileWrap.MISSING -> "?done=keyfile-added"
+                else -> "?done=rekeyed"
+            }
+            result to done
+        }
         when (result) {
-            is ResultOf2.Success -> call.respondRedirect("/")
+            is ResultOf2.Success -> call.respondRedirect("/$done")
             is ResultOf2.Failure -> call.unlockPage(dirl, unlockErrorText(result.value))
         }
     }
 }
+
+/** Key file wraps the unlock page explains and offers to fix, see [KeyFileWrap]. */
+private val keyFileMismatch = setOf(KeyFileWrap.LEFT_OVER, KeyFileWrap.FOREIGN, KeyFileWrap.MISSING)
 
 /** User-facing text for a failed unlock or passphrase check. */
 fun unlockErrorText(error: UnlockError): String = when (error) {
@@ -144,13 +165,15 @@ private suspend fun ApplicationCall.setupPage(dirl: Dirl, error: String?) =
         }
     }
 
-private suspend fun ApplicationCall.unlockPage(dirl: Dirl, error: String?) =
+private suspend fun ApplicationCall.unlockPage(dirl: Dirl, error: String?) {
+    val wrap = withContext(Dispatchers.Default) { dirl.vault.keyFileWrap() }
     page("Unlock", session, frame = PageFrame.CENTER, status = if (error == null) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
         centerCard {
             pageHeader("Unlock vault")
             if (error != null) notice("error", error)
             val reason = dirl.vault.sealReason
-            if (reason == SealReason.KEY_FILE_FAILED && error == null) {
+            if (wrap in keyFileMismatch) keyFileNotice(wrap, dirl.config.keyFile)
+            else if (reason == SealReason.KEY_FILE_FAILED && error == null) {
                 notice("warn", "Key file mode is configured, but the automatic unlock at startup failed. See the log.")
             }
             p("muted") {
@@ -163,7 +186,40 @@ private suspend fun ApplicationCall.unlockPage(dirl: Dirl, error: String?) =
             }
             form(action = "/unlock", method = FormMethod.post, classes = "form") {
                 passwordField("Passphrase", "passphrase", "current-password")
-                submit("Unlock")
+                if (wrap in keyFileMismatch) div("btn-row") {
+                    // The first button is the one the Enter key presses, so only a click changes the vault.
+                    submit("Only unlock", "")
+                    button(type = ButtonType.submit, classes = "btn primary") {
+                        name = "keyfile"
+                        value = "fix"
+                        +if (wrap == KeyFileWrap.MISSING) "Unlock and add key file" else "Unlock and re-encrypt"
+                    }
+                }
+                else submit("Unlock")
             }
         }
     }
+}
+
+/** Explains a key file wrap that does not fit the unlock mode and what the two unlock buttons do about it. */
+private fun FlowContent.keyFileNotice(wrap: KeyFileWrap, keyFile: String) {
+    notice(
+        "warn",
+        when (wrap) {
+            KeyFileWrap.LEFT_OVER -> "Passphrase mode is configured, but a key file from before still opens this vault."
+            KeyFileWrap.FOREIGN -> "The key file $keyFile does not open this vault, another key file does. It was replaced, or the vault comes from another server."
+            else -> "Key file mode is configured, but $keyFile does not open this vault yet."
+        },
+    )
+    p("small") {
+        +when (wrap) {
+            KeyFileWrap.MISSING -> "Unlock and add key file: Dirl adds $keyFile to the vault and unlocks itself with it at the next start. "
+            KeyFileWrap.FOREIGN -> "Unlock and re-encrypt: the vault gets a new key that opens with the passphrase and $keyFile. " +
+                "The old key file opens nothing here any more and the local backups vault.json.1 to .3 are deleted. "
+            else -> "Unlock and re-encrypt: the vault gets a new key that opens only with the passphrase. " +
+                "The old key file opens nothing here any more and the local backups vault.json.1 to .3 are deleted. "
+        }
+        +"Hosts, keys, snippets and the passphrase stay as they are. Nothing is lost as long as you know the passphrase."
+    }
+    p("muted small") { +"Only unlock changes nothing, this page asks again next time." }
+}

@@ -96,4 +96,23 @@ Key file mode: create the key with `head -c 32 /dev/urandom > /etc/dirl/kek`, `c
 the vault is set up. The passphrase keeps working as fallback. Never put `/etc/dirl/kek` into the same backup as
 `/var/lib/dirl`.
 
+### Changing the mode or the key file
+
+The vault stores which key file opens it. After a switch from `keyfile` to `passphrase`, a new key file or a restored
+backup from another server, that no longer fits: the old key file would still open the vault and everything added
+later, and a new key file opens nothing, so the automatic unlock fails. The unlock page explains the mismatch and
+offers two buttons:
+
+| Situation                                     | Button                    | What happens                                                                 |
+|-----------------------------------------------|---------------------------|------------------------------------------------------------------------------|
+| Switched to `passphrase`, old key file left   | Unlock and re-encrypt     | New data key, only the passphrase opens the vault, local backups deleted     |
+| New key file, or a backup from another server | Unlock and re-encrypt     | New data key for the passphrase and the configured key file, backups deleted |
+| Switched to `keyfile`                         | Unlock and add key file   | The key file is added, data key and backups stay                             |
+| Any of these                                  | Only unlock (Enter key)   | Nothing changes, the page asks again at the next unlock                      |
+
+Hosts, keys, snippets and the passphrase stay in every case, nothing is lost as long as you know the passphrase. The
+local backups `vault.json.1` to `.3` are deleted on a re-encryption because the old key file still opens them.
+Destroy the old key file afterwards: backups you downloaded earlier and older copies of the data directory still open
+with it.
+
 [Back to the README](../README.md)

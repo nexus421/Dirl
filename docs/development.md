@@ -215,10 +215,11 @@ Verified:
 - Login against a real Pocket ID instance as confidential client with PKCE.
 - In production in an Incus LXC (1 GiB, autostart) behind Zoraxy: a terminal idle for ten minutes stays usable, the
   hardened unit runs without sandboxing errors, `memory.swap.max` is `0` with `limits.memory.swap false`.
-- 196 tests: every route against the login, access, origin and vault checks (read from the routing tree, so a new
+- 204 tests: every route against the login, access, origin and vault checks (read from the routing tree, so a new
   route is covered too, WebSockets on the real engine), owner only permissions of vault, backups, audit log and access
   list, vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase opening
-  nothing, tampering, backups, key file, restore, KDF parameter bounds), audit log tail of a large file, OIDC (token
+  nothing, tampering, backups, key file, restore, KDF parameter bounds, the key file after a mode change, a new key
+  file or a restore, re-encrypted only on the explicit button), audit log tail of a large file, OIDC (token
   checks, PKCE, client secret, the full flow, replayed callback, tampered login cookie, a flood of anonymous logins, a
   failing and a slow provider), backup restore through the UI up to the unlock, access control (including revokes at
   the same moment), idle timeout with automatic reloads, security headers, origin checks and path tricks, config

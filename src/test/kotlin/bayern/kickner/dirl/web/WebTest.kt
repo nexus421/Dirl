@@ -7,6 +7,7 @@ import bayern.kickner.dirl.config.OidcConfig
 import bayern.kickner.dirl.config.UnlockMode
 import bayern.kickner.dirl.config.validateConfig
 import bayern.kickner.dirl.createDirl
+import bayern.kickner.dirl.vault.KeyFileWrap
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.forms.submitForm
@@ -653,16 +654,25 @@ class WebTest {
         assertTrue(afterRestart.contains(restarted), afterRestart)
         assertFalse(afterRestart.contains(keyFileFailed))
 
-        // Key file mode, the key file does not fit at startup.
+        // Key file mode, the key file cannot be read at startup.
         val keyDir = Files.createTempDirectory("dirl-sealed-key").toFile()
         val keyFile = java.io.File(keyDir, "kek").apply { writeBytes(ByteArray(32) { 7 }) }
         val keyConfig = config.copy(dataDir = keyDir.absolutePath, unlockMode = UnlockMode.KEYFILE, keyFile = keyFile.absolutePath)
         createDirl(keyConfig, keyDir).vault.setup(passphrase.toCharArray(), actor)
-        keyFile.writeBytes(ByteArray(32) { 9 })
-        val wrongKey = createDirl(keyConfig, keyDir).also { assertIs<kotnexlib.ResultOf2.Failure<*>>(it.vault.unlockWithKeyFile()) }
-        val failedPage = unlockPage(wrongKey)
+        keyFile.delete()
+        val noKey = createDirl(keyConfig, keyDir).also { assertIs<kotnexlib.ResultOf2.Failure<*>>(it.vault.unlockWithKeyFile()) }
+        val failedPage = unlockPage(noKey)
         assertTrue(failedPage.contains(keyFileFailed), failedPage)
         assertTrue(failedPage.contains(restarted))
+        assertFalse(failedPage.contains("Unlock and re-encrypt"), "an unreadable key file is no reason to re-encrypt")
+
+        // Key file mode, another key file: the page explains instead of pointing to the log.
+        keyFile.writeBytes(ByteArray(32) { 9 })
+        val wrongKey = createDirl(keyConfig, keyDir).also { assertIs<kotnexlib.ResultOf2.Failure<*>>(it.vault.unlockWithKeyFile()) }
+        val wrongKeyPage = unlockPage(wrongKey)
+        assertTrue(wrongKeyPage.contains("does not open this vault, another key file does"), wrongKeyPage)
+        assertTrue(wrongKeyPage.contains("Unlock and re-encrypt"))
+        assertFalse(wrongKeyPage.contains(keyFileFailed))
 
         // Key file mode, unlocked at startup and then sealed under Settings: no restart, no failed unlock.
         keyFile.writeBytes(ByteArray(32) { 7 })
@@ -682,8 +692,48 @@ class WebTest {
         val restored = createDirl(keyConfig.copy(dataDir = restoreDir.absolutePath), restoreDir).also { assertEquals(null, it.vault.restore(backup, actor)) }
         val restoredPage = unlockPage(restored)
         assertTrue(restoredPage.contains("The vault was restored from a backup."), restoredPage)
+        assertTrue(restoredPage.contains("Unlock and add key file"), "a passphrase backup has no key file wrap yet")
         assertFalse(restoredPage.contains(restarted))
         assertFalse(restoredPage.contains(keyFileFailed))
         listOf(plainDir, keyDir, restoreDir).forEach { it.deleteRecursively() }
+    }
+
+    @Test
+    fun `a left over key file is only retired by the explicit unlock button`(): Unit = testApplication {
+        val actor = Actor("user-1", "Ada")
+        val passphrase = "correct horse battery staple extra"
+        val dataDir = Files.createTempDirectory("dirl-keyfile-web").toFile()
+        val keyFile = java.io.File(dataDir, "kek").apply { writeBytes(ByteArray(32) { 7 }) }
+        val keyConfig = config.copy(dataDir = dataDir.absolutePath, unlockMode = UnlockMode.KEYFILE, keyFile = keyFile.absolutePath)
+        createDirl(keyConfig, dataDir).vault.setup(passphrase.toCharArray(), actor)
+
+        // The operator switched to passphrase mode.
+        val switched = createDirl(config.copy(dataDir = dataDir.absolutePath), dataDir)
+        application { dirlModule(switched) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${switched.sessions.create(actor).token}"
+        val page = client.get("/unlock") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+        assertTrue(page.contains("a key file from before still opens this vault"), page)
+        assertTrue(page.contains("Nothing is lost as long as you know the passphrase."))
+        // Enter presses the first submit button, which must be the one that changes nothing.
+        val keep = page.indexOf(">Only unlock</button>")
+        assertTrue(keep >= 0 && keep < page.indexOf(">Unlock and re-encrypt</button>"), page)
+
+        suspend fun unlock(fix: Boolean) = client.submitForm("/unlock", parameters {
+            append("passphrase", passphrase)
+            if (fix) append("keyfile", "fix")
+        }) {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+
+        assertEquals("/", unlock(fix = false).headers[HttpHeaders.Location])
+        assertEquals(KeyFileWrap.LEFT_OVER, switched.vault.keyFileWrap())
+        switched.vault.seal(actor)
+
+        assertEquals("/?done=rekeyed", unlock(fix = true).headers[HttpHeaders.Location])
+        assertEquals(KeyFileWrap.FITS, switched.vault.keyFileWrap())
+        assertTrue(client.get("/?done=rekeyed") { header(HttpHeaders.Cookie, cookie) }.bodyAsText().contains("Unlocked and re-encrypted."))
+        dataDir.deleteRecursively()
     }
 }

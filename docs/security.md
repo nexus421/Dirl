@@ -9,7 +9,9 @@ with a new random nonce on every write. The data key (DEK) is random and stored 
 derived from the passphrase with Argon2id (64 MiB, 3 passes, stored next to the salt so they can be raised later), and
 in key file mode additionally with the key file. Changing the passphrase creates a new DEK, re-encrypts the vault and
 deletes the local backups, so the old passphrase opens nothing on the server any more. Backups downloaded earlier
-still open with it. GCM also protects integrity, so nobody with write access can change a pinned host key or add a
+still open with it. After a switch of the unlock mode, a new key file or a restore, the unlock page offers the same
+re-encryption for the key file, so a retired key file opens nothing on the server any more either, see
+[Changing the mode or the key file](configuration.md#changing-the-mode-or-the-key-file). GCM also protects integrity, so nobody with write access can change a pinned host key or add a
 user in the file.
 
 The Argon2 parameters are not authenticated. Changing them only derives a wrong key, but huge values would exhaust the

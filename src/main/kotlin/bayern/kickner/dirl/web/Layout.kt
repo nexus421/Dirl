@@ -95,6 +95,8 @@ private val flashMessages = mapOf(
     "deleted" to "Deleted.",
     "created" to "Directory created.",
     "restored" to "Backup restored. Unlock it with the passphrase it was created with.",
+    "rekeyed" to "Unlocked and re-encrypted. The old key file opens nothing here any more.",
+    "keyfile-added" to "Unlocked. The key file was added, Dirl unlocks itself with it at the next start.",
 )
 
 /** Counter for unique element IDs within a response, e.g. for copy buttons. */
