@@ -216,7 +216,7 @@ Verified:
 - Login against a real Pocket ID instance as confidential client with PKCE.
 - In production in an Incus LXC (1 GiB, autostart) behind Zoraxy: a terminal idle for ten minutes stays usable, the
   hardened unit runs without sandboxing errors, `memory.swap.max` is `0` with `limits.memory.swap false`.
-- 219 tests: every route against the login, access, origin and vault checks (read from the routing tree, so a new
+- 220 tests: every route against the login, access, origin and vault checks (read from the routing tree, so a new
   route is covered too, WebSockets on the real engine), owner only permissions of vault, backups, audit log and access
   list, vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase opening
   nothing, tampering, backups, key file, restore, KDF parameter bounds, the key file after a mode change, a new key
@@ -231,12 +231,12 @@ Verified:
   lists for `from="..."` (normalizing, rejected entries, the switch to leave it out), presence (on a real CIO server),
   snippet folders (folded, the changed one open), snippet placeholders (what counts as one, Go templates left alone,
   the marks on the buttons, the limit, where they show, the browser code run in Node), the import drop zone, snippet
-  export and import (round trip between two instances, the file format and its problems, preview states, all four ways
-  to import, refused and oversized input, session and origin), metrics (real output, missing parts, text from the
-  server, the reboot rule, the choice per host and what each card shows), the update check (version rules, answer
-  limit, at most once an hour, the switch, the footer, no version before the login), SSH integration as listed above,
-  the limits on data read from servers and directory listings from a scripted hostile SFTP server (no sshd needed).
-  Without an `sshd` the 31 SSH integration tests are skipped.
+  export and import (round trip between two instances, the file format and its problems, hidden characters, preview
+  states, all four ways to import, refused and oversized input, session and origin), metrics (real output, missing
+  parts, text from the server, the reboot rule, the choice per host and what each card shows), the update check
+  (version rules, answer limit, at most once an hour, the switch, the footer, no version before the login), SSH
+  integration as listed above, the limits on data read from servers and directory listings from a scripted hostile
+  SFTP server (no sshd needed). Without an `sshd` the 31 SSH integration tests are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
   provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
   target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all

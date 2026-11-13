@@ -70,6 +70,29 @@ class SnippetTransferTest {
     }
 
     @Test
+    fun `hidden characters are refused in the form and in a file, ordinary text is not`() {
+        // A hidden Ctrl+U deletes the visible "echo safe" in the shell, U+202E shows the text in another order than it
+        // is sent, so the import preview would show something else.
+        assertEquals(
+            "Command contains a hidden character U+0015 at position 10. The terminal would type it as a key, or it shows the text in another order than it is sent.",
+            snippetProblem("n", "echo safe\u0015rm -rf ~/important", null),
+        )
+        assertTrue(snippetProblem("n", "ls -la # \u202e ~ fr- mr", null).orEmpty().contains("U+202E at position 10"))
+        assertTrue(snippetProblem("n", "ls\u001b[2K", null).orEmpty().contains("U+001B"))
+        assertTrue(snippetProblem("n", "ls\u2028rm", null).orEmpty().contains("U+2028"))
+        assertEquals("Name contains a hidden character U+202E at position 3.", snippetProblem("Na\u202eme", "uptime", null))
+        assertTrue(snippetProblem("Na\tme", "uptime", null).orEmpty().contains("U+0009"), "a tab has no place in a name")
+        for (fine in listOf("tar\tcf x.tar .", "cat <<EOF\na\nEOF", "echo äöü ß 😀 ✓", "printf '%s\\n' \"\$HOME\""))
+            assertEquals(null, snippetProblem("n", fine, null), fine)
+        assertIs<ResultOf2.Failure<String>>(parseSnippet(io.ktor.http.parametersOf("name" to listOf("n"), "command" to listOf("echo\u0003")), "id"))
+
+        val found = problems("""[{"name": "Na\u202eme", "command": "uptime"}, {"name": "ls", "command": "ls\u0015rm"}]""")
+        assertEquals(2, found.size, found.joinToString("\n"))
+        assertEquals("Snippet 1 (Name): name contains a hidden character U+202E at position 3.", found[0], "the label shows the name without the hidden character")
+        assertTrue(found[1].startsWith("Snippet 2 (ls): command contains a hidden character U+0015 at position 3"), found[1])
+    }
+
+    @Test
     fun `two snippets with the same folder and name ignoring case are refused`() {
         val found = problems("""[{"name": "Logs", "command": "a", "folder": "Docker"}, {"name": "logs", "command": "b", "folder": "docker"}, {"name": "logs", "command": "c"}]""")
         assertEquals(listOf("Snippet 2 (docker/logs): same folder and name as snippet 1."), found)

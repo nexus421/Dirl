@@ -186,7 +186,7 @@ fun parseSnippet(form: Parameters, id: String): ResultOf2<Snippet, String> {
 
 /**
  * The rules every snippet follows, from the form or from an import: name and command are required, both have a
- * maximum length, at most [MAX_PLACEHOLDERS] placeholders, the folder a fixed set of characters. [name] and [folder] are expected trimmed, [command] without
+ * maximum length, neither has hidden characters (see [hiddenCharacter]), at most [MAX_PLACEHOLDERS] placeholders, the folder a fixed set of characters. [name] and [folder] are expected trimmed, [command] without
  * a trailing newline.
  *
  * @return The reason the snippet is refused, `null` if it is fine.
@@ -195,6 +195,9 @@ fun snippetProblem(name: String, command: String, folder: String?): String? = wh
     name.isEmpty() || command.isBlank() -> "Name and command are required."
     name.length > MAX_SNIPPET_NAME -> "Name is longer than $MAX_SNIPPET_NAME characters."
     command.length > MAX_SNIPPET_LENGTH -> "Command is longer than $MAX_SNIPPET_LENGTH characters."
+    hiddenCharacter(name, allowLineBreaks = false) != null -> "Name contains ${hiddenCharacter(name, allowLineBreaks = false)}."
+    hiddenCharacter(command, allowLineBreaks = true) != null ->
+        "Command contains ${hiddenCharacter(command, allowLineBreaks = true)}. The terminal would type it as a key, or it shows the text in another order than it is sent."
     placeholdersOf(command).size > MAX_PLACEHOLDERS -> "At most $MAX_PLACEHOLDERS different placeholders like {{Name}} per snippet."
     folder != null && folderPattern.matches(folder).not() ->
         "Folder may only contain letters, digits, spaces, dots, dashes and underscores, at most 32 characters."
@@ -471,3 +474,22 @@ private fun FlowContent.snippetForm(action: String, snippet: Snippet?, label: St
             if (snippet != null) linkButton("/snippets", "Cancel", "ghost")
         }
     }
+
+/** Control characters except line feed and tab, invisible formatting characters such as U+202E, the Unicode line separators. */
+private val hiddenInCommand = "[\\p{Cc}\\p{Cf}\\u2028\\u2029&&[^\\n\\t]]".toRegex()
+
+/** The same for names, which have no line breaks or tabs either. */
+private val hiddenInName = "[\\p{Cc}\\p{Cf}\\u2028\\u2029]".toRegex()
+
+/**
+ * The first character of [text] that does not show what it does: a control character the terminal types as a key (a
+ * hidden Ctrl+U deletes what is visible before it), or a formatting character that reorders or hides text on screen,
+ * so even a careful look at the import preview would show something else than the terminal gets.
+ *
+ * @param allowLineBreaks Line feed and tab are fine, as in commands.
+ * @return a description like `a hidden character U+0015 at position 10`, or `null` if there is none.
+ */
+fun hiddenCharacter(text: String, allowLineBreaks: Boolean): String? {
+    val match = (if (allowLineBreaks) hiddenInCommand else hiddenInName).find(text) ?: return null
+    return "a hidden character U+%04X at position %d".format(match.value[0].code, match.range.first + 1)
+}

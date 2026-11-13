@@ -273,6 +273,10 @@ not depend on Dirl: your own keys in the password manager and the provider's con
   `Permissions-Policy`, `Cache-Control: no-store`, HSTS when `publicUrl` is https.
 - WebSocket frames are capped at 1 MiB (Ktor's default is unlimited), pings every 20 seconds keep the proxy from
   closing idle terminals and the presence WebSocket, and let Dirl notice a vanished browser.
+- Snippets never contain hidden characters: control characters other than line break and tab would be typed as keys
+  (a hidden Ctrl+U deletes the visible command before it), formatting characters such as U+202E show the text in
+  another order than it is sent. Both are refused when saving and importing, so the import preview of a file from
+  somebody else shows exactly what a click would send.
 - Terminal output is untrusted input. It only ever goes into xterm.js, never into the DOM, and the links addon is
   not loaded. All HTML is built with kotlinx.html, which escapes every value.
   Remote file names are cleaned before they go into a `Content-Disposition` header.

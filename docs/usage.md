@@ -101,7 +101,9 @@ end of `command` are dropped, only `run` decides that, and a carriage return cou
 without the outer object is read as well, which makes it easy to have an AI tool write one. There are no IDs, the file
 works on any Dirl.
 
-The import takes a file or pasted JSON and first shows a preview, nothing is saved before "Import selected". A snippet
+The import takes a file or pasted JSON and first shows a preview, nothing is saved before "Import selected". Names
+and commands with hidden characters (control characters other than line break and tab, or formatting characters such
+as U+202E) are refused with their position, in the form as well. A snippet
 counts as existing when folder and name match, ignoring case. The preview marks every snippet as new, as replacing an
 existing one (with the old and the new command next to each other) or as already there and unchanged, and highlights
 the ones that run immediately. Every row has a checkbox:

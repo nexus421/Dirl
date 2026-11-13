@@ -1,5 +1,6 @@
 package bayern.kickner.dirl.web
 
+import bayern.kickner.dirl.cleanText
 import bayern.kickner.dirl.vault.Snippet
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
@@ -147,8 +148,9 @@ private fun parseEntry(item: JsonElement): ResultOf2<SnippetEntry, String> {
 
 /** ` (name)` for a problem message when the entry has a readable name, otherwise nothing. */
 private fun entryLabel(item: JsonElement): String {
-    val name = ((item as? JsonObject)?.get("name") as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim().orEmpty()
-    return if (name.isEmpty()) "" else " (${name.take(64)})"
+    // Cleaned, a name refused for hidden characters would otherwise show reordered in the message about it.
+    val name = ((item as? JsonObject)?.get("name") as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { cleanText(it, 64) }.orEmpty()
+    return if (name.isEmpty()) "" else " ($name)"
 }
 
 /** `folder/name` of an entry, for messages. */
