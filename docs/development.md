@@ -137,6 +137,18 @@ display, and every one of them failed verification, which made the IDE sync fail
 
 Review the diff of the lockfile before committing. Releases worth watching: sshj, Ktor, BouncyCastle, xterm.js.
 
+The wrapper checks the Gradle distribution it downloads against `distributionSha256Sum` in
+[gradle-wrapper.properties](../gradle/wrapper/gradle-wrapper.properties) and refuses to run a different one. The
+`wrapper` task does not look the checksum up, a Gradle update passes the one of the `-bin.zip` from
+`https://services.gradle.org/distributions/gradle-<version>-bin.zip.sha256`:
+
+```bash
+./gradlew wrapper --gradle-version <version> --gradle-distribution-sha256-sum <checksum>
+```
+
+Without the option the task refuses the update and says so. Run the same command twice, the second run updates the
+wrapper JAR and scripts with the new version.
+
 Pushes to `master` submit the resolved dependencies to GitHub's dependency graph. With "Dependency graph" and
 "Dependabot alerts" enabled in the repository settings (both are off by default), GitHub reports known vulnerabilities
 in any of them, transitive ones included. There are no automatic update pull requests: they would change
