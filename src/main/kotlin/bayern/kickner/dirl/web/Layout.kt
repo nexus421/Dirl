@@ -20,6 +20,7 @@ import kotlinx.html.dd
 import kotlinx.html.div
 import kotlinx.html.dl
 import kotlinx.html.dt
+import kotlinx.html.fileInput
 import kotlinx.html.footer
 import kotlinx.html.form
 import kotlinx.html.h1
@@ -276,6 +277,43 @@ fun FlowContent.copyBlock(text: String) = div("code") {
     button(type = ButtonType.button, classes = "btn sm") {
         attributes["data-copy"] = elementId
         +"Copy"
+    }
+}
+
+/**
+ * A file input shown as an area to drop files on or to click: the whole area is the label of a visually hidden input,
+ * so a click opens the file chooser without JavaScript. Dropping files and naming the chosen ones is `app.js`
+ * (`data-drop`).
+ *
+ * @param name Field name of the input.
+ * @param ariaLabel What the input is for, read by screen readers.
+ * @param main The line in the middle before anything is chosen, e.g. "Drop a JSON file here".
+ * @param choose The link-like words of the line below, e.g. "choose one".
+ * @param hint The rest of the line below, after [choose].
+ */
+fun FlowContent.dropZone(
+    name: String,
+    ariaLabel: String,
+    main: String,
+    choose: String,
+    hint: String,
+    accept: String? = null,
+    multiple: Boolean = false,
+    required: Boolean = false,
+) = label("drop-zone") {
+    attributes["data-drop"] = ""
+    fileInput(name = name, classes = "drop-input") {
+        if (accept != null) this.accept = accept
+        if (multiple) this.multiple = true
+        if (required) this.required = true
+        attributes["aria-label"] = ariaLabel
+    }
+    span("icon icon-upload") { }
+    span("drop-main") { +main }
+    span("drop-sub") {
+        +"or "
+        span("drop-link") { +choose }
+        +hint
     }
 }
 

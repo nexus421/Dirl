@@ -768,6 +768,12 @@ class SshIntegrationTest {
         assertTrue(page.contains("href=\"$linkHref\""), "the link to a directory must open the listing")
         assertTrue(page.contains("linkdir/</a><span class=\"muted\" title=\"Symbolic link\"> →</span>"), "the link must be marked")
         assertTrue(page.contains("sub/</a><span").not(), "plain directories carry no mark")
+        // The upload is a drop zone around the file input like the snippet import, for several files.
+        val upload = page.substringAfter("data-upload").substringBefore("</form>")
+        val zone = upload.substringAfter("<label class=\"drop-zone\" data-drop=\"\">").substringBefore("</label>")
+        assertTrue(zone.contains("<input type=\"file\" name=\"file\" class=\"drop-input\" multiple=\"multiple\" required=\"required\""), zone)
+        assertTrue(zone.contains("Drop files here") && zone.contains("they go to ${dir.absolutePath}"), zone)
+        assertTrue(upload.indexOf("name=\"overwrite\"") < upload.indexOf("name=\"file\""), "the checkbox must come before the files in the body")
         dir.deleteRecursively()
     }
 

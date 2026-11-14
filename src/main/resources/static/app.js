@@ -71,17 +71,25 @@
     renumber();
   }
 
-  // Drop zone of the snippet import: a dropped file goes into the hidden file input, the chosen file is named.
+  // Drop zones (snippet import, file upload): dropped files go into the hidden file input, the chosen ones are named.
+  const sizeText = function (bytes) {
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KiB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MiB';
+    return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GiB';
+  };
   document.querySelectorAll('[data-drop]').forEach(function (zone) {
     const input = zone.querySelector('input[type=file]');
     const main = zone.querySelector('.drop-main');
     const sub = zone.querySelector('.drop-sub');
     const show = function () {
-      const file = input.files && input.files[0];
-      if (!file) return;
+      const files = Array.prototype.slice.call(input.files || []);
+      if (files.length === 0) return;
+      const total = files.reduce(function (sum, file) { return sum + file.size; }, 0);
+      const names = files.slice(0, 3).map(function (file) { return file.name; }).join(', ') + (files.length > 3 ? ', …' : '');
       zone.classList.add('has');
-      main.textContent = file.name;
-      sub.textContent = (file.size / 1024).toFixed(1) + ' KiB, click to choose another';
+      main.textContent = files.length === 1 ? files[0].name : files.length + ' files';
+      sub.textContent = (files.length === 1 ? '' : names + ', ') + sizeText(total) +
+        (input.multiple ? ', click to choose others' : ', click to choose another');
     };
     input.addEventListener('change', show);
     ['dragenter', 'dragover'].forEach(function (name) {

@@ -36,11 +36,9 @@ import kotlinx.html.FormMethod
 import kotlinx.html.InputType
 import kotlinx.html.a
 import kotlinx.html.div
-import kotlinx.html.fileInput
 import kotlinx.html.form
 import kotlinx.html.hiddenInput
 import kotlinx.html.input
-import kotlinx.html.label
 import kotlinx.html.span
 import kotlinx.html.table
 import kotlinx.html.tbody
@@ -167,10 +165,7 @@ fun Route.fileRoutes(dirl: Dirl) {
                             attributes["data-upload"] = ""
                             // Must come before the file input: the server reads the multipart body in form order.
                             checkField("Overwrite existing files", "overwrite", false)
-                            label("field") {
-                                span { +"Files for $dir" }
-                                fileInput(name = "file") { multiple = true; required = true }
-                            }
+                            dropZone("file", "Files to upload", "Drop files here", "choose them", ", they go to $dir", multiple = true, required = true)
                             div("progress") { span { } }
                             div("btn-row") { submit("Upload") }
                         }

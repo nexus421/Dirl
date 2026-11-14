@@ -559,7 +559,7 @@ details.import:not([open]) > summary { margin-bottom: 0; }
 .import-body .muted.small { margin: 8px 0 4px; }
 .import-problems ul { margin: 0; padding-left: 18px; }
 
-/* Drop zone of the snippet import: the label of a hidden file input. */
+/* Drop zone of the snippet import and the file upload: the label of a hidden file input. */
 .drop-zone {
   position: relative;
   display: grid;
@@ -579,7 +579,7 @@ details.import:not([open]) > summary { margin-bottom: 0; }
 .drop-zone.has .icon { --icon: url(/static/icons/check.svg); color: var(--ok); }
 .drop-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .drop-main { font-weight: 600; overflow-wrap: anywhere; }
-.drop-sub { color: var(--muted); font-size: 12.5px; }
+.drop-sub { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
 .drop-link { color: var(--accent); }
 
 /* Snippets page: folded folders, one compact row per snippet. */

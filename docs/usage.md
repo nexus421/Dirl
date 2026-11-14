@@ -10,8 +10,9 @@
 - **Terminal**: snippet buttons (`⏎` runs on the click, `{ }` asks for values, unmarked ones show the command first),
   a key bar on touch devices, [Actions mode](#actions-mode) for phones. Leaving the page ends the shell, run long jobs
   in [tmux](#long-jobs-with-tmux).
-- **Files**: browse, download, upload (existing files only with "Overwrite existing files"), new directory, rename,
-  delete. There is no editor. A symlink behaves like its target, deleting one removes only the link.
+- **Files**: browse, download, upload by dropping or choosing files (existing ones only with "Overwrite existing
+  files"), new directory, rename, delete. There is no editor. A symlink behaves like its target, deleting one removes
+  only the link.
 - **Keys**: generate or import Ed25519 keys, rename, export (asks for the passphrase), delete unused ones.
 - **Snippets**: commands as buttons above every terminal, in folders, with [placeholders](#placeholders-in-snippets),
   [export and import](#sharing-snippets).

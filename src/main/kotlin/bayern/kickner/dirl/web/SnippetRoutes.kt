@@ -307,22 +307,10 @@ private fun FlowContent.importCard(count: Int, import: ImportInput?) = card("Imp
         ul { import.problems.forEach { li { +it } } }
     }
     form(action = "/snippets/import", method = FormMethod.post, encType = FormEncType.multipartFormData, classes = "form") {
-        // The whole area is the label of the hidden file input, a click opens the file chooser without JavaScript.
-        // Dropping a file and showing its name is app.js.
-        label("drop-zone") {
-            attributes["data-drop"] = ""
-            fileInput(name = "file", classes = "drop-input") {
-                accept = ".json,application/json"
-                attributes["aria-label"] = "Snippet file"
-            }
-            span("icon icon-upload") { }
-            span("drop-main") { +"Drop a JSON file here" }
-            span("drop-sub") {
-                +"or "
-                span("drop-link") { +"choose one" }
-                +", at most ${MAX_SNIPPET_FILE_LENGTH / 1024 / 1024} MiB"
-            }
-        }
+        dropZone(
+            "file", "Snippet file", "Drop a JSON file here", "choose one", ", at most ${MAX_SNIPPET_FILE_LENGTH / 1024 / 1024} MiB",
+            accept = ".json,application/json",
+        )
         textAreaField("Or paste the JSON", "json", import?.text.orEmpty(), rows = 5, required = false)
         p("muted small") { +"Nothing is saved yet, the next page shows what the import would change." }
         div("btn-row") { submit("Show preview", "") }
