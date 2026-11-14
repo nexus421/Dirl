@@ -52,7 +52,8 @@ Requires JDK 25 to build, Java 21 to run.
 cp config.example.json config.json
 ```
 
-Set `publicUrl` and the `oidc` section in `config.json`, then:
+Register Dirl as a client at your OIDC provider with the callback URL `<publicUrl>/auth/callback` (details in
+[Configuration](docs/configuration.md#oidc-provider)). Set `publicUrl` and the `oidc` section in `config.json`, then:
 
 ```bash
 java -jar build/libs/dirl.jar config=config.json
@@ -90,7 +91,7 @@ It exists because tools like Termix grew too fast for my taste. Many features, m
 Dirl follows KISS instead.
 
 Dirl is written with AI. Code, tests and documentation were created with Claude by Anthropic, directed, tested and
-fully reviewd by me.
+fully reviewed by me.
 
 ## License
 
