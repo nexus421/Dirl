@@ -4,9 +4,17 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=dirl
+# A user that exists only while Dirl runs, nobody has to create one. Its data lives in /var/lib/dirl, which systemd
+# creates with mode 0700 (behind it /var/lib/private/dirl, which no other user can enter).
+DynamicUser=yes
+StateDirectory=dirl
+StateDirectoryMode=0700
 WorkingDirectory=/var/lib/dirl
-ExecStart=/usr/bin/java -Xmx256m -XX:+ExitOnOutOfMemoryError -jar /opt/dirl/dirl.jar config=/etc/dirl/config.json
+# The config stays root's own file. systemd hands Dirl a read-only copy in unswappable memory that only Dirl can read.
+LoadCredential=config.json:/etc/dirl/config.json
+# Key file mode: enable this line and set "keyFile": "/run/credentials/dirl.service/kek" in the config.
+#LoadCredential=kek:/etc/dirl/kek
+ExecStart=/usr/bin/java -Xmx256m -XX:+ExitOnOutOfMemoryError -jar /opt/dirl/dirl.jar config=${CREDENTIALS_DIRECTORY}/config.json
 Restart=on-failure
 # 78 is a rejected config or a port that cannot be bound, a restart does not fix either.
 RestartPreventExitStatus=78
@@ -18,7 +26,6 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/dirl
 
 [Install]
 WantedBy=multi-user.target

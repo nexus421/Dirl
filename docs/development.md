@@ -232,7 +232,8 @@ Verified:
   `PerSourcePenalties`. Against 9.2: the current lines and the `Match` block against Unix socket forwarding.
 - Login against a real Pocket ID instance as confidential client with PKCE.
 - In production in an Incus LXC (1 GiB, autostart) behind Zoraxy: a terminal idle for ten minutes stays usable, the
-  hardened unit runs without sandboxing errors, `memory.swap.max` is `0` with `limits.memory.swap false`.
+  hardened unit runs without sandboxing errors, `memory.swap.max` is `0` with `limits.memory.swap false`, also with
+  `DynamicUser=yes` and `StateDirectory=dirl`.
 - 226 tests: every route against the login, access, origin and vault checks (read from the routing tree, so a new
   route is covered too, WebSockets on the real engine), owner only permissions of vault, backups, audit log and access
   list, vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase opening
@@ -273,5 +274,7 @@ Still open:
   were monitored.
 - vim was not installed on the test machine.
 - The Docker image only in CI (`DockerImageTest`), not yet on a real host behind a reverse proxy with a real provider.
+- The unit's `LoadCredential` for the config and the key file and `MemorySwapMax=0` only with `systemd-analyze verify`
+  and against the systemd documentation, not yet on a running system.
 
 [Back to the README](../README.md)

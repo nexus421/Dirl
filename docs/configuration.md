@@ -32,7 +32,7 @@ no secret except the OIDC client secret, so `0400` and owned by the service user
 | `publicUrl`  | string | required        | URL in the browser, scheme, host and optional port only (no path, no trailing slash), lower case host, no default port (`:443`). OIDC redirect base and the only accepted `Origin` |
 | `dataDir`    | string | `/var/lib/dirl` | Vault, backups, access list copy, audit log, logs                                        |
 | `unlockMode` | string | `passphrase`    | `passphrase` or `keyfile`, see [Unlocking](#unlocking)                                   |
-| `keyFile`    | string | `/etc/dirl/kek` | 32 random bytes, only read in `keyfile` mode                                             |
+| `keyFile`    | string | `/etc/dirl/kek` | 32 random bytes, only read in `keyfile` mode, see [Unlocking](#unlocking)                |
 | `oidc`       | object | required        | See below                                                                                |
 | `session`    | object | see below       | See below                                                                                |
 
@@ -92,9 +92,10 @@ In passphrase mode the process starts sealed: no SSH connections, no metrics, on
 passphrases lock unlocking for 15 minutes (counter in memory) and are written to the audit log. The passphrase checks
 before a key export and a passphrase change count towards the same lockout.
 
-Key file mode: create the key with `head -c 32 /dev/urandom > /etc/dirl/kek`, `chmod 0400`, owner `dirl`, before
-the vault is set up. The passphrase keeps working as fallback. Never put `/etc/dirl/kek` into the same backup as
-`/var/lib/dirl`.
+Key file mode: create the key with `head -c 32 /dev/urandom > /etc/dirl/kek` and `chmod 0400` before the vault is set
+up. With the systemd unit enable its `LoadCredential=kek` line and set `"keyFile": "/run/credentials/dirl.service/kek"`,
+systemd then hands Dirl a copy only Dirl can read. With Docker see [Deployment](deployment.md#optional-hardening). The
+passphrase keeps working as fallback. Never put `/etc/dirl/kek` into the same backup as `/var/lib/dirl`.
 
 ### Changing the mode or the key file
 

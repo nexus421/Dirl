@@ -31,10 +31,10 @@ fresh installation restores it.
 GCM does not notice an older genuine version put back in place of the current one: every version opens with the same
 DEK until the passphrase changes. Whoever can write to the data directory can therefore bring back a removed user or
 an old host key pin, for example from `vault.json.1`. Real protection against that would need a place outside the
-data directory that Dirl can write and an attacker cannot reset, which a plain server does not have. Only `dirl` and
-root can write there with mode 0700 as in the [deployment](deployment.md), and both are beyond such a protection
-anyway: root can read everything, the `dirl` user can read the keys from the memory of its own process unless ptrace
-is restricted on the system. Keep the data directory to `dirl` alone.
+data directory that Dirl can write and an attacker cannot reset, which a plain server does not have. Only Dirl's own
+user and root can write there with mode 0700 as in the [deployment](deployment.md), and both are beyond such a
+protection anyway: root can read everything, Dirl's user can read the keys from the memory of its own process unless
+ptrace is restricted on the system. Keep the data directory to Dirl alone.
 
 KotNexLib's `AES.GCM.encrypt` only returns the ciphertext, and with its default nonce argument the result can never
 be decrypted again. Dirl always creates the nonce itself and stores it next to the ciphertext
