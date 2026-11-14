@@ -123,7 +123,7 @@ body.fill { height: 100vh; height: 100dvh; overflow: hidden; }
 .page-header .subtitle { color: var(--muted); margin: 4px 0 0; }
 .page-header .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .stack { display: grid; gap: 16px; }
-.columns { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; }
+.columns { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: stretch; }
 footer { flex-shrink: 0; text-align: center; color: var(--muted); font-size: 12px; padding: 8px 16px 24px; }
 
 /* Cards */
