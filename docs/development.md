@@ -170,6 +170,8 @@ Verified:
 - In production in an Incus LXC behind Zoraxy, with `DynamicUser=yes`: idle terminals stay usable, the sandboxing
   works, `memory.swap.max` is `0`.
 - The fat JAR with `-Xmx256m` through a whole session against the mock provider and two OpenSSH servers.
+- The systemd unit with `DynamicUser`, `LoadCredential` and `MemorySwapMax=0` on a test system, and the round trip
+  right after connecting against real servers.
 - Argon2id with 64 MiB and 3 passes takes 100 to 200 ms on a fast desktop. The concept aims for 0.5 to 1 s, raise
   `iterations` in [crypto/Argon2Kdf.kt](../src/main/kotlin/bayern/kickner/dirl/crypto/Argon2Kdf.kt) on fast targets.
 
@@ -177,6 +179,5 @@ Still open:
 
 - LXCFS values in `/proc/meminfo` of a monitored Incus container.
 - The Docker image only in CI, not yet on a real host with a real provider.
-- The unit's `LoadCredential` and `MemorySwapMax=0` only with `systemd-analyze verify`, not yet on a running system.
 
 [Back to the README](../README.md)
