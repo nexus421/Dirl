@@ -7,6 +7,7 @@ import bayern.kickner.dirl.ssh.ConnectionState
 import bayern.kickner.dirl.ssh.MAX_FAILED_UNITS
 import bayern.kickner.dirl.ssh.MetricsSample
 import bayern.kickner.dirl.ssh.ZramUsage
+import bayern.kickner.dirl.ssh.authorizedKeysCommand
 import bayern.kickner.dirl.ssh.authorizedKeysLine
 import bayern.kickner.dirl.ssh.describe
 import bayern.kickner.dirl.ssh.normalizeSourceAddress
@@ -207,7 +208,8 @@ fun Route.hostRoutes(dirl: Dirl) {
                         +"Put this line into ~/.ssh/authorized_keys of ${host.username} on ${host.name}. It limits what a stolen Dirl key can do on this host."
                     }
                     val restricted = content.settings.sshSourceUnrestricted.not()
-                    copyBlock(authorizedKeysLine(host, key, content.hosts, content.settings.sshSourceAddress, restricted))
+                    val line = authorizedKeysLine(host, key, content.hosts, content.settings.sshSourceAddress, restricted)
+                    copyBlock(line)
                     val jump = host.jumpHostId?.let { content.host(it) }
                     if (restricted.not()) p("muted small") {
                         style = "margin-top:10px"
@@ -221,6 +223,7 @@ fun Route.hostRoutes(dirl: Dirl) {
                         style = "margin-top:10px"
                         +"Set Dirl's source address under Settings to fill in from=\"...\"."
                     }
+                    installCommand(line, key.publicKey, "as ${host.username} on ${host.name}")
                 }
 
                 card {
@@ -927,4 +930,17 @@ private fun FlowContent.overview(
     if (pinned.isNotEmpty() && others.isNotEmpty()) div("host-group") { +"Other hosts" }
     if (others.isNotEmpty()) div("host-list") { others.forEach { hostRow(dirl, content, it, tag) } }
     if (hosts.isEmpty()) notice("info", "No host has this tag.")
+}
+
+/**
+ * The command that puts [line] in place ([authorizedKeysCommand]), run [where] (e.g. "as root on web"). Nothing while
+ * the line still has a placeholder, the page says what is missing.
+ */
+fun FlowContent.installCommand(line: String, publicKey: String, where: String) {
+    val command = authorizedKeysCommand(line, publicKey) ?: return
+    p("muted small") {
+        style = "margin-top:10px"
+        +"Or run this $where. It puts the line in place and replaces an older line of this key, other keys stay."
+    }
+    copyBlock(command)
 }

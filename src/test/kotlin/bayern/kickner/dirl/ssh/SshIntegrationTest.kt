@@ -906,6 +906,39 @@ class SshIntegrationTest {
     }
 
     @Test
+    fun `the command from the host page installs a line OpenSSH accepts and retires an older one`(): Unit = runBlocking {
+        val server = sshd()
+        val key = newKey()
+        val host = addHost("installed", server.port, key.id, pin = PinnedHostKey("ssh-ed25519", server.hostKeyFingerprint, now))
+        val line = authorizedKeysLine(host, key, dirl.vault.content!!.hosts, "127.0.0.1")
+        val command = assertNotNull(authorizedKeysCommand(line, key.publicKey))
+
+        // An outdated line of the same key comes first and allows another address only, as after a changed source.
+        val home = Files.createTempDirectory("dirl-home").toFile()
+        val file = File(home, ".ssh/authorized_keys").apply { parentFile.mkdirs() }
+        file.writeText("restrict,pty,from=\"192.0.2.9\" ${key.publicKey} dirl\nssh-ed25519 AAAAOTHER other@laptop\n")
+        fun logsIn(): Boolean {
+            server.authorize(*file.readLines().toTypedArray())
+            return runCatching {
+                SSHClient().use { client ->
+                    client.addHostKeyVerifier(server.hostKeyFingerprint)
+                    client.connect("127.0.0.1", server.port)
+                    client.authPublickey(user, client.loadKeys(key.privateKeyPem, null, null))
+                    exec(client, "echo ok").trim() == "ok"
+                }
+            }.getOrDefault(false)
+        }
+        assertFalse(logsIn(), "the outdated line keeps Dirl out")
+
+        val shell = ProcessBuilder("sh", "-c", command).apply { environment()["HOME"] = home.absolutePath; redirectErrorStream(true) }.start()
+        val output = shell.inputStream.readBytes().decodeToString()
+        assertEquals(0, shell.waitFor(), output)
+        assertEquals(listOf("ssh-ed25519 AAAAOTHER other@laptop", line), file.readLines())
+        assertTrue(logsIn(), server.log())
+        home.deleteRecursively()
+    }
+
+    @Test
     fun `OpenSSH refuses the whole line for source entries Dirl normalizes or rejects`(): Unit = runBlocking {
         val server = sshd()
         val key = newKey()

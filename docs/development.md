@@ -107,7 +107,9 @@ the session limit, closing all connections while a connect is still running (a h
 twice at once for a host, the round trip of every poll (a pure jump host as well, a host behind a delaying proxy
 turning the row yellow, nothing from a closed connection, forgotten when nobody is present), and `from="..."` lists:
 which entries OpenSSH refuses (a space after a comma, an empty entry, a bad CIDR range), that the normalized form
-works, and that the line the host page shows for several source addresses, or for none, lets Dirl in.
+works, and that the line the host page shows for several source addresses, or for none, lets Dirl in. The command
+that puts the line in place runs in sh against a home with an outdated line of the same key, which keeps Dirl out
+until the command replaced it.
 [PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt) starts Dirl on a real CIO server
 and checks that an open presence WebSocket holds the presence, the engine detail the connection model rests on.
 [LoginFlowTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/LoginFlowTest.kt) runs the complete OIDC login against
@@ -231,7 +233,7 @@ Verified:
 - Login against a real Pocket ID instance as confidential client with PKCE.
 - In production in an Incus LXC (1 GiB, autostart) behind Zoraxy: a terminal idle for ten minutes stays usable, the
   hardened unit runs without sandboxing errors, `memory.swap.max` is `0` with `limits.memory.swap false`.
-- 221 tests: every route against the login, access, origin and vault checks (read from the routing tree, so a new
+- 226 tests: every route against the login, access, origin and vault checks (read from the routing tree, so a new
   route is covered too, WebSockets on the real engine), owner only permissions of vault, backups, audit log and access
   list, vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase opening
   nothing, tampering, backups, key file, restore, KDF parameter bounds, the key file after a mode change, a new key
@@ -243,7 +245,8 @@ Verified:
   tricks, config validation including `config.example.json`, the keys page layout, the login page (the scan, one sign
   in, no app bar, an unreachable provider), the host overview (pins, the order of the vault, the arrange page and its
   form, warnings, critical values, an offline host, the health rules, round trip text, tag colors, the update interval
-  and its fallback without JavaScript, the smallest of three round trips), source address lists for `from="..."`
+  and its fallback without JavaScript, the smallest of three round trips), the command that installs the
+  `authorized_keys` line (run in sh, bash and, where installed, zsh and fish), source address lists for `from="..."`
   (normalizing, rejected entries, the switch to leave it out), presence (on a real CIO server), snippet folders
   (folded, the changed one open), snippet placeholders (what counts as one, Go templates left alone, the marks on the
   buttons, the limit, where they show, the browser code run in Node), the import drop zone, snippet export and import
@@ -252,7 +255,7 @@ Verified:
   server, the reboot rule, the choice per host and what each card shows), the update check (version rules, answer
   limit, at most once an hour, the switch, the footer, no version before the login), SSH integration as listed above,
   the limits on data read from servers and directory listings from a scripted hostile SFTP server (no sshd needed).
-  Without an `sshd` the 31 SSH integration tests are skipped.
+  Without an `sshd` the 32 SSH integration tests are skipped.
 - The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
   provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
   target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all

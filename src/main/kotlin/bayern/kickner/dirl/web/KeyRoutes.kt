@@ -164,7 +164,9 @@ private suspend fun ApplicationCall.keysPage(dirl: Dirl, error: String?, importO
                                 "Used by" to users.joinToString { it.name }.ifEmpty { "nobody" },
                             )
                             p("muted small") { +"Public key, for a normal target (each host page shows the exact line for that host):" }
-                            copyBlock("restrict,pty$from ${key.publicKey} $KEY_COMMENT")
+                            val line = "restrict,pty$from ${key.publicKey} $KEY_COMMENT"
+                            copyBlock(line)
+                            installCommand(line, key.publicKey, "as the login user on such a target")
                             form(action = "/keys/${key.id}/rename", method = FormMethod.post, classes = "btn-row key-add") {
                                 textField("Name", "name", key.name)
                                 submit("Rename", "")

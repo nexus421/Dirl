@@ -113,6 +113,27 @@ fun authorizedKeysLine(host: Host, key: SshKey, allHosts: List<Host>, sourceAddr
     return "$options ${key.publicKey} $KEY_COMMENT"
 }
 
+/**
+ * A command that puts [line] into `~/.ssh/authorized_keys` of whoever runs it, for copying from the host page. It
+ * creates `~/.ssh` with the modes sshd insists on, keeps every other key and replaces an older line of the same key
+ * ([publicKey]) instead of adding a second one: sshd takes the first line that matches, an outdated line would win. The
+ * new file is written next to the old one and renamed over it, so a failure halfway never leaves half a file that
+ * locks everybody out. Plain enough for sh, bash, zsh and fish.
+ *
+ * @param line The line from [authorizedKeysLine].
+ * @param publicKey The key of the line, `ssh-ed25519 AAAA... comment`.
+ * @return the command, or `null` while [line] still holds a placeholder such as `<DIRL-IP>`, which would install a
+ *   line sshd rejects, or a character the quoting does not cover.
+ */
+fun authorizedKeysCommand(line: String, publicKey: String): String? {
+    val blob = publicKey.trim().split(' ').getOrNull(1).orEmpty()
+    val unsafe = "<>'\\\n\r"
+    if (blob.isEmpty() || line.any { it in unsafe } || blob.any { it in unsafe }) return null
+    val file = "~/.ssh/authorized_keys"
+    return "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch $file && grep -vF '$blob' $file > $file.dirl; " +
+        "printf '%s\\n' '$line' >> $file.dirl && chmod 600 $file.dirl && mv $file.dirl $file"
+}
+
 /** One entry of a `from="..."` list without CIDR: an address, a host name or a wildcard pattern, `!` excludes it. */
 private val sourceEntryPattern = "^!?[A-Za-z0-9.:*?-]+$".toRegex()
 
