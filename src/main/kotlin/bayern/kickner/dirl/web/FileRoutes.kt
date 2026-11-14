@@ -10,57 +10,23 @@ import bayern.kickner.dirl.ssh.openSftp
 import bayern.kickner.dirl.vault.Host
 import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.staticLog
-import io.ktor.http.ContentDisposition
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.content.PartData
-import io.ktor.http.content.forEachPart
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.receiveMultipart
-import io.ktor.server.request.receiveParameters
-import io.ktor.server.response.header
-import io.ktor.server.response.respondOutputStream
-import io.ktor.server.response.respondRedirect
-import io.ktor.server.routing.Route
-import io.ktor.server.routing.RoutingContext
-import io.ktor.server.routing.get
-import io.ktor.server.routing.post
-import io.ktor.utils.io.jvm.javaio.toInputStream
+import io.ktor.http.*
+import io.ktor.http.content.*
+import io.ktor.server.application.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+import io.ktor.utils.io.jvm.javaio.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
-import kotlinx.html.FlowContent
-import kotlinx.html.FormEncType
-import kotlinx.html.FormMethod
-import kotlinx.html.InputType
-import kotlinx.html.a
-import kotlinx.html.div
-import kotlinx.html.form
-import kotlinx.html.hiddenInput
-import kotlinx.html.input
-import kotlinx.html.span
-import kotlinx.html.table
-import kotlinx.html.tbody
-import kotlinx.html.td
-import kotlinx.html.th
-import kotlinx.html.thead
-import kotlinx.html.tr
+import kotlinx.html.*
 import kotnexlib.ResultOf2
-import net.schmizz.sshj.sftp.FileAttributes
-import net.schmizz.sshj.sftp.FileMode
-import net.schmizz.sshj.sftp.OpenMode
-import net.schmizz.sshj.sftp.RemoteFile
-import net.schmizz.sshj.sftp.RemoteResourceFilter
-import net.schmizz.sshj.sftp.RemoteResourceInfo
-import net.schmizz.sshj.sftp.RenameFlags
-import net.schmizz.sshj.sftp.Response
-import net.schmizz.sshj.sftp.SFTPClient
-import net.schmizz.sshj.sftp.SFTPException
+import net.schmizz.sshj.sftp.*
 import java.io.IOException
 import java.io.InputStream
 import java.net.URLEncoder
-import java.util.EnumSet
+import java.util.*
 
 private const val TAG = "FileRoutes"
 
@@ -378,7 +344,7 @@ private suspend fun RoutingContext.connectedClient(dirl: Dirl, host: Host) = whe
 }
 
 private suspend fun ApplicationCall.fileError(host: Host, message: String) =
-    page("File operation failed", session, Nav.HOSTS, status = HttpStatusCode.BadGateway) {
+    page("File operation failed", session, Nav.HOSTS, status = HttpStatusCode.Conflict) {
         pageHeader("File operation failed", "on ${host.name}")
         notice("error", message)
         div("btn-row") {

@@ -9,41 +9,17 @@ import bayern.kickner.dirl.dev.DelayProxy
 import bayern.kickner.dirl.vault.Host
 import bayern.kickner.dirl.vault.PinnedHostKey
 import bayern.kickner.dirl.vault.SshKey
-import bayern.kickner.dirl.web.Dirl
-import bayern.kickner.dirl.web.SESSION_COOKIE
-import bayern.kickner.dirl.web.commitWrite
-import bayern.kickner.dirl.web.dirlModule
-import bayern.kickner.dirl.web.deleteEntry
-import bayern.kickner.dirl.web.listDirectory
-import bayern.kickner.dirl.web.listEntries
-import bayern.kickner.dirl.web.roundTripText
-import bayern.kickner.dirl.web.writeAtomically
-import bayern.kickner.dirl.web.writeTemporary
-import io.ktor.client.plugins.websocket.WebSockets
-import io.ktor.client.plugins.websocket.webSocket
-import io.ktor.client.request.forms.formData
-import io.ktor.client.request.forms.submitForm
-import io.ktor.client.request.forms.submitFormWithBinaryData
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.Headers
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.HttpHeaders
-import io.ktor.http.parameters
-import io.ktor.server.cio.CIO
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.testing.testApplication
-import io.ktor.websocket.Frame
-import io.ktor.websocket.readBytes
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import bayern.kickner.dirl.web.*
+import io.ktor.client.plugins.websocket.*
+import io.ktor.client.request.*
+import io.ktor.client.request.forms.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.server.cio.*
+import io.ktor.server.engine.*
+import io.ktor.server.testing.*
+import io.ktor.websocket.*
+import kotlinx.coroutines.*
 import kotnexlib.ResultOf2
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.forwarded.RemotePortForwarder
@@ -55,20 +31,11 @@ import org.junit.jupiter.api.BeforeEach
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
-import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.net.Socket
-import java.net.SocketException
-import java.net.URLEncoder
+import java.net.*
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Connects Dirl to real OpenSSH servers (see [LocalSshd]) with the restricted `authorized_keys` lines Dirl shows in
@@ -836,10 +803,10 @@ class SshIntegrationTest {
                 header(HttpHeaders.Cookie, "$SESSION_COOKIE=${session.token}")
                 header(HttpHeaders.Origin, "https://ssh.example.com")
             }
-            assertEquals(HttpStatusCode.BadGateway, upload.status)
+            assertEquals(HttpStatusCode.Conflict, upload.status)
             assertTrue(upload.bodyAsText().contains("MaxSessions"))
             hold.complete(Unit)
-            terminals.forEach { it.join() }
+            terminals.joinAll()
         }
     }
 
@@ -886,7 +853,7 @@ class SshIntegrationTest {
             send(Frame.Text("""{"type":"resize","cols":120,"rows":40}"""))
             // The marker only appears in the output, not in the echoed input, because printf assembles it.
             send(Frame.Binary(true, "printf 'DIRL%sMARK\\n' -ws-; stty size\r".toByteArray()))
-            withTimeout(15_000) {
+            withTimeout(15.seconds) {
                 for (frame in incoming) {
                     if (frame is Frame.Binary) output += frame.readBytes().decodeToString()
                     if (output.contains("DIRL-ws-MARK") && output.contains("40 120")) break
