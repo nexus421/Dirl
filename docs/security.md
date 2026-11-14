@@ -1,321 +1,150 @@
 # Security
 
-How Dirl protects keys, access and the browser session, and why.
+## In short
+
+- Hosts, keys and snippets live in an encrypted vault. In passphrase mode a stolen disk or backup reveals nothing.
+- Login only through your OIDC provider, then through Dirl's own list of allowed users. Every allowed user can do
+  everything, there are no roles.
+- Each Dirl key is limited on the host with `restrict` and `from=`, a stolen key is of little use elsewhere.
+- Host keys are pinned, a changed key blocks the host.
+- Everything an SSH server sends is treated as untrusted and capped.
+
+What you should do:
+
+- Allow only people you would give the same access to every host yourself.
+- Put the `authorized_keys` line from the host page on every host and use a key that exists only for Dirl.
+- Keep an emergency path that does not depend on Dirl: your own keys and the provider's console.
+- Keep the data directory to Dirl alone and the key file out of its backup.
 
 ## Vault
 
-`dataDir/vault.json` holds hosts, keys, host key pins, snippets and the UI settings as one AES-256-GCM ciphertext,
-with a new random nonce on every write. The data key (DEK) is random and stored only wrapped: encrypted with a key
-derived from the passphrase with Argon2id (64 MiB, 3 passes, stored next to the salt so they can be raised later), and
-in key file mode additionally with the key file. Changing the passphrase creates a new DEK, re-encrypts the vault and
-deletes the local backups, so the old passphrase opens nothing on the server any more. Backups downloaded earlier
-still open with it. After a switch of the unlock mode, a new key file or a restore, the unlock page offers the same
-re-encryption for the key file, so a retired key file opens nothing on the server any more either, see
-[Changing the mode or the key file](configuration.md#changing-the-mode-or-the-key-file). GCM also protects integrity, so nobody with write access can change a pinned host key or add a
-user in the file.
-
-The Argon2 parameters are not authenticated. Changing them only derives a wrong key, but huge values would exhaust the
-heap or hang the unlock, so unlock and restore refuse more than 128 MiB, 10 passes or 4 lanes with a message instead
-of running Argon2.
-
-Five wrong passphrases in a row lock unlocking, key export and passphrase change for 15 minutes, without running
-Argon2. Every failure and the lockout are audited. Wrong passphrases of all three and of all users count together, and
-the counter lives in memory: every allowed user can lock the others out for 15 minutes, and a restart resets it, which
-costs an attacker a restart per five tries. Both are deliberate, all allowed users are trusted anyway, see
-[Access](#access).
-
-Writes go to a temporary file, are `fsync`ed and renamed over the old file. The previous three versions are kept as
-`vault.json.1` to `vault.json.3`. Settings offers the current file as encrypted backup download, the setup page of a
-fresh installation restores it.
-
-GCM does not notice an older genuine version put back in place of the current one: every version opens with the same
-DEK until the passphrase changes. Whoever can write to the data directory can therefore bring back a removed user or
-an old host key pin, for example from `vault.json.1`. Real protection against that would need a place outside the
-data directory that Dirl can write and an attacker cannot reset, which a plain server does not have. Only Dirl's own
-user and root can write there with mode 0700 as in the [deployment](deployment.md), and both are beyond such a
-protection anyway: root can read everything, Dirl's user can read the keys from the memory of its own process unless
-ptrace is restricted on the system. Keep the data directory to Dirl alone.
-
-KotNexLib's `AES.GCM.encrypt` only returns the ciphertext, and with its default nonce argument the result can never
-be decrypted again. Dirl always creates the nonce itself and stores it next to the ciphertext
-([crypto/Aead.kt](../src/main/kotlin/bayern/kickner/dirl/crypto/Aead.kt)).
+- `dataDir/vault.json` is one AES-256-GCM ciphertext with a new nonce on every write, which Dirl always creates
+  itself (KotNexLib's default nonce argument makes data undecryptable). GCM also stops anyone from changing a pinned
+  host key or adding a user in the file.
+- The random data key (DEK) is stored only wrapped: with a key derived from the passphrase by Argon2id (64 MiB,
+  3 passes) and, in key file mode, with the key file.
+- Changing the passphrase creates a new DEK and deletes the local backups, the old passphrase opens nothing on the
+  server any more. A retired key file gets the same treatment, see
+  [Changing the mode or the key file](configuration.md#changing-the-mode-or-the-key-file). Earlier downloads still
+  open with the old secret.
+- The Argon2 parameters are not authenticated, so unlock and restore refuse more than 128 MiB, 10 passes or 4 lanes.
+- Five wrong passphrases (unlock, key export and passphrase change, all users together) lock all three for
+  15 minutes and are audited. The counter is in memory, a restart resets it.
+- Writes are atomic (`fsync`, rename), the three previous versions stay as `vault.json.1` to `.3`.
+- Not protected: an older genuine version put back in place (for example `vault.json.1`) opens with the same DEK and
+  brings back a removed user or an old host key pin. Only Dirl's user and root can write the data directory (`0700`,
+  see [Deployment](deployment.md)), and both could do worse anyway.
 
 ## Access
 
-Two gates: the provider's restriction of the client (in Pocket ID a user group), then Dirl's own list of allowed
-users. Providers without such a restriction let every account through to the second gate, where it ends up as an
-access request.
-
-- While the vault is unlocked, the list in the vault decides, checked on every request. Removing a user ends their
-  sessions at once and their open terminals at the next input, at the latest 30 seconds later. A request already on
-  its way is checked again once its body arrived and between the files of an upload, so a form held back over the
-  removal (or a logout) changes nothing and an upload writes no further file. A grant is decided again inside the
-  vault lock, a user removed a moment ago cannot allow anybody any more.
-- While the vault is sealed, a plain copy (`dataDir/access.json`, `0600`) decides who reaches the unlock page.
-  Tampering with it gives access to the passphrase prompt and nothing else. It is rewritten on every unlock.
-- Before a vault exists, everybody the provider lets through may create it or restore a backup (first-run
-  bootstrap). Whoever restores a backup may reach the unlock page, after the unlock the restored user list decides.
-  A non-empty `oidc.allowedSubjects` closes this window: then only the users on it may create or restore the vault,
-  everybody else ends up as access request.
-- `oidc.allowedSubjects` in the config is a break-glass list for the case that nobody in the UI list can log in. The
-  users on it are always allowed, removing them in the UI does not lock them out.
-- Rejected logins appear under Settings as access requests (in memory, the latest 20), always with the subject. Anybody
-  can pick their display name at the provider, so a request under the name of an allowed user is marked. Display
-  names lose control and formatting characters (which could reorder text on screen or forge log lines) and are cut
-  to 80 characters. Without a usable `name` or `preferred_username` the display name is the subject as the provider
-  sent it, uncleaned and uncut.
-- You cannot remove yourself and the last user cannot be removed.
-- There are no roles. Every allowed user can do everything: use all hosts, change hosts, keys and snippets, export
-  keys (with the vault passphrase), allow and remove users, end sessions, seal the vault and change the passphrase
-  (with the old one). Only allow people you would give the same access to every host yourself.
+- Two gates: the provider's restriction of the client (in Pocket ID a user group), then Dirl's list of allowed users.
+  Other accounts end up as access requests under Settings (the latest 20, in memory). A request under the display name
+  of an allowed user is marked. Display names lose control and formatting characters and are cut to 80 characters.
+- The list is checked on every request and again once a request body arrived, so a form held back over a removal
+  changes nothing. Removing a user ends their sessions at once and their terminals within 30 seconds.
+- While the vault is sealed, a plain copy (`access.json`) decides who reaches the unlock page, nothing more.
+- Before a vault exists, anybody the provider lets through may create or restore it, unless
+  `oidc.allowedSubjects` is set. The users listed there are always allowed (break-glass).
+- Nobody can remove themselves, the last user cannot be removed.
 
 ## SSH
 
-- Connections only exist while somebody uses Dirl. Every request of a logged-in user counts while it runs (a download
-  until it is done, a WebSocket until it is closed), and every page of the app keeps a presence WebSocket open
-  ([ssh/Presence.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Presence.kt)). Login, unlock and setup do not, there is
-  nothing to keep connected. 30 seconds after the last one ended, the next status round closes all connections, so they
-  stay at most about 90 seconds after the last tab was closed, about two minutes after a laptop went to sleep. The next
-  visit connects again. Closing keeps the backoff and the stop after rejected logins. The presence WebSocket carries no
-  data, never extends the session and is closed when the session ends, so a forgotten tab does not keep the connections
-  open.
-- One connection per host while somebody is there. Terminals, SFTP and metrics are channels on it, a second
-  terminal on the same host is a new channel with its own shell. OpenSSH allows 10 of them per connection
-  (`MaxSessions`), so the eleventh terminal on a host, or the file manager next to ten terminals, is refused with that
-  explanation. A refused terminal closes its channel again, so failed attempts never use up the limit.
-- Failed connects back off from 30 seconds to 15 minutes. Three rejected logins in a row stop the host until
-  "Connect now" is clicked. OpenSSH 9.8 and later (Debian 13 ships 10.0) do something similar on their own:
-  `PerSourcePenalties` blocks a source address for a while after failed logins, which was confirmed in the tests.
-  Dirl then shows "the server dropped the connection before the handshake" instead of a cryptic error.
-- No TCP pings. A bare TCP connect shows up as `kex_exchange_identification` in the sshd log, which aggressive
-  fail2ban filters count. Liveness comes from SSH keepalives (`KEEP_ALIVE`, which detects dead peers, unlike the
-  default `HEARTBEAT`) and the status poll.
-- Host keys: trust on first use. The first connection shows the `SHA256:` fingerprint for confirmation, the pin is
-  stored per host in the vault. A different key blocks the host hard and is audited. Changing address, port or jump
-  host removes the pin.
-- Jump hosts: up to two, through direct-tcpip channels on the jump host's own managed connection. Every hop checks its
-  own pinned key. Cycles and longer chains are rejected when a host is saved, also for the hosts behind it. A host
-  marked "jump host only" offers no terminal, no files and no metrics, its connection is still kept and shown while
-  somebody uses Dirl. Reference counting on the jump connection, as the concept suggested, is not needed: all
-  connections are closed together when nobody uses Dirl, a dead jump connection takes its targets down and they
-  reconnect through the backoff.
-- Keys: Ed25519 generated with BouncyCastle in OpenSSH format, imports of unencrypted OpenSSH or PEM keys.
-- Terminal: `xterm-256color` PTY with a plain login shell. The ready-made tmux snippets on the Snippets page (see
-  [usage](usage.md#long-jobs-with-tmux)) ask for the session name, prefilled with `dirl`. Every Dirl user logs in to a
-  host with the same account, so whoever starts the session of the same name while the job of another user runs there
-  joins that shell, sees it and can type into it. That is deliberate: the users share that account, its files and its
-  shell history anyway, there are no roles, and a job one user started can be picked up by another. Another name gives
-  a session of your own, it is no protection against the other users of the account.
-  Terminal input counts as session activity. A watchdog closes the terminal when the session ends or access is removed,
-  sealing the vault closes all of them at once. After a disconnect, Enter reloads the page, which leads to the login
-  when the session ended.
-- Metrics: one `exec` per host and minute while somebody uses Dirl
-  ([ssh/Metrics.kt](../src/main/kotlin/bayern/kickner/dirl/ssh/Metrics.kt)), plus one right after an arrival, an unlock,
-  "Connect now", saving a host and pinning a host key. It reads `/proc/stat` twice one second apart, so each poll has
-  the CPU usage on its own. Only the latest sample per host is kept, in memory, and forgotten when nobody uses Dirl or
-  the vault is sealed. A host whose previous poll still runs is skipped. Bind mounts and btrfs subvolumes of one device
-  are shown once. A host marked "jump host only" has no metrics, Dirl runs no command there and only measures the round
-  trip. Every host is asked for all values, the choice per host only decides what its overview card shows. Each part of
-  the output carries a marker, a part a host cannot deliver (no systemd, no `who`, no kernel under `/boot` in a
-  container) leaves only that value unknown. Text from the server (system name, running and installed kernel, unit
-  names, mount points, file system types) loses control, format and escape characters and is cut at 100 characters, at
-  most 50 failed units are kept.
-- Reboot needed is decided like Debian admins do it: the kernel `/vmlinuz` points to, else the last `vmlinuz-*`
-  installed in `/boot`, differs from `uname -r`, or `/run/reboot-required` exists. A container has no kernel of its
-  own under `/boot`, there it is only known from the flag.
-- SFTP: bytes only, no encoding guessing. An upload never replaces an existing file unless "Overwrite existing files"
-  is ticked, the skipped names are shown at the form. Without it a file somebody else creates while the upload runs
-  is not replaced either. Uploads go to a temporary file and are renamed over the target
-  (`posix-rename`, with a fallback for servers without it) only once the multipart body shows that the file arrived
-  completely: the next part started or the body ended with its closing boundary. Ktor ends a part that was cut off
-  (closed tab, lost network, a proxy giving up) like a complete one, so without that check the truncated part would
-  replace the target. Ktor only notices the missing boundary when the request announces its size with
-  `Content-Length`, which browsers always do. A client without it (chunked, for example a script piping into
-  `curl -T -`) is not protected: a cut off upload replaces the target with the truncated part and is audited as a
-  normal upload. Behind a reverse proxy the protection holds only if the proxy passes `Content-Length` on. With it a
-  transfer that breaks off removes the temporary file of the file in progress and leaves its target unchanged. Files
-  before it whose next part already started stay and are audited, a break inside the headers of the next part
-  discards the file before it as well. The new file keeps the permissions, owner and group of the old one and is
-  never readable by others in between. If the login may not keep the owner or group, the write is refused and the
-  file stays unchanged, a file of another user is changed by logging in as that user. Downloads keep up to 17 reads
-  of 32 KiB in flight and uploads up to 17 writes, so a long round trip does not throttle a transfer to one block at a
-  time. There is no editor in the browser: a textarea cannot give every file back unchanged (browsers turn CR into LF
-  and NUL into U+FFFD), files are changed in the terminal.
-- Uploads into a directory that other users can write to: the temporary file has a random name
-  (`.<name>.dirl-tmp-<random>`) and is created with `O_EXCL`, owner and permissions are set through the open handle.
-  A symlink or a file another user planted there is never written, followed or read along, and a failed rename never
-  costs the target (removing it first is left to servers without `posix-rename`). Remaining risk, shared with `scp`
-  and `sftp put`: a symlink as the target itself is followed on purpose, so another user who can write to the
-  directory can replace a file there with a link and make a more privileged login overwrite the file it points to. Do
-  not upload with a privileged login into directories that less privileged users can write to.
-- A compromised server is treated as an attacker. Everything Dirl reads from it is capped, so it cannot exhaust the
-  heap (which would restart Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries and 16 MiB
-  (sshj keeps every entry until the listing ends, each with up to 32 KiB of name and more of extended attributes),
-  SFTP packets at 1 MiB. A listing over the byte limit ends with a warning that the server may be compromised. sshj alone accepts SFTP packets up to 1 GiB and allocates the buffer as soon as a server announces the
-  length, one forged header would end Dirl with an OutOfMemoryError, so Dirl checks the length before sshj reads it.
-  Terminal output and downloads are streamed. The reason of a failed connect can be the server's own text, the
-  message of an SSH disconnect arrives before the host key is checked. It loses control, format and escape characters
-  and is cut at 200 characters before it is logged, shown on a page or written into the terminal.
-- sshj has no ML-KEM or sntrup key exchange, connections use curve25519. Fine for internal hops, MINA SSHD would be
-  the replacement if post-quantum key exchange becomes a requirement.
+- Connections exist only while a Dirl page is open and close about 90 seconds after the last tab. One connection per
+  host, terminals, files and metrics are channels on it (OpenSSH allows 10, `MaxSessions`).
+- Failed connects back off from 30 seconds to 15 minutes, three rejected logins stop the host until "Connect now". No
+  bare TCP pings, which fail2ban counts, liveness comes from SSH keepalives.
+- Host keys: trust on first use with the `SHA256:` fingerprint, pinned per host. A different key blocks the host and
+  is audited. Changing address, port or jump host removes the pin.
+- Jump hosts: up to two hops, each checks its own pin, cycles are rejected. A "jump host only" offers no terminal,
+  files or metrics.
+- All Dirl users log in with the same account per host, so a tmux session of the same name is shared. That is
+  deliberate, the users share that account anyway.
+- A compromised server is treated as an attacker. Everything read from it is capped so it cannot exhaust the heap
+  (which restarts Dirl sealed): metrics output at 256 KiB, directory listings at 10000 entries and 16 MiB, SFTP
+  packets at 1 MiB, checked before sshj allocates them. Its text (system name, errors, disconnect messages) loses
+  control characters and is cut before it is shown or logged.
+- Uploads go to a temporary file with a random name created with `O_EXCL`, owner and permissions are set through the
+  open handle, and it replaces the target only once it arrived completely. That needs `Content-Length`, which browsers
+  send, a chunked upload (`curl -T -`) is not protected. Without "Overwrite existing files" nothing is replaced. The
+  new file keeps permissions, owner and group, or the write is refused.
+- Remaining risk, as with `scp`: a symlink as upload target is followed. Do not upload with a privileged login into
+  directories that less privileged users can write to.
+- sshj has no post-quantum key exchange, connections use curve25519.
 
 ## Limiting a stolen Dirl key
 
-Inside the running process the keys are in memory in plain text. What a stolen key can do matters more than how it
-is stored. Each host page shows the line to put into `authorized_keys`:
+Each host page shows the line for that host:
 
 ```
 restrict,pty,from="<Dirl IP>" ssh-ed25519 AAAA... dirl
 ```
 
-A host marked "jump host only" gets forwarding to the hosts behind it and nothing else (Unix socket forwarding aside,
-see below):
+A "jump host only" may only forward to the hosts behind it, a jump host that is also a terminal target keeps its PTY:
 
 ```
 restrict,port-forwarding,permitopen="10.0.0.5:22",permitlisten="127.0.0.1:1",command="/bin/false",from="<Dirl IP>" ssh-ed25519 AAAA... dirl
-```
-
-A jump host that is also a terminal target keeps its PTY and gets the same narrow forwarding:
-
-```
 restrict,pty,port-forwarding,permitopen="10.0.0.5:22",permitlisten="127.0.0.1:1",from="<Dirl IP>" ssh-ed25519 AAAA... dirl
 ```
 
-A host behind a jump host sees the connection coming from the jump host, not from Dirl. Its line therefore gets the
-"Address seen by hosts behind it" set on the jump host, often the jump host's address in the internal network:
+A host behind a jump host gets the "Address seen by hosts behind it" of the jump host in its `from=`.
 
-```
-restrict,pty,from="10.0.0.1" ssh-ed25519 AAAA... dirl
-```
+- `from=` takes addresses, CIDR ranges, wildcards (`10.1.*`) and exclusions (`!10.0.0.9`). Dirl stores the list
+  without spaces and rejects what OpenSSH would reject silently (a space after a comma, an empty entry, a CIDR range
+  with host bits set). Host names only match with `UseDNS yes`.
+- Settings can leave `from=` out for setups where a firewall decides. A stolen key then works from anywhere that
+  reaches the port.
+- `permitlisten="127.0.0.1:1"` blocks TCP remote forwarding (`ssh -R`) and needs OpenSSH 7.8 or newer. Jump host
+  lines copied before it existed allow `-R`, copy them again.
+- Remote forwarding to a Unix socket cannot be limited in `authorized_keys`. Close it at the end of the jump host's
+  `sshd_config`:
 
-Without that address the line shows `<JUMP-HOST-IP>` and the host page says where to set it. In a chain every host is
-limited to the host right before it.
+  ```
+  Match Address <Dirl IP>
+      AllowStreamLocalForwarding no
+  ```
 
-Both fields take a list, for example when some servers see Dirl's LAN address and others its public one:
-`192.168.1.10, 203.0.113.5`. Entries are addresses, CIDR ranges, wildcards (`10.1.*`) and exclusions (`!10.0.0.9`),
-separated by commas or spaces. Dirl stores them comma separated without spaces, because OpenSSH refuses the whole line
-for a space after a comma or an empty entry, without telling the client why. For the same reason Dirl rejects a CIDR
-range with host bits set (`10.0.0.1/24` instead of `10.0.0.0/24`), a prefix that is too long and a list that only
-excludes. Host names are accepted but only match with `UseDNS yes` in `sshd_config`, which is off by default. All of
-this was verified against OpenSSH 10.2 in the integration tests.
-
-Settings can also turn the restriction off, then no line gets `from=` at all, also behind jump hosts. That is meant for
-setups where a firewall already decides who reaches SSH. It is not the same protection: a firewall opens the SSH port
-for every key, also for your own logins from elsewhere, while `from=` limits this one key, including against other
-machines inside the network. A stolen Dirl key without `from=` works from anywhere that reaches the port. The address
-is kept, so turning the restriction back on restores the lines.
-
-A "jump host only" without any host behind it gets no forwarding at all, because `port-forwarding` without `permitopen`
-would allow every destination. `port-forwarding` also allows remote forwarding (`ssh -R`), which `permitopen` does not
-limit. For TCP both jump variants get `permitlisten="127.0.0.1:1"`, so a holder of the key can at most listen on port 1
-on loopback, which Dirl never uses. OpenSSH has no "none" for this option, a line with `permitlisten="none"` is rejected
-as a whole. `permitlisten` needs OpenSSH 7.8 or newer (Debian 10 and later), older servers reject the line. Jump host
-lines copied before this option existed still work but allow TCP `-R`, copy them again.
-
-Remote forwarding to a Unix socket (`ssh -R /path/to.sock:...`) cannot be limited in `authorized_keys`. A holder of
-the Dirl key can create new sockets wherever the jump host login may write, existing sockets are not replaced
-(`StreamLocalBindUnlink` is off by default). To close it, put this at the end of the jump host's `sshd_config`, with
-the address the jump host sees Dirl coming from. Your own logins from other addresses keep socket forwarding.
-
-```
-Match Address <Dirl IP>
-    AllowStreamLocalForwarding no
-```
-
-The forms were verified against OpenSSH 10.2 before `permitlisten` was added. The current lines, the line behind a
-jump host and the `Match` block were verified against 9.2: the target accepts commands, PTY and SFTP, both jump
-variants forward only to the permitted target and refuse other destinations and TCP remote forwarding, the block also
-refuses Unix socket remote forwarding, the pure jump host runs no commands.
-Use a key that exists only for Dirl.
-`AllowTcpForwarding` must stay enabled on jump hosts (the default). Raise `MaxSessions` on a host where more than
-about eight terminals at once are normal, all users of Dirl share its one connection. Keep an emergency path that does
-not depend on Dirl: your own keys in the password manager and the provider's console.
+- Verified against OpenSSH 9.2 and 10.2. Keep `AllowTcpForwarding` enabled on jump hosts and raise `MaxSessions` where
+  more than about eight terminals at once are normal.
 
 ## Login and web hardening
 
-- OIDC Authorization Code Flow with PKCE S256, `state` and `nonce`, as a confidential client: the token request
-  carries the client secret (HTTP Basic), so a stolen code and verifier are still useless to anybody but Dirl. The
-  login attempt (state, nonce, PKCE verifier) travels in a `SameSite=Lax` cookie for ten minutes, signed with an HMAC
-  key that is new on every start. The server keeps no state for started logins, so anonymous requests cannot fill
-  memory or block the login. The callback deletes the cookie and the provider accepts each code once, so a callback
-  URL works once. The reason of a denied login comes from the callback URL, which anybody can write, so it loses
-  control and formatting characters and is cut to 200 characters before it is shown or logged.
-- Calls to the provider are limited to four at a time, a request that finds no free slot fails at once instead of
-  waiting, and a failed discovery fetch is not repeated for 15 seconds. Anonymous login requests, against a slow
-  provider or replaying their own login cookie in a flood, can therefore not tie up the threads that serve terminals
-  and file transfers. Such a flood can still make logins fail while it lasts, a rate limit on `/auth/` in the reverse
-  proxy keeps that in check. The discovery document is fetched once and kept until restart, so restart Dirl after
-  the provider moved its endpoints.
-- The ID token is not signature-checked. It comes straight from the token endpoint over TLS, which OIDC Core 1.0
-  section 3.1.3.7 allows as replacement. `iss`, `aud`, `azp`, `exp`, `iat` and `nonce` are checked
-  ([auth/IdToken.kt](../src/main/kotlin/bayern/kickner/dirl/auth/IdToken.kt)).
-- `oidc.forceReauth` sends `prompt=login`, which asks the provider for a fresh sign-in on every login. Dirl does not
-  check that it happened (no `auth_time` or `max_age`), a provider that ignores the parameter lets an existing
-  provider session through. Pocket ID asks for the passkey every time.
-- The answers of the provider (discovery document, token response) are read without a size limit, unlike everything
-  Dirl reads from SSH servers and GitHub. The provider is the party Dirl trusts with the login itself. A broken or
-  compromised one could at worst exhaust the heap, Dirl then restarts sealed.
-- Session: `__Host-session` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`), 256 bit random token, in memory, 60
-  minutes idle, 12 hours at most (both configurable). The automatic update of the host overview and the presence
-  WebSocket do not count as activity, so an unattended browser still reaches the idle timeout. The callback
-  answers with a page that refreshes to `/`, because a redirect would belong to the cross-site navigation and the
-  browser would not send the Strict cookie. For the same reason the callback cannot end an older session of the same
-  browser: a new login only replaces the cookie, the old session stays valid on the server until it expires. Logging
-  out ends a session at once, Settings ends any other.
-- CSP `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; ...`. `unsafe-inline` for styles is
-  required by xterm.js 6, which creates `<style>` elements without nonce support. Scripts stay strict.
-  `manifest-src 'self'` allows the web app manifest under `/static/`, which makes Dirl installable. There is no
-  service worker, so no response is cached and `Cache-Control: no-store` holds for the installed app as well.
-- Every POST and every WebSocket upgrade must carry `Origin: <publicUrl>`, Ktor does not check that for WebSockets.
-  `Referrer-Policy` is `same-origin`, not `no-referrer`: with `no-referrer` browsers send `Origin: null` on form
-  posts, which broke every form in the first browser test.
-- Further headers: `nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy` and `-Resource-Policy`,
-  `Permissions-Policy`, `Cache-Control: no-store`, HSTS when `publicUrl` is https.
-- WebSocket frames are capped at 1 MiB (Ktor's default is unlimited), pings every 20 seconds keep the proxy from
-  closing idle terminals and the presence WebSocket, and let Dirl notice a vanished browser.
-- Snippets never contain hidden characters: control characters other than line break and tab would be typed as keys
-  (a hidden Ctrl+U deletes the visible command before it), formatting characters such as U+202E show the text in
-  another order than it is sent. Both are refused when saving and importing, so the import preview of a file from
-  somebody else shows exactly what a click would send.
-- Terminal output is untrusted input. It only ever goes into xterm.js, never into the DOM, and the links addon is
-  not loaded. All HTML is built with kotlinx.html, which escapes every value.
-  Remote file names are cleaned before they go into a `Content-Disposition` header.
-- Destructive actions ask for confirmation, a private key export asks for the vault passphrase again.
+- OIDC Authorization Code Flow with PKCE S256, `state` and `nonce`, as confidential client. The login attempt travels
+  in a signed cookie, the server keeps no state for it. A callback URL works once.
+- The ID token comes straight from the token endpoint over TLS and is not signature-checked (OIDC Core 3.1.3.7).
+  `iss`, `aud`, `azp`, `exp`, `iat` and `nonce` are checked.
+- `forceReauth` sends `prompt=login`, Dirl cannot check that the provider honoured it.
+- At most four calls to the provider at a time, so a flood of logins cannot block terminals. Rate-limit `/auth/` in
+  the reverse proxy. The provider's answers are read without a size limit, it is the party Dirl trusts with the login.
+- Session: `__Host-session` cookie (`Secure`, `HttpOnly`, `SameSite=Strict`), 60 minutes idle, 12 hours at most. The
+  automatic update of the overview and the presence WebSocket do not count as activity. A new login does not end an
+  older session of the same browser, logging out does.
+- Strict CSP for scripts, no inline scripts, no `innerHTML`. Styles allow `unsafe-inline` because xterm.js needs it.
+- Every POST and WebSocket upgrade must carry `Origin: <publicUrl>`. `Referrer-Policy` stays `same-origin`, with
+  `no-referrer` browsers send `Origin: null` and every form fails.
+- Further headers: `nosniff`, `X-Frame-Options: DENY`, COOP, CORP, `Permissions-Policy`, `Cache-Control: no-store`,
+  HSTS when `publicUrl` is https. WebSocket frames are capped at 1 MiB.
+- Snippet names and commands with hidden characters (control characters, U+202E) are refused, so the import preview
+  shows what a click sends.
+- Terminal output only goes into xterm.js, never into the page. Remote file names are cleaned before they go into a
+  download header. A private key export asks for the passphrase again.
 
 ## Update check
 
-Dirl asks `https://api.github.com/repos/nexus421/Dirl/releases/latest` whether a newer release exists. The server asks,
-never the browser. There is no timer: a page shown to a logged in user starts the question in the background when the
-last one is at least an hour ago, failed ones included. Nobody using Dirl means no requests, and neither does a sealed
-vault, which cannot tell whether the check was turned off. GitHub sees the server's address and the user agent of the
-JDK that runs Dirl, which names only its version, for example `Java-http-client/21.0.12.1`, no Dirl version and nothing
-from the vault. Without a token GitHub allows 60 requests per hour and address, a refused answer (403, 429) is ignored
-until the next hour.
-
-The answer is untrusted like everything from outside: at most 1 MiB is read, redirects are not followed, only
-`tag_name` is used and only if it is exactly `v1.2.3`. The footer link is built from the fixed release URL and that
-version. Nothing is downloaded or installed. The switch under Settings is stored in the vault and only written when
-the check is off. Dirl 0.2.0 and older cannot read a vault where it is off.
+While somebody uses Dirl, the server asks `api.github.com` at most once an hour for the latest release. GitHub sees the
+server's address and the JDK's user agent, nothing from the vault. At most 1 MiB is read, no redirects, only a
+`tag_name` of the form `v1.2.3` is used, nothing is downloaded. It can be turned off under Settings.
 
 ## Audit log
 
-`dataDir/audit.jsonl` (`0600`), one JSON object per line, appended and synced per entry: logins, rejected logins,
-logouts, access granted and removed, sessions ended, vault setup, restore, backup download, unlocks, failures and
-lockouts, sealing, passphrase and settings changes, host, key and snippet changes, key exports, snippet exports and
-imports, host key pins and mismatches, hosts stopped after rejected logins, terminal open and close, every SFTP change
-and download. Reading files in a terminal is not
-visible there, only that the terminal was opened. Never terminal contents, passphrases or keys. The Audit page shows
-and filters the latest entries and only reads the last MiB of the file, so a log that grows for years stays cheap to
-view.
+`dataDir/audit.jsonl` (`0600`), one JSON line per event, synced per entry: logins, access changes, vault events,
+changes to hosts, keys, snippets and settings, key exports, host key pins and mismatches, terminals opened and closed,
+every SFTP change and download. Never terminal contents, passphrases or keys. The Audit page reads only the last MiB.
 
 ## Logs
 
-The console (journald) and `dataDir/logs/app.log` get text from servers, users and the identity provider in many
-places: error messages of sshj, file names, display names. Every line goes through one format
-([logLine](../src/main/kotlin/bayern/kickner/dirl/Common.kt)) instead of each place cleaning its part. Control and
-formatting characters become visible escapes such as `\x1b` or `\u202e`, so nothing in a message can run escape
-sequences in the terminal of whoever reads the log with `cat` or `tail -f` (clear the screen, set the title, write
-the clipboard through OSC 52). Line breaks stay for stack traces, but every further line of a message is indented, so
-no part of it can pass for a log line of its own.
+Console (journald) and `dataDir/logs/app.log` run every line through one format
+([logLine](../src/main/kotlin/bayern/kickner/dirl/Common.kt)): control characters show as escapes such as `\x1b`, so
+nothing in a log can run escape sequences in the terminal of whoever reads it, and further lines of a message are
+indented, so no text can pass for a log line of its own.
 
 [Back to the README](../README.md)

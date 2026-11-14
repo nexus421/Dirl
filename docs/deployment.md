@@ -37,8 +37,8 @@ Open `publicUrl` and create the vault. Update with `docker compose pull` and `do
 ## Reverse proxy
 
 Proxy `publicUrl` to Dirl with WebSocket support: to `port` from the config under systemd, to `127.0.0.1:8080` with
-Docker. If the proxy runs in a container too, put both into one Docker network and drop the port mapping. Keep the plain HTTP hop
-from the proxy to Dirl on one machine, see [Network between the proxy and Dirl](#network-between-the-proxy-and-dirl).
+Docker. A proxy in a container joins Dirl's Docker network instead. Keep the plain HTTP hop from the proxy to Dirl on
+one machine, see [Network between the proxy and Dirl](#network-between-the-proxy-and-dirl).
 
 ## Optional hardening
 
@@ -52,7 +52,7 @@ from the proxy to Dirl on one machine, see [Network between the proxy and Dirl](
   the compose file.
 - Without the unit, for example a plain `java -jar`: start Dirl with `umask 077`. Otherwise data directory and log
   follow the shell's umask and other users on the machine can read the log (host and user names, no secrets).
-- No outgoing connection to GitHub: turn the update check off under Settings, see [Update check](security.md#update-check).
+- No connection to GitHub: turn the update check off under Settings, see [Update check](security.md#update-check).
 
 ## Backup and starting over
 
@@ -67,62 +67,38 @@ from the proxy to Dirl on one machine, see [Network between the proxy and Dirl](
 
 ### The systemd unit
 
-[deploy/dirl.service](../deploy/dirl.service) runs with `-Xmx256m` (Argon2 briefly needs 64 MiB), `UMask=0077`, no
-core dumps, no swap and systemd sandboxing.
+[deploy/dirl.service](../deploy/dirl.service) runs Dirl with `-Xmx256m`, no core dumps, no swap and sandboxing.
 
-- No user to create: `DynamicUser=yes` makes one that only exists while Dirl runs. Its data directory `/var/lib/dirl`
-  is created by systemd with mode `0700` and lives behind it in `/var/lib/private/dirl`, which no other user can enter.
-- The config stays root's own file (`0600`). `LoadCredential` hands Dirl a read-only copy in unswappable memory under
-  `/run/credentials/dirl.service/`, only Dirl and root can read it. The key file goes the same way.
-- An install with the earlier unit (a `dirl` user created by hand) keeps working, there is no need to switch.
-- No swap (`MemorySwapMax=0`): the decrypted keys never reach the disk. The kernel cannot move Dirl out of memory
-  either, on a machine that runs out of memory it ends Dirl, which restarts sealed in passphrase mode. An existing
-  install gets the line by copying the unit again, `systemctl show dirl -p MemorySwapMax` shows it.
-- In an unprivileged container the sandboxing options can fail with `status=226/NAMESPACE`. Enable
-  `security.nesting` for the container or drop the failing options.
-- Each connected host costs about 0.3 MiB heap and two threads (measured with 100 hosts), so 256 MiB are enough for a
-  few hundred hosts. Raise `-Xmx` beyond that.
+- `DynamicUser=yes`: a user that only exists while Dirl runs. Its data directory `/var/lib/dirl` (`0700`) is created
+  by systemd and lives in `/var/lib/private/dirl`, which no other user can enter.
+- `LoadCredential`: the config stays root's file, Dirl gets a read-only copy in unswappable memory under
+  `/run/credentials/dirl.service/`. The key file can go the same way.
+- `MemorySwapMax=0`: the decrypted keys never reach the disk. Out of memory the kernel ends Dirl instead, it restarts
+  sealed in passphrase mode.
+- An install with the earlier unit (a `dirl` user created by hand) keeps working.
+- In an unprivileged container the sandboxing can fail with `status=226/NAMESPACE`: enable `security.nesting` or drop
+  the failing options.
+- About 0.3 MiB heap per connected host, so 256 MiB are enough for a few hundred hosts.
 
 ### The Docker image
 
-- Every release publishes `ghcr.io/nexus421/dirl` for amd64 and arm64, tagged with its version (e.g. `0.6.0`) and the
-  newest as `latest`. It holds the same `dirl.jar` on Corretto 21 and runs as UID 10001 with the paths of the systemd
-  install: config `/etc/dirl/config.json`, data `/var/lib/dirl`.
-- Inside the container Dirl listens on all of its interfaces (`0.0.0.0`), only the port mapping decides who reaches it.
-- The compose file restricts the container like the systemd unit: read-only file system except `data` and a `tmpfs`
-  for `/tmp`, no capabilities, `no-new-privileges`, no core dumps and 512 MiB without swap. The key file stays outside
-  `data`, so it never ends up in the same backup.
-- A version tag only changes when you change it in the compose file. Security updates of the base image arrive with
-  the next Dirl release, a published image is never rebuilt.
-- A rejected config stops Dirl with exit code 78. Compose cannot exclude an exit code from `restart`, so the container
-  restarts over and over, `docker compose logs` shows the reason.
-- CI builds the image on every push and runs a whole first start against it with exactly these restrictions, see
-  [Development](development.md#build-and-test).
+- `ghcr.io/nexus421/dirl` for amd64 and arm64, tagged with the version and `latest`. Same `dirl.jar` on Corretto 21,
+  UID 10001, config `/etc/dirl/config.json`, data `/var/lib/dirl`.
+- The compose file restricts the container like the unit: read-only file system except `data`, no capabilities, no
+  core dumps, 512 MiB without swap.
+- Base image updates arrive with the next Dirl release, a published image is never rebuilt.
+- A rejected config exits with code 78 and Compose restarts it over and over, `docker compose logs` shows why.
 
 ### Network between the proxy and Dirl
 
-TLS ends at the proxy (for example Zoraxy). From there to Dirl the traffic is plain HTTP and carries session cookies,
-the vault passphrase when unlocking and everything typed into terminals. Keep that hop off any physical network:
+From the proxy to Dirl the traffic is plain HTTP with session cookies, the passphrase and everything typed into
+terminals. Keep that hop on one machine: let Dirl listen on the address the proxy uses (for example the container's
+address on the Incus bridge, not `0.0.0.0`) and allow the port only from the proxy. A proxy on another machine needs a
+tunnel (WireGuard, SSH). The 20 second WebSocket ping keeps idle terminals open through the proxy.
 
-- Proxy on the same machine or in a container on the same host: Dirl listens on the container's address on the
-  Incus bridge, the traffic never leaves the host. Set `host` in the config to that address, not `0.0.0.0`.
-- Allow the port only from the proxy, e.g. with a firewall rule in the container or an Incus network ACL.
-- Proxy on another machine: do not send plain HTTP across the network. Put Dirl behind a proxy on its own host, or
-  tunnel the hop (WireGuard, an SSH tunnel).
+### Outgoing connections and logs
 
-Requests that bypass the proxy cannot log in anyway (the session cookies are `Secure` and every form post must carry
-the `publicUrl` origin), but anyone on the path between the two could read along. The 20 second WebSocket ping keeps
-idle terminals and the presence WebSocket of every open page open through the proxy.
-
-### Outgoing connections
-
-Dirl connects to the identity provider, the SSH hosts and, for the update check, `api.github.com` on port 443.
-
-### Logs
-
-Logs go to the console (journald) and to `dataDir/logs/app.log` (5 MiB, rotated). Libraries log through Klogger's
-SLF4J provider, sshj only from WARN on. Three sshj loggers are off, they report every normal disconnect and every new
-host key as ERROR with a stack trace. Dirl logs the cases that matter itself. Control characters in a message show as
-escapes such as `\x1b` and further lines of a message are indented, see [security](security.md#logs).
+Dirl connects to the identity provider, the SSH hosts and `api.github.com` (update check). Logs go to journald and
+`dataDir/logs/app.log` (5 MiB, rotated), see [Logs](security.md#logs).
 
 [Back to the README](../README.md)

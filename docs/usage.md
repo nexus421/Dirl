@@ -1,90 +1,60 @@
 # Using Dirl
 
-## What the UI covers
+## Pages
 
-| Page      | What you can do                                                                                                          |
-|-----------|--------------------------------------------------------------------------------------------------------------------------|
-| Hosts     | One row per host: a status bar in green, yellow (a warning, a value at 90 % or more, a round trip of 100 ms or more, a host key to confirm) or red (no connection), warnings and tags below the name, the values chosen per host (CPU, RAM and fullest disk by default, also swap, every disk, load with cores, uptime, reboot needed, failed services, zram, system and kernel, logged in users), the SSH round trip and Terminal and Files. A click on the row opens the host. The overview updates itself in place, every second while hosts are still connecting (at most half a minute), then every minute, without reloading the page or losing the scroll position. Pin hosts to the top, change the order under "Arrange", filter by tag. Add, edit, delete, connect now. A host can be marked "jump host only", a jump host takes the address the hosts behind it see it coming from |
-| Host      | Connection details, host key confirmation and pin removal, the restricted `authorized_keys` line with copy button and a command that puts it in place as the login user (it replaces an older line of the same key and keeps every other key), every value of the latest poll, disks |
-| Terminal  | xterm.js with resize, snippet buttons (`⏎` runs on the click, `{ }` asks for values first, an unmarked one shows its command with Send and Cancel), a key bar with Ctrl, Esc, Tab, arrows on touch devices, Enter reloads after a disconnect. While connected, the browser asks before leaving the page (also on Ctrl+W), because leaving ends the shell. An Actions mode for phones without the keyboard, see below. Run long jobs in `tmux` or `screen` |
-| Files     | Breadcrumbs, path input, download, upload with progress (existing files only with "Overwrite existing files"), new directory, rename or move, delete. There is no editor, files are changed in the terminal. Symlinks are marked with →, they open, download and get overwritten like their target, deleting one removes only the link |
-| Keys      | Generate Ed25519 or import on top, below one folded row per key with fingerprint and use (a new key opens right after it was added). Rename, export after entering the passphrase again, delete unused keys |
-| Snippets  | Ready-made tmux snippets, see below. Add, edit, delete, "run immediately" or "asks first" (a click shows the command above the terminal with Send and Cancel, Enter sends), optional folder: each folder is a menu above the terminal and a folded group on this page, the one just changed opens. Placeholders like `{{Container}}` are asked for before sending, see below. Export all as JSON, import a dropped, chosen or pasted file with a preview, see below |
-| Audit     | The latest entries, filterable                                                                                           |
-| Settings  | Access requests, allowed users, active sessions (end any), Dirl's source address (several separated by commas, or no restriction at all), update check (on or off, latest release, a newer one shows in the footer of every page), passphrase change, encrypted backup download, seal now |
-| Login     | A terminal that types `dirl scan` and lists what Dirl does, next to the sign in through the identity provider. The motion runs once and stops with the system setting for reduced motion |
-| Setup     | Create the vault, or restore an encrypted backup                                                                         |
+- **Hosts**: one row per host with a status color, the values you chose per host and the SSH round trip. Green is
+  fine, yellow a warning (a value at 90 % or more, a round trip of 100 ms or more, a host key to confirm), red no
+  connection. The page updates itself. Pin hosts, change the order under "Arrange", filter by tag.
+- **Host**: connection, host key, the `authorized_keys` line for this host and a command that puts it in place,
+  the latest values and disks.
+- **Terminal**: snippet buttons (`⏎` runs on the click, `{ }` asks for values, unmarked ones show the command first),
+  a key bar on touch devices, [Actions mode](#actions-mode) for phones. Leaving the page ends the shell, run long jobs
+  in [tmux](#long-jobs-with-tmux).
+- **Files**: browse, download, upload (existing files only with "Overwrite existing files"), new directory, rename,
+  delete. There is no editor. A symlink behaves like its target, deleting one removes only the link.
+- **Keys**: generate or import Ed25519 keys, rename, export (asks for the passphrase), delete unused ones.
+- **Snippets**: commands as buttons above every terminal, in folders, with [placeholders](#placeholders-in-snippets),
+  [export and import](#sharing-snippets).
+- **Audit**: the latest entries, filterable.
+- **Settings**: allowed users and access requests, sessions, Dirl's source address, update check, passphrase change,
+  encrypted backup, seal.
 
-Reboot needed compares the installed kernel with the running one, which works where the kernel image is named after
-its version, as on Debian, Ubuntu and Fedora. On Arch and Alpine the image is named after its flavour
-(`vmlinuz-linux`, `vmlinuz-lts`), there a host always shows reboot needed.
+"Reboot needed" compares the installed with the running kernel. On Arch and Alpine the kernel image has no version in
+its name, there a host always shows it.
+
+The round trip is an SSH request over the existing connection (no ICMP), through jump hosts the whole way from Dirl.
+Each poll measures three times and shows the smallest, the first answer after a login is often slow.
 
 ## Actions mode
 
-The terminal page has two modes, the button in the terminal bar switches between them without a reload and names
-the other one: "Actions" or "Classic terminal".
-
-- Classic terminal: the keyboard types into the shell, snippets sit in the bar above the terminal.
-- Actions: for a phone or tablet in an emergency, restart a service, install updates, read a log. The terminal only
-  shows output, tapping it neither opens the keyboard nor clicks into the program. Input comes from two buttons below
-  it, Enter and Cancel (Ctrl+C), and from every snippet in a panel below them, folders open in place. On a wide screen
-  the panel is on the left. Snippets behave as in the classic mode, one that does not run immediately shows its
-  command with Send and Cancel first. While it asks, Enter of the bar waits and its Cancel only closes the question,
-  so a slip never reaches a running job. Fields for variables do open the keyboard. To type anything else, a `sudo`
-  password for example, switch to the classic terminal.
-
-The mode is remembered per device in the browser. Without a stored mode a device whose main pointer is a touch screen
-starts in Actions, a laptop with a touch screen and a trackpad starts in the classic terminal.
+For a phone in an emergency: the terminal only shows output, input comes from the buttons Enter and Cancel (Ctrl+C)
+and from the snippets in a panel. A tap on the terminal never opens the keyboard or clicks into a program. The button
+in the terminal bar switches to the classic terminal, for a `sudo` password for example. Touch devices start in Actions,
+the choice is remembered per device.
 
 ## Long jobs with tmux
 
-The shell ends with the connection, when the phone locks or the network changes for example, and with it a running
-`apt upgrade`. "Add tmux snippets" on the Snippets page adds two ordinary snippets in the folder `tmux`, through the
-import preview:
+The shell ends with the connection, and with it a running `apt upgrade`. "Add tmux snippets" on the Snippets page adds
+two snippets:
 
-| Snippet    | Command                                 | What it does                                                      |
-|------------|-----------------------------------------|-------------------------------------------------------------------|
-| Start tmux | `tmux new -A -s {{Session:dirl}}`       | Starts the tmux session or attaches to it if it runs              |
-| Stop tmux  | `tmux kill-session -t {{Session:dirl}}` | Ends the session, inside or outside it, and with it a running job |
+- **Start tmux** `tmux new -A -s {{Session:dirl}}` starts the session or attaches to it.
+- **Stop tmux** `tmux kill-session -t {{Session:dirl}}` ends it and the job in it.
 
-Both ask for the session name first, like every snippet with a [placeholder](#placeholders-in-snippets), prefilled with
-`dirl`. The form is the question before Stop ends a running job. Tap Start tmux and Enter, then run the long job. After
-a disconnect, open the terminal again and start the same session: the job is still there with its output. Cancel stops
-the job and leaves the session open. Leaving the page detaches from tmux without
-ending it. Start tmux inside the session only prints a warning about nesting. tmux must be installed on the host. Inside
-tmux the output scrolls with tmux, not with the browser: to scroll back, switch to the classic terminal and use the copy
-mode of tmux (Ctrl+B, then `[`). The snippets can be changed or deleted like any other, Dirl does not treat them
-differently. All Dirl users log in to a host with the same account and so share a session of the same name: Start tmux
-with `dirl` joins a job another user runs there, see [Security](security.md#ssh). Type another name for a session of
-your own, a name without spaces.
-
-## Install as an app
-
-Dirl can be installed from the browser menu and then opens in its own window without browser bars: in Chrome on
-Android "Add to Home screen" or "Install app", on the desktop the install icon in the address bar, in Safari on iOS
-Share, "Add to Home Screen". There is no service worker and nothing is cached, the app needs the connection to Dirl
-like the browser tab. An app on the iOS home screen keeps its own cookies, separate from Safari, so it needs its own
-login.
+Start tmux, run the job, and after a disconnect start tmux again: the job is still there. Scroll back with Ctrl+B, `[`
+in the classic terminal. All Dirl users log in with the same account, so the session `dirl` is shared, see
+[Security](security.md#ssh). Pick another name for a session of your own. tmux must be installed on the host.
 
 ## Placeholders in snippets
 
-A snippet can ask for values before it is sent: `{{Name}}`, or `{{Name:default}}` with a prefilled value. For example
-`docker logs --tail {{Lines:100}} -f {{Container}}`. A click on the snippet in the terminal opens a small form above
-the terminal with one field per name and a preview of the finished command. In the preview every value is blue and
-underlined, the one being typed has a background, an empty one shows its name as `<Name>`. Send or Enter runs it, also
-for a snippet that does not run immediately, Cancel or Escape closes the form. A name that appears several times is asked for once, all of them in the same form, at most 10 different names per snippet.
-
-Names hold letters, digits, `_` and `-`, no spaces. Everything after the colon up to the closing `}}` is the default,
-braces included, as in `{{Path:${HOME}/logs}}`, only line breaks are not. Templates with a dot or a space such as
-Docker's `{{.Names}}` or `{{ .Status }}` stay as they are and are sent unchanged. A bare word in braces counts as a
-variable, also `{{end}}` or `{{else}}` of a Go template, the pill on the Snippets page shows what a snippet asks for. A
-value is typed into the shell as given, like typing it yourself, without quoting: put quotes into the snippet where a
-value may hold spaces, `cat "{{File}}"`. Line breaks and other control characters are removed from a value, so it
-cannot run the command early.
+`{{Name}}` or `{{Name:default}}` in a command asks for a value before sending, for example
+`docker logs --tail {{Lines:100}} -f {{Container}}`. A form above the terminal shows a field per name and a preview,
+Enter sends, Escape cancels. Names hold letters, digits, `_` and `-`, at most 10 per snippet. Templates with a dot or
+a space such as Docker's `{{.Names}}` stay as they are. A value is typed as given without quoting, so write
+`cat "{{File}}"` where it may hold spaces. Line breaks and control characters are removed from values.
 
 ## Sharing snippets
 
-"Export all" on the Snippets page downloads every snippet as `dirl-snippets-<date>.json`:
+"Export all" downloads `dirl-snippets-<date>.json`:
 
 ```json
 {
@@ -96,32 +66,15 @@ cannot run the command early.
 }
 ```
 
-`folder` and `run` are optional, `run` decides whether the command runs right away or asks first. Line breaks at the
-end of `command` are dropped, only `run` decides that, and a carriage return counts as line break. A plain list of snippets
-without the outer object is read as well, which makes it easy to have an AI tool write one. There are no IDs, the file
-works on any Dirl.
+`folder` and `run` are optional, `run` decides whether the command runs at once or asks first. A plain list without
+the outer object works too, handy for files an AI tool writes. The import shows a preview first: new, replacing
+(old and new command side by side) or unchanged, one checkbox per row, optionally "Delete all other snippets". A file
+with a problem (rules of the snippet form, duplicates, unknown fields, hidden characters such as U+202E) is refused
+with every problem listed. At most 500 snippets and 1 MiB.
 
-The import takes a file or pasted JSON and first shows a preview, nothing is saved before "Import selected". Names
-and commands with hidden characters (control characters other than line break and tab, or formatting characters such
-as U+202E) are refused with their position, in the form as well. A snippet
-counts as existing when folder and name match, ignoring case. The preview marks every snippet as new, as replacing an
-existing one (with the old and the new command next to each other) or as already there and unchanged, and highlights
-the ones that run immediately. Every row has a checkbox:
+## Install as an app
 
-- "Replace the existing one" or "Keep the existing one" ticks or unticks every row that would replace a snippet.
-- Unticking a row leaves it out.
-- "Delete all other snippets and keep only the ones selected here" removes every snippet that is not in the file and
-  every existing one whose row is not ticked.
-
-A file with a problem is refused as a whole, with every problem and the number of the snippet: the same rules as the
-snippet form, two snippets with the same folder and name, unknown fields. At most 500 snippets and 1 MiB.
-
-## Round trip
-
-The overview shows how long an SSH request to each host and its answer take, measured on every status poll over the
-existing connection (OpenSSH's `keepalive@openssh.com`). Each poll measures three times in a row and shows the
-smallest: right after a login the first answer often waits for the server's own work on the new session. Through jump hosts it is the whole way from Dirl to the
-host, from Dirl's point of view, not from the browser. Green below 100 ms, yellow from 100 ms on, `offline` in red
-without a connection. No ICMP, so it needs no rights and works where ping is blocked.
+Chrome: "Install app" or "Add to Home screen", Safari on iOS: Share, "Add to Home Screen". Dirl then opens in its own
+window. Nothing is cached, and on iOS the app needs its own login.
 
 [Back to the README](../README.md)

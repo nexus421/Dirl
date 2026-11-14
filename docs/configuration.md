@@ -1,119 +1,99 @@
 # Configuration
 
-## Command line
+## Minimal config
 
-Arguments are `key=value` pairs and bare words.
+```json
+{
+  "publicUrl": "https://ssh.example.com",
+  "oidc": {
+    "issuer": "https://id.example.com",
+    "clientId": "dirl",
+    "clientSecret": "secret from the OIDC provider"
+  }
+}
+```
 
-| Argument        | Default                 | Meaning                      |
-|-----------------|-------------------------|------------------------------|
-| `config=<path>` | `/etc/dirl/config.json` | Config file                  |
-| `check`         |                         | Validate the config and exit |
+Everything else has a default. Users, hosts, keys, snippets and Dirl's source address are set in the UI and live in
+the encrypted vault. `java -jar dirl.jar config=config.json check` validates the file and exits.
 
-| Exit code | Meaning                                                                         |
-|-----------|---------------------------------------------------------------------------------|
-| `0`       | Success (only with `check`, the server runs until stopped)                      |
-| `1`       | Unexpected failure                                                              |
-| `78`      | Config rejected or port cannot be bound (`EX_CONFIG`). systemd does not restart |
+At the provider register a confidential client (not public) with PKCE and the callback URL
+`<publicUrl>/auth/callback`. Copy `issuer` exactly from the discovery document, a missing or extra trailing slash fails
+every login.
 
-## Config file
+## All fields
 
-The config file only holds what is needed before anybody can log in: where to listen, how to reach the identity
-provider and how the vault is unlocked. Everything else (users, hosts, keys, snippets, Dirl's source address,
-passphrase) is managed in the UI and stored in the encrypted vault.
-
-The file is read once at startup. Unknown keys are errors. A file that is no valid JSON or has an unknown key or a
-wrong type reports only the first such error, a file that reads fine reports all its other problems at once. It holds
-no secret except the OIDC client secret, so `0400` and owned by the service user.
-
-| Field        | Type   | Default         | Description                                                                              |
-|--------------|--------|-----------------|------------------------------------------------------------------------------------------|
-| `host`       | string | `127.0.0.1`     | Bind address. TLS is done by the reverse proxy                                           |
-| `port`       | int    | `8080`          | HTTP port                                                                                |
-| `publicUrl`  | string | required        | URL in the browser, scheme, host and optional port only (no path, no trailing slash), lower case host, no default port (`:443`). OIDC redirect base and the only accepted `Origin` |
-| `dataDir`    | string | `/var/lib/dirl` | Vault, backups, access list copy, audit log, logs                                        |
-| `unlockMode` | string | `passphrase`    | `passphrase` or `keyfile`, see [Unlocking](#unlocking)                                   |
-| `keyFile`    | string | `/etc/dirl/kek` | 32 random bytes, only read in `keyfile` mode, see [Unlocking](#unlocking)                |
-| `oidc`       | object | required        | See below                                                                                |
-| `session`    | object | see below       | See below                                                                                |
+| Field        | Default         | Description                                                                                  |
+|--------------|-----------------|----------------------------------------------------------------------------------------------|
+| `host`       | `127.0.0.1`     | Bind address, TLS is the reverse proxy's job                                                 |
+| `port`       | `8080`          | HTTP port                                                                                    |
+| `publicUrl`  | required        | URL in the browser: scheme, lower case host, optional port, no path, no trailing slash, no `:443`. The only accepted `Origin` |
+| `dataDir`    | `/var/lib/dirl` | Vault, backups, access list copy, audit log, logs                                            |
+| `unlockMode` | `passphrase`    | `passphrase` or `keyfile`, see [Unlocking](#unlocking)                                       |
+| `keyFile`    | `/etc/dirl/kek` | 32 random bytes, only read in `keyfile` mode                                                 |
 
 `oidc`:
 
-| Field             | Type     | Default                 | Description                                                                      |
-|-------------------|----------|-------------------------|----------------------------------------------------------------------------------|
-| `issuer`          | string   | required                | Issuer exactly as in the discovery document. `https` (or `http` on localhost)    |
-| `clientId`        | string   | required                | Client ID at the provider                                                        |
-| `clientSecret`    | string   | required                | Secret of the confidential client, sent to the token endpoint with HTTP Basic    |
-| `allowedSubjects` | string[] | `[]`                    | Always allowed (break-glass). If set, only these may create the vault            |
-| `forceReauth`     | bool     | `true`                  | Sends `prompt=login`, which asks the provider for a fresh sign-in on every login. Dirl does not check it, see [Security](security.md#login-and-web-hardening) |
-| `scopes`          | string[] | `["openid", "profile"]` | Must contain `openid`                                                            |
+| Field             | Default                 | Description                                                                       |
+|-------------------|-------------------------|-----------------------------------------------------------------------------------|
+| `issuer`          | required                | As in the discovery document, `https` (`http` only on localhost)                  |
+| `clientId`        | required                | Client ID at the provider                                                         |
+| `clientSecret`    | required                | Secret of the confidential client                                                 |
+| `allowedSubjects` | `[]`                    | `sub` values that are always allowed (break-glass). If set, only they may create the vault |
+| `forceReauth`     | `true`                  | Asks the provider for a fresh sign-in on every login (`prompt=login`)             |
+| `scopes`          | `["openid", "profile"]` | Must contain `openid`                                                             |
 
-`allowedSubjects` holds `sub` values, not user names: the stable user ID of the provider, at most providers shown in
-its admin UI. Dirl shows it under Settings for every user and access request. Set it before the first start to
-decide who may create the vault, otherwise the first user the provider lets through does.
+`session`: `idleTimeoutMinutes` (default `60`) and `maxAgeHours` (default `12`).
 
-`session`:
+The file is read once at startup, unknown keys are errors. Its only secret is the client secret: keep it `0600` and
+owned by root, the systemd unit hands Dirl a copy. `sub` is the provider's stable user ID, Dirl shows it under Settings
+for every user and access request. Without `allowedSubjects` the first user the provider lets through creates the vault.
 
-| Field                | Type | Default | Description                               |
-|----------------------|------|---------|-------------------------------------------|
-| `idleTimeoutMinutes` | int  | `60`    | Session expires after this much idle time |
-| `maxAgeHours`        | int  | `12`    | Session expires this long after the login |
+## Command line
+
+`config=<path>` (default `/etc/dirl/config.json`) and `check` (validate and exit). Exit codes: `0` success with
+`check`, `1` unexpected failure, `78` config rejected or port in use, which systemd does not restart.
 
 ## OIDC provider
 
-Any OpenID Connect provider works if it offers:
+Any provider works that offers a discovery document at `<issuer>/.well-known/openid-configuration`, the Authorization
+Code Flow with PKCE (S256) for a confidential client with `client_secret_basic`, an ID token with `sub`, `aud`, `exp`,
+`iat`, `nonce` and `name` or `preferred_username`, and a token endpoint over `https`. Restrict the client to a group
+like `dirl` if the provider can, see [Security](security.md#access).
 
-- a discovery document at `<issuer>/.well-known/openid-configuration`, a trailing slash of the issuer is dropped
-  before the path is appended
-- the Authorization Code Flow with PKCE (S256) for a confidential client with `client_secret_basic`
-- `sub`, `aud`, `exp`, `iat` and `nonce` in the ID token, and `name` or `preferred_username` for the display name
-- a token endpoint over `https`. Dirl takes the ID token straight from it and relies on TLS instead of the token
-  signature, see [Security](security.md#login-and-web-hardening)
-
-Client setup at the provider: callback URL `<publicUrl>/auth/callback`, PKCE enabled, **not** a public client (Dirl
-authenticates with the client secret in addition to PKCE). Copy `issuer` from the discovery document, a missing or
-extra trailing slash fails every login. Restrict the client to a group like `dirl` if the provider can do that, see
-[Security](security.md#access).
-
-Only Pocket ID is tested so far. There: under Access "Selected user groups" a group like `dirl`, optionally
-"Requires Re-Authentication". The issuer is the base URL, e.g. `https://id.example.com`. Other providers use longer
-issuers, e.g. `https://auth.example.com/application/o/dirl/` in Authentik or `https://kc.example.com/realms/home` in
-Keycloak.
+Tested with Pocket ID: under Access "Selected user groups", optionally "Requires Re-Authentication", the issuer is the
+base URL (`https://id.example.com`). Authentik and Keycloak use longer issuers such as
+`https://auth.example.com/application/o/dirl/` or `https://kc.example.com/realms/home`.
 
 ## Unlocking
 
-| Scenario                                      | `passphrase` (default) | `keyfile`                                |
-|-----------------------------------------------|------------------------|------------------------------------------|
-| Full system backup or snapshot leaked         | protected              | **not** protected                        |
-| tar of `/var/lib/dirl` leaked                 | protected              | protected while `/etc/dirl` is not in it |
-| Root or code execution in the running process | not protected          | not protected                            |
-| Unplanned restart                             | unlock once            | automatic                                |
+| Scenario                              | `passphrase` (default) | `keyfile`                                |
+|---------------------------------------|------------------------|------------------------------------------|
+| Full backup or snapshot leaked        | protected              | **not** protected                        |
+| tar of `/var/lib/dirl` leaked         | protected              | protected while `/etc/dirl` is not in it |
+| Root or code execution in the process | not protected          | not protected                            |
+| Unplanned restart                     | unlock once            | automatic                                |
 
-In passphrase mode the process starts sealed: no SSH connections, no metrics, only login and unlock. Five wrong
-passphrases lock unlocking for 15 minutes (counter in memory) and are written to the audit log. The passphrase checks
-before a key export and a passphrase change count towards the same lockout.
+In passphrase mode Dirl starts sealed: no SSH connections and no metrics until somebody unlocks. Five wrong
+passphrases lock unlocking for 15 minutes.
 
-Key file mode: create the key with `head -c 32 /dev/urandom > /etc/dirl/kek` and `chmod 0400` before the vault is set
-up. With the systemd unit enable its `LoadCredential=kek` line and set `"keyFile": "/run/credentials/dirl.service/kek"`,
-systemd then hands Dirl a copy only Dirl can read. With Docker see [Deployment](deployment.md#optional-hardening). The
-passphrase keeps working as fallback. Never put `/etc/dirl/kek` into the same backup as `/var/lib/dirl`.
+Key file mode: `head -c 32 /dev/urandom > /etc/dirl/kek` and `chmod 0400` before the vault is set up. With systemd
+enable the unit's `LoadCredential=kek` line and set `"keyFile": "/run/credentials/dirl.service/kek"`, with Docker see
+[Deployment](deployment.md#optional-hardening). The passphrase keeps working. Never back up `/etc/dirl/kek` together
+with `/var/lib/dirl`.
 
 ### Changing the mode or the key file
 
-The vault stores which key file opens it. After a switch from `keyfile` to `passphrase`, a new key file or a restored
-backup from another server, that no longer fits: the old key file would still open the vault and everything added
-later, and a new key file opens nothing, so the automatic unlock fails. The unlock page explains the mismatch and
-offers two buttons:
+After a switch of `unlockMode`, a new key file or a restored backup from another server the key file in the vault no
+longer fits: the old one would still open it, a new one opens nothing. The unlock page says so and offers:
 
-| Situation                                     | Button                    | What happens                                                                 |
-|-----------------------------------------------|---------------------------|------------------------------------------------------------------------------|
-| Switched to `passphrase`, old key file left   | Unlock and re-encrypt     | New data key, only the passphrase opens the vault, local backups deleted     |
-| New key file, or a backup from another server | Unlock and re-encrypt     | New data key for the passphrase and the configured key file, backups deleted |
-| Switched to `keyfile`                         | Unlock and add key file   | The key file is added, data key and backups stay                             |
-| Any of these                                  | Only unlock (Enter key)   | Nothing changes, the page asks again at the next unlock                      |
+| Situation                                     | Button                  | What happens                                               |
+|-----------------------------------------------|-------------------------|------------------------------------------------------------|
+| Switched to `passphrase`, old key file left   | Unlock and re-encrypt   | New data key, only the passphrase opens it, backups deleted |
+| New key file, or a backup from another server | Unlock and re-encrypt   | New data key for passphrase and key file, backups deleted  |
+| Switched to `keyfile`                         | Unlock and add key file | The key file is added, nothing else changes                |
+| Any of these                                  | Only unlock (Enter)     | Nothing changes, the page asks again next time             |
 
-Hosts, keys, snippets and the passphrase stay in every case, nothing is lost as long as you know the passphrase. The
-local backups `vault.json.1` to `.3` are deleted on a re-encryption because the old key file still opens them.
-Destroy the old key file afterwards: backups you downloaded earlier and older copies of the data directory still open
-with it.
+Nothing is lost as long as you know the passphrase. Destroy the old key file afterwards, earlier downloads and copies
+of the data directory still open with it.
 
 [Back to the README](../README.md)

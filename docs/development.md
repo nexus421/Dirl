@@ -1,7 +1,6 @@
 # Development
 
-Requirements: JDK 25 (Amazon Corretto is the pinned toolchain, Gradle downloads it if missing). Always use the
-Gradle wrapper.
+JDK 25 (Amazon Corretto is the pinned toolchain, Gradle downloads it if missing). Always use the Gradle wrapper.
 
 ## Build and test
 
@@ -9,78 +8,24 @@ Gradle wrapper.
 ./gradlew build
 ```
 
-`build` compiles, runs all tests and builds the fat JAR `build/libs/dirl.jar` (`./gradlew shadowJar` alone skips the
-tests). GitHub Actions runs the same on every push and pull request, including the SSH integration tests. The tests
-of the placeholder code in `terminal.js` run it in Node and are skipped without `node` on the path, the GitHub runners
-have it.
+Compiles, runs all tests and builds `build/libs/dirl.jar` (`./gradlew shadowJar` alone skips the tests). CI runs the
+same on every push, with the SSH integration tests. The tests of the placeholder code in `terminal.js` need `node`.
 
 ```bash
 docker build --tag dirl:test .
 DIRL_DOCKER_IMAGE=dirl:test ./gradlew dockerImageTest
 ```
 
-The [Dockerfile](../Dockerfile) packs the finished `build/libs/dirl.jar`, so `shadowJar` or `build` comes first.
-`dockerImageTest` runs only
-[DockerImageTest.kt](../src/test/kotlin/bayern/kickner/dirl/DockerImageTest.kt), the normal `test` leaves it out. It
-starts the image with the restrictions of [deploy/docker-compose.yml](../deploy/docker-compose.yml), config and data
-owned by UID 10001, and goes through a whole first start in the host network against the mock provider and a local
-sshd: login, vault setup, key, host, host key, a command in the terminal, restart, unlock, logs. It needs `docker`
-and an sshd and is skipped without `DIRL_DOCKER_IMAGE`. CI runs it after the build, the image is only pushed by a
-release.
-
-## Release
-
-1. Set `version` in `build.gradle.kts`, commit and push.
-2. Publish a release on GitHub with the tag `v<version>`, e.g. `v0.2.0` for `version = "0.2.0"`.
-
-[release.yml](../.github/workflows/release.yml) then checks that the tag matches the version, runs all tests and the
-Docker image test, builds `dirl.jar` and attaches it to the release together with `dirl.jar.sha256`. A tag that does
-not match fails the run and attaches nothing. A second job downloads the attached JAR, checks its sum, builds the
-image for amd64 and arm64 and pushes it to `ghcr.io/nexus421/dirl` as `<version>` and, unless the release is marked
-as pre-release, as `latest`. It pushes with the workflow's own token (`packages: write`), no account or secret
-needed. A package created that way takes the visibility of the repository. Should it show up as private after the
-first release, set it to public once under the package settings on GitHub.
-
-The actions in both workflows are pinned to commit hashes, the comment names the version. All of them run on
-Node.js 24. `gradle/actions/setup-gradle` v6 keeps its caching in a closed-source component under the Gradle Terms of
-Use (https://gradle.com/legal/terms-of-use/), using it means accepting them. `cache-provider: basic` would switch to an
-open-source cache instead.
-
-## Run locally without an OIDC provider
-
-```bash
-./gradlew devRun
-```
-
-Starts Dirl on `http://localhost:18080` together with a mock OIDC provider on port 18081 that offers two test users.
-Data lives in `build/dev`, delete it to start over (`./gradlew clean` deletes it as well). The mock lives in the test
-sources and never ends up in the JAR. `DEV_PASSPHRASE` in
-[DevServer.kt](../src/test/kotlin/bayern/kickner/dirl/dev/DevServer.kt) is a suggestion for the throwaway dev vault.
-
-## Demo with test data
-
-```bash
-./gradlew demoRun
-```
-
-Starts Dirl on `http://localhost:18090` with demo data, to look at the UI without setting anything up. "Sign in" logs
-in Ada right away (mock provider on port 18091), the vault unlocks with a key file. The hosts are real OpenSSH
-servers on loopback: two pinned hosts, a pure jump host with a host behind it, a host behind a proxy that delays
-every packet by 70 ms (a round trip of about 140 ms), two hosts with partly replaced metrics (a full disk, reboot
-needed, a failed service, more load), one offline and one with an unconfirmed host key. It needs an `sshd` like the
-integration tests below, or an unpacked `openssh-server` in `build/sshd-root`. Every start begins from scratch in
-`build/demo`. [DemoServer.kt](../src/test/kotlin/bayern/kickner/dirl/dev/DemoServer.kt) lives in the test sources and
-never ends up in the JAR.
-
-Not on shared machines: `devRun` and `demoRun` listen on loopback only, but there anyone on the machine is logged in
-without a password, `demoRun` as the owner of a vault with shells on the demo hosts.
+The [Dockerfile](../Dockerfile) packs the finished JAR, so `build` comes first.
+[DockerImageTest.kt](../src/test/kotlin/bayern/kickner/dirl/DockerImageTest.kt) starts the image with the restrictions
+of [deploy/docker-compose.yml](../deploy/docker-compose.yml) and goes through a whole first start against the mock
+provider and a local sshd. CI runs it after the build.
 
 ## SSH integration tests
 
 [SshIntegrationTest.kt](../src/test/kotlin/bayern/kickner/dirl/ssh/SshIntegrationTest.kt) starts real OpenSSH
-servers as the current user on free loopback ports, no root needed. It uses `/usr/sbin/sshd` if installed (CI
-installs `openssh-server`), or an unpacked package from `DIRL_SSHD_ROOT`, and is skipped otherwise. Without root and
-without installing anything:
+servers as the current user on loopback. It uses `/usr/sbin/sshd` or an unpacked package from `DIRL_SSHD_ROOT` and is
+skipped without one. Without root:
 
 ```bash
 apt-get download openssh-server openssh-sftp-server
@@ -94,101 +39,94 @@ for f in openssh-*.deb; do dpkg-deb -x "$f" "$HOME/sshd-root"; done
 DIRL_SSHD_ROOT="$HOME/sshd-root" ./gradlew test
 ```
 
-The tests cover trust on first use, a changed host key, the stop after three rejected logins, both jump host variants
-including refused TCP remote forwarding, an IPv6 target behind a restricted jump host (skipped without IPv6 loopback),
-a target that sees the jump host's address instead of Dirl's (skipped without a non-loopback IPv4 address), atomic
-SFTP writes including broken transfers and kept permissions and group, entries planted under the temporary name, a
-failed commit that keeps the target, normal uploads through the page, an upload that outlasts the session, downloads byte for byte around the read-ahead
-block size, symlinks in listing, overwrite and delete, upload overwrite protection and the reason of a failed upload,
-rename onto an existing entry or a dangling symlink, a hostile SFTP server announcing a 1 GiB packet, the terminal
-WebSocket including resize, a refused terminal not using up the sessions of a connection and the explanation beyond
-the session limit, closing all connections while a connect is still running (a held back handshake through
-`GatedProxy`), closing for absence without losing a stop, the status poll only while somebody is present and never
-twice at once for a host, the round trip of every poll (a pure jump host as well, a host behind a delaying proxy
-turning the row yellow, nothing from a closed connection, forgotten when nobody is present), and `from="..."` lists:
-which entries OpenSSH refuses (a space after a comma, an empty entry, a bad CIDR range), that the normalized form
-works, and that the line the host page shows for several source addresses, or for none, lets Dirl in. The command
-that puts the line in place runs in sh against a home with an outdated line of the same key, which keeps Dirl out
-until the command replaced it.
-[PresenceWebTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/PresenceWebTest.kt) starts Dirl on a real CIO server
-and checks that an open presence WebSocket holds the presence, the engine detail the connection model rests on.
-[LoginFlowTest.kt](../src/test/kotlin/bayern/kickner/dirl/web/LoginFlowTest.kt) runs the complete OIDC login against
-the mock provider.
-
-## Fat JAR check
+## Run locally
 
 ```bash
-unzip -p build/libs/dirl.jar META-INF/services/org.slf4j.spi.SLF4JServiceProvider
+./gradlew devRun
 ```
 
-Must print `bayern.kickner.klogger.slf4j.KloggerServiceProvider`. Shadow's default duplicate strategy drops
-duplicate service files before `mergeServiceFiles()` sees them, so [build.gradle.kts](../build.gradle.kts) uses
-`INCLUDE` with an `EXCLUDE` exception for everything else. CI checks it.
+Dirl on `http://localhost:18080` with a mock OIDC provider on port 18081 and two test users, data in `build/dev`.
+`DEV_PASSPHRASE` in [DevServer.kt](../src/test/kotlin/bayern/kickner/dirl/dev/DevServer.kt) suggests a passphrase.
+
+```bash
+./gradlew demoRun
+```
+
+Dirl on `http://localhost:18090` with demo data: "Sign in" logs in right away, the vault unlocks with a key file, the
+hosts are real OpenSSH servers on loopback (a jump host, a slow host, warnings, an offline host, an unconfirmed host
+key). Needs an sshd like the integration tests, or an unpacked `openssh-server` in `build/sshd-root`. Every start
+begins from scratch in `build/demo`.
+
+Both live in the test sources and never end up in the JAR. Not on shared machines: they listen on loopback only, but
+there anyone on the machine is logged in without a password.
+
+## Release
+
+1. Set `version` in `build.gradle.kts`, commit and push.
+2. Publish a release on GitHub with the tag `v<version>`.
+
+[release.yml](../.github/workflows/release.yml) checks that tag and version match, runs all tests, attaches `dirl.jar`
+and `dirl.jar.sha256` to the release and pushes the image for amd64 and arm64 to `ghcr.io/nexus421/dirl` as
+`<version>` and, unless it is a pre-release, `latest`. Should the package show up as private after the first release,
+set it to public once in its settings on GitHub.
+
+The actions are pinned to commit hashes. `gradle/actions/setup-gradle` caches through a closed-source component under
+the [Gradle Terms of Use](https://gradle.com/legal/terms-of-use/), `cache-provider: basic` would avoid that.
 
 ## Updating dependencies
 
-Every dependency version, including transitive ones, is locked in [gradle.lockfile](../gradle.lockfile), so a build
-never picks up a new version unnoticed. Checksum verification of the artifacts (`verification-metadata.xml`, which
-the concept suggested) was tried and dropped again: IntelliJ downloads source JARs and the Gradle sources for
-display, and every one of them failed verification, which made the IDE sync fail. After changing a version in
-`build.gradle.kts`:
+Every version, transitive ones included, is locked in [gradle.lockfile](../gradle.lockfile). After changing a version
+in `build.gradle.kts`:
 
 ```bash
 ./gradlew dependencies --write-locks
 ```
 
-Review the diff of the lockfile before committing. Releases worth watching: sshj, Ktor, BouncyCastle, xterm.js.
+Review the lockfile diff. Worth watching: sshj, Ktor, BouncyCastle, xterm.js. There is no `verification-metadata.xml`,
+it broke the IntelliJ sync. Pushes to `master` submit the dependency graph to GitHub for Dependabot alerts.
 
-The wrapper checks the Gradle distribution it downloads against `distributionSha256Sum` in
-[gradle-wrapper.properties](../gradle/wrapper/gradle-wrapper.properties) and refuses to run a different one. The
-`wrapper` task does not look the checksum up, a Gradle update passes the one of the `-bin.zip` from
-`https://services.gradle.org/distributions/gradle-<version>-bin.zip.sha256`:
+The wrapper checks the downloaded Gradle against `distributionSha256Sum`. A Gradle update needs the checksum from
+`https://services.gradle.org/distributions/gradle-<version>-bin.zip.sha256`, run this twice:
 
 ```bash
 ./gradlew wrapper --gradle-version <version> --gradle-distribution-sha256-sum <checksum>
 ```
 
-Without the option the task refuses the update and says so. Run the same command twice, the second run updates the
-wrapper JAR and scripts with the new version.
+After a change of dependencies or of the Shadow config, check the merged SLF4J service file (CI does as well):
 
-Pushes to `master` submit the resolved dependencies to GitHub's dependency graph. With "Dependency graph" and
-"Dependabot alerts" enabled in the repository settings (both are off by default), GitHub reports known vulnerabilities
-in any of them, transitive ones included. There are no automatic update pull requests: they would change
-`build.gradle.kts` without the lockfile and fail the build.
+```bash
+unzip -p build/libs/dirl.jar META-INF/services/org.slf4j.spi.SLF4JServiceProvider
+```
+
+It must print `bayern.kickner.klogger.slf4j.KloggerServiceProvider`.
+
+xterm.js 6.0.0 and addon-fit 0.11.0 are vendored from the npm tarballs, checked against the registry's integrity
+values, with their SHA-256 sums in [SHA256SUMS](../src/main/resources/static/vendor/xterm/SHA256SUMS).
 
 ## Project layout
 
-One package per concern under `bayern.kickner.dirl`:
+| Package / file     | Content                                                                         |
+|--------------------|---------------------------------------------------------------------------------|
+| `Main.kt`          | Arguments, config, logging, wiring, server start                                |
+| `UpdateCheck.kt`   | Asks GitHub for the newest release                                              |
+| `config`           | Config model and strict loader                                                  |
+| `crypto`           | Argon2id key derivation, AES-GCM with explicit nonce                            |
+| `vault`            | Vault model, crash-safe store, setup, unlock, lockout, passphrase change, backup |
+| `audit`            | Append-only audit log                                                           |
+| `auth`             | OIDC client, ID token checks, sessions, access control                          |
+| `ssh`              | Keys, jump host routes, connection manager, metrics                             |
+| `web`              | Guards, layout, error pages, the routes of every page, terminal, presence, SFTP |
+| `resources/static` | `app.css`, `app.js`, `terminal.js`, manifest and icons, vendored xterm.js       |
+| test `dev`         | Mock OIDC provider, `devRun` and `demoRun`                                      |
 
-| Package / file     | Content                                                                                   |
-|--------------------|-------------------------------------------------------------------------------------------|
-| `Main.kt`          | Argument parsing, config, logging, wiring, server start                                   |
-| `UpdateCheck.kt`   | Asks GitHub at most once an hour for the newest release, version rules, answer limit      |
-| `config`           | Config model and strict loader with validation                                            |
-| `crypto`           | Argon2id KEK derivation, AES-GCM with explicit nonce                                      |
-| `vault`            | Vault model, crash-safe store, lifecycle (setup, unlock, lockout, passphrase change, backup, restore) |
-| `audit`            | Append-only JSON lines audit log                                                          |
-| `auth`             | OIDC client with PKCE, ID token validation, sessions, access control                      |
-| `ssh`              | Keys, routes through jump hosts, connection manager, metrics                              |
-| `web`              | Security guards, layout, error pages, the routes of every page, terminal, presence, SFTP  |
-| `resources/static` | `app.css`, `app.js`, `terminal.js`, `manifest.json` with the app icons, icons as SVG masks, vendored xterm.js 6.0.0 and addon-fit 0.11.0 |
-| test `dev`         | Mock OIDC provider, the `devRun` and `demoRun` entry points                               |
-
-xterm.js is vendored, not fetched at build time. The files come from the npm tarballs `@xterm/xterm@6.0.0` and
-`@xterm/addon-fit@0.11.0`, checked against the registry's SHA-512 integrity values, their SHA-256 sums are in
-[SHA256SUMS](../src/main/resources/static/vendor/xterm/SHA256SUMS).
-
-Conventions follow [DemoAiProject](https://github.com/nexus421/DemoAiProject): `.not()` instead of `!`,
-`runCatching` by default, expected outcomes as `ResultOf2` and sealed types, KDoc on every public declaration, no
-em dashes, en dashes or semicolons in prose. Deliberate deviations, decided in the concept: the fat JAR is built
-with Shadow instead of the Ktor plugin, Klogger's SLF4J provider replaces `slf4j-simple`, and the UI is
-server-rendered kotlinx.html instead of Compose, because xterm.js lives in the DOM.
+Conventions follow [DemoAiProject](https://github.com/nexus421/DemoAiProject). Deliberate deviations: Shadow instead
+of the Ktor plugin, Klogger's SLF4J provider instead of `slf4j-simple`, server-rendered kotlinx.html instead of
+Compose, because xterm.js lives in the DOM.
 
 ## Endpoints
 
-Everything except `/login`, `/auth/start`, `/auth/callback`, `/healthz` and `/static/*` requires a session of an
-allowed user. The public paths are matched exactly, only `/static/` is a prefix. While the vault is sealed only
-`/unlock`, `/setup`, `/setup/restore` and `/logout` work.
+Everything except `/login`, `/auth/start`, `/auth/callback`, `/healthz` and `/static/*` needs a session of an allowed
+user. While the vault is sealed only `/unlock`, `/setup`, `/setup/restore` and `/logout` work.
 
 | Method | Path                                                         | Purpose                                         |
 |--------|--------------------------------------------------------------|-------------------------------------------------|
@@ -200,7 +138,7 @@ allowed user. The public paths are matched exactly, only `/static/` is a prefix.
 | GET    | `/`                                                          | Host overview, `?tag=` filters                  |
 | GET    | `/hosts/new`, `/hosts/{id}`, `/hosts/{id}/edit`, `/hosts/arrange` | Host pages, order of the overview          |
 | POST   | `/hosts`, `/hosts/{id}`, `/hosts/arrange`                    | Add, save, save the order                       |
-| POST   | `/hosts/{id}/delete`, `/connect`, `/pin`, `/forget-key`, `/pinned` | Host actions, `/pinned` pins to the top   |
+| POST   | `/hosts/{id}/delete`, `/connect`, `/pin`, `/forget-key`, `/pinned` | Host actions                              |
 | GET    | `/hosts/{id}/terminal`                                       | Terminal page                                   |
 | WS     | `/ws/terminal/{id}?cols=&rows=`                              | Terminal stream                                 |
 | WS     | `/ws/presence`                                               | Open while a Dirl page is open, no data         |
@@ -208,73 +146,37 @@ allowed user. The public paths are matched exactly, only `/static/` is a prefix.
 | POST   | `/hosts/{id}/files/upload`, `/mkdir`, `/delete`, `/rename`   | File operations                                 |
 | GET    | `/keys`, `/keys/{id}/export`                                 | Keys                                            |
 | POST   | `/keys/generate`, `/keys/import`, `/keys/{id}/rename`, `/keys/{id}/export`, `/keys/{id}/delete` | Key actions  |
-| GET    | `/snippets`, `/snippets/{id}/edit`, `/snippets/export`, `/snippets/tmux` | Snippets, export of all as JSON, preview of the tmux snippets |
-| POST   | `/snippets`, `/snippets/{id}`, `/snippets/{id}/delete`, `/snippets/import` (preview), `/snippets/import/apply` | Snippet actions |
+| GET    | `/snippets`, `/snippets/{id}/edit`, `/snippets/export`, `/snippets/tmux` | Snippets, export, tmux preview  |
+| POST   | `/snippets`, `/snippets/{id}`, `/snippets/{id}/delete`, `/snippets/import`, `/snippets/import/apply` | Snippet actions |
 | GET    | `/audit?q=`                                                  | Audit log                                       |
 | GET    | `/settings`, `/settings/backup`                              | Settings, encrypted vault download              |
 | POST   | `/settings/users/allow`, `/settings/users/revoke`, `/settings/requests/dismiss`, `/settings/sessions/revoke`, `/settings/ssh`, `/settings/updates`, `/settings/passphrase`, `/vault/seal` | Settings actions |
 
-WebSocket protocol: binary frames carry terminal bytes in both directions. Text frames are JSON control messages,
-`{"type":"resize","cols":120,"rows":40}` from the browser and `{"type":"error","message":"..."}` from the server.
+The terminal WebSocket carries terminal bytes as binary frames, text frames are JSON control messages:
+`{"type":"resize","cols":120,"rows":40}` from the browser, `{"type":"error","message":"..."}` from the server.
 
 ## Verification status
 
 Verified:
 
-- Build with every dependency of the concept's stack table, fat JAR with the merged Klogger SLF4J provider,
-  BouncyCastle 1.86 everywhere.
-- Every page clicked through in a browser, desktop and phone width, light layout and dark mode: login, setup,
-  unlock with a wrong and the right passphrase, access request and grant, keys, hosts, host key confirmation for a
-  jump host and a target behind it, terminal (fish shell, UTF-8, 300000 lines of output, `top`, resize to phone
-  width, Ctrl+C from the key bar, snippets), files (upload with progress, rename, download,
-  delete), metrics, audit log, settings, seal closing open terminals, key export, encrypted backup.
-- Against OpenSSH 10.2: the restricted `authorized_keys` lines before `permitlisten`, jump host forwarding,
-  `PerSourcePenalties`. Against 9.2: the current lines and the `Match` block against Unix socket forwarding.
-- Login against a real Pocket ID instance as confidential client with PKCE.
-- In production in an Incus LXC (1 GiB, autostart) behind Zoraxy: a terminal idle for ten minutes stays usable, the
-  hardened unit runs without sandboxing errors, `memory.swap.max` is `0` with `limits.memory.swap false`, also with
-  `DynamicUser=yes` and `StateDirectory=dirl`.
-- 226 tests: every route against the login, access, origin and vault checks (read from the routing tree, so a new
-  route is covered too, WebSockets on the real engine), owner only permissions of vault, backups, audit log and access
-  list, vault (round trip, lockout also on passphrase change, passphrase change including the old passphrase opening
-  nothing, tampering, backups, key file, restore, KDF parameter bounds, the key file after a mode change, a new key
-  file or a restore, re-encrypted only on the explicit button), audit log tail of a large file, the log line format
-  (escapes, indented further lines), OIDC (token checks, PKCE, client secret, the full flow, replayed callback,
-  tampered login cookie, a flood of anonymous logins, a failing and a slow provider), backup restore through the UI up
-  to the unlock, access control (including revokes at the same moment and requests whose body arrives after the
-  removal, on a real CIO server), idle timeout with automatic reloads, security headers, origin checks and path
-  tricks, config validation including `config.example.json`, the keys page layout, the login page (the scan, one sign
-  in, no app bar, an unreachable provider), the host overview (pins, the order of the vault, the arrange page and its
-  form, warnings, critical values, an offline host, the health rules, round trip text, tag colors, the update interval
-  and its fallback without JavaScript, the smallest of three round trips), the command that installs the
-  `authorized_keys` line (run in sh, bash and, where installed, zsh and fish), source address lists for `from="..."`
-  (normalizing, rejected entries, the switch to leave it out), presence (on a real CIO server), snippet folders
-  (folded, the changed one open), snippet placeholders (what counts as one, Go templates left alone, the marks on the
-  buttons, the limit, where they show, the browser code run in Node), the import drop zone, snippet export and import
-  (round trip between two instances, the file format and its problems, hidden characters, preview states, all four
-  ways to import, refused and oversized input, session and origin), metrics (real output, missing parts, text from the
-  server, the reboot rule, the choice per host and what each card shows), the update check (version rules, answer
-  limit, at most once an hour, the switch, the footer, no version before the login), SSH integration as listed above,
-  the limits on data read from servers and directory listings from a scripted hostile SFTP server (no sshd needed).
-  Without an `sshd` the 32 SSH integration tests are skipped.
-- The fat JAR in production mode (`-Xmx256m -XX:+ExitOnOutOfMemoryError`, fresh data directory) against the mock
-  provider and two OpenSSH servers: first login and vault setup (a weak passphrase refused), key, a jump host and a
-  target behind it, host key confirmation, terminal with a snippet from a folder, every file operation, closing all
-  connections about a minute after the last page was left, reconnecting on return, encrypted backup, key export with
-  a wrong and the right passphrase, seal and unlock, logout. Vault, access list and audit log are `0600`, the log
-  holds no errors and no secrets.
-- Dependency locking of every configuration.
-- Argon2id with 64 MiB and 3 passes takes 100 to 200 ms on a fast desktop. Measure on the target, the concept aims
-  for 0.5 to 1 s, raise `iterations` in [crypto/Argon2Kdf.kt](../src/main/kotlin/bayern/kickner/dirl/crypto/Argon2Kdf.kt)
-  if it is much faster there. Existing vaults keep their parameters until the passphrase is changed.
+- 226 tests, 32 of them against real sshd. They cover every route against the guards, the vault and its key file,
+  OIDC including a flood of logins and a slow provider, access control including revokes during a request, uploads
+  (broken transfers, planted temporary files, kept modes), a hostile SFTP server, the `authorized_keys` lines and the
+  command that installs them in real shells, `from=` lists against OpenSSH, snippets and their import, metrics, the
+  update check and the log format.
+- Every page in a browser at desktop and phone width, light and dark.
+- `authorized_keys` lines and the `Match` block against OpenSSH 9.2 and 10.2.
+- Login against a real Pocket ID instance.
+- In production in an Incus LXC behind Zoraxy, with `DynamicUser=yes`: idle terminals stay usable, the sandboxing
+  works, `memory.swap.max` is `0`.
+- The fat JAR with `-Xmx256m` through a whole session against the mock provider and two OpenSSH servers.
+- Argon2id with 64 MiB and 3 passes takes 100 to 200 ms on a fast desktop. The concept aims for 0.5 to 1 s, raise
+  `iterations` in [crypto/Argon2Kdf.kt](../src/main/kotlin/bayern/kickner/dirl/crypto/Argon2Kdf.kt) on fast targets.
 
 Still open:
 
-- Incus: LXCFS values in `/proc/meminfo` when a container is a monitored host, so far only VMs and physical servers
-  were monitored.
-- vim was not installed on the test machine.
-- The Docker image only in CI (`DockerImageTest`), not yet on a real host behind a reverse proxy with a real provider.
-- The unit's `LoadCredential` for the config and the key file and `MemorySwapMax=0` only with `systemd-analyze verify`
-  and against the systemd documentation, not yet on a running system.
+- LXCFS values in `/proc/meminfo` of a monitored Incus container.
+- The Docker image only in CI, not yet on a real host with a real provider.
+- The unit's `LoadCredential` and `MemorySwapMax=0` only with `systemd-analyze verify`, not yet on a running system.
 
 [Back to the README](../README.md)

@@ -42,43 +42,31 @@ updates keep coming, new features only rarely. Issues and bug reports are welcom
 
 ## Quick start
 
-Requires JDK 25 to build, Java 21 to run.
+Needs Java 21. Take `dirl.jar` from the [latest release](https://github.com/nexus421/Dirl/releases) or build it with
+`./gradlew build` (JDK 25). Register Dirl as a client at your OIDC provider with the callback URL
+`<publicUrl>/auth/callback`, write a [minimal config](docs/configuration.md#minimal-config), then:
 
 ```bash
-./gradlew build
-```
-
-```bash
-cp config.example.json config.json
-```
-
-Register Dirl as a client at your OIDC provider with the callback URL `<publicUrl>/auth/callback` (details in
-[Configuration](docs/configuration.md#oidc-provider)). Set `publicUrl` and the `oidc` section in `config.json`, then:
-
-```bash
-java -jar build/libs/dirl.jar config=config.json
+java -jar dirl.jar config=config.json
 ```
 
 Open `publicUrl`, sign in and create the vault passphrase. The first user becomes the first allowed user, so do this
-right after deployment, or limit it with `oidc.allowedSubjects`. Then generate a key, add a host, put the shown
-`authorized_keys` line on the server and confirm its host key fingerprint.
+right away or limit it with `oidc.allowedSubjects`. Then generate a key, add a host, put the shown `authorized_keys`
+line on the server and confirm its host key.
 
-Try it locally without an identity provider:
+As a service with systemd or Docker see [Deployment](docs/deployment.md). Without an identity provider, to try it:
 
 ```bash
 ./gradlew devRun
 ```
 
-With Docker: the image `ghcr.io/nexus421/dirl` and [deploy/docker-compose.yml](deploy/docker-compose.yml), see
-[Deployment](docs/deployment.md#docker).
-
 ## Documentation
 
-- [Usage](docs/usage.md): what each page does
-- [Configuration](docs/configuration.md): config file, command line, unlock modes, OIDC provider setup
-- [Deployment](docs/deployment.md): systemd, Incus, Docker, reverse proxy, backups
-- [Security](docs/security.md): vault, access control, SSH restrictions, web hardening
-- [Development](docs/development.md): tests, dev server, dependencies, project layout, endpoints
+- [Usage](docs/usage.md): the pages, snippets, tmux
+- [Configuration](docs/configuration.md): config file, OIDC provider, unlock modes
+- [Deployment](docs/deployment.md): systemd, Docker, reverse proxy, backups
+- [Security](docs/security.md): what Dirl protects and what you should do
+- [Development](docs/development.md): build, tests, release, endpoints
 - [Concept](termix-eigenbau-konzept.md) (German): design decisions and reasoning
 
 ## Why Dirl
