@@ -79,7 +79,7 @@ It exists because tools like Termix grew too fast for my taste. Many features, m
 Dirl follows KISS instead.
 
 Dirl is written with AI. Code, tests and documentation were created with Claude by Anthropic, directed, tested and
-fully reviewed by me.
+reviewed by me.
 
 ## License
 
