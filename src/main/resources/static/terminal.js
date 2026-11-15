@@ -11,6 +11,9 @@
     scrollback: 5000,
     fontFamily: 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace',
     fontSize: 14,
+    // With the default line height of 1 the DOM renderer clips glyphs below the cell, so underscores vanish in fonts
+    // like DejaVu Sans Mono at 14px.
+    lineHeight: 1.1,
     theme: { background: '#0b0d10' },
   });
   const fit = new FitAddon.FitAddon();
