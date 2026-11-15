@@ -61,8 +61,19 @@ data class LoginStart(val cookie: String, val redirectUrl: String)
 
 /** Why a login failed. Shown to the user only in general terms, the detail goes to the log. */
 sealed interface LoginError {
-    /** The provider could not be reached or returned something unusable. @property reason For the log. */
+    /**
+     * The provider cannot answer right now: no connection, a timeout, an HTTP 5xx or 429, or all
+     * [OidcClient.MAX_CONCURRENT_PROVIDER_CALLS] slots are taken. Trying again later can help. @property reason For the log.
+     */
     data class ProviderUnavailable(val reason: String) : LoginError
+
+    /**
+     * The provider answers, but not in a way that fits the `oidc` settings: the discovery document is missing or
+     * unreadable, names another issuer or an endpoint without https, or the token endpoint does not accept the client
+     * ID and secret. Trying again does not help, the settings in Dirl or in the provider need a change.
+     * @property reason For the log.
+     */
+    data class ProviderMisconfigured(val reason: String) : LoginError
 
     /** Callback without a valid login cookie (expired, missing, tampered with, or from before a restart). */
     data object UnknownAttempt : LoginError
@@ -76,7 +87,10 @@ sealed interface LoginError {
      */
     data class Denied(val description: String) : LoginError
 
-    /** The code exchange or the ID token validation failed. @property reason For the log. */
+    /**
+     * The provider refused the code (expired, already used, made up) or the ID token did not pass the validation.
+     * @property reason For the log.
+     */
     data class InvalidToken(val reason: String) : LoginError
 }
 
@@ -105,9 +119,9 @@ class OidcClient(
     @Volatile
     private var metadata: ProviderMetadata? = null
 
-    /** Unix milliseconds of the last failed discovery fetch, see [DISCOVERY_RETRY_AFTER]. */
+    /** The last failed discovery fetch, repeated without a new fetch for [DISCOVERY_RETRY_AFTER]. */
     @Volatile
-    private var discoveryFailedAt = 0L
+    private var discoveryFailure: DiscoveryFailure? = null
 
     /**
      * Limits blocking calls to the provider. Anonymous requests can trigger them (`/auth/start` before the discovery
@@ -127,7 +141,10 @@ class OidcClient(
      * parameters are then appended with `&`.
      */
     fun startLogin(): ResultOf2<LoginStart, LoginError> {
-        val provider = providerMetadata().getOrElse { return ResultOf2.Failure(LoginError.ProviderUnavailable(it.message ?: it.toString())) }
+        val provider = when (val metadata = providerMetadata()) {
+            is ResultOf2.Success -> metadata.value
+            is ResultOf2.Failure -> return metadata
+        }
         val attempt = LoginAttempt(randomToken(), randomToken(), randomToken(), clock())
 
         val params = buildMap {
@@ -167,9 +184,13 @@ class OidcClient(
         if (error != null) return ResultOf2.Failure(LoginError.Denied(cleanText(errorDescription ?: error, MAX_ERROR_LENGTH) ?: "no reason given"))
         if (code.isNullOrBlank()) return ResultOf2.Failure(LoginError.InvalidToken("Callback without code"))
 
-        val provider = providerMetadata().getOrElse { return ResultOf2.Failure(LoginError.ProviderUnavailable(it.message ?: it.toString())) }
-        val idToken = exchangeCode(provider, code, attempt.codeVerifier).getOrElse {
-            return ResultOf2.Failure(LoginError.InvalidToken(it.message ?: it.toString()))
+        val provider = when (val metadata = providerMetadata()) {
+            is ResultOf2.Success -> metadata.value
+            is ResultOf2.Failure -> return metadata
+        }
+        val idToken = when (val exchanged = exchangeCode(provider, code, attempt.codeVerifier)) {
+            is ResultOf2.Success -> exchanged.value
+            is ResultOf2.Failure -> return exchanged
         }
         return when (val result = validateIdToken(idToken, config.issuer, config.clientId, attempt.nonce, clock() / 1000)) {
             is ResultOf2.Success -> result
@@ -178,28 +199,55 @@ class OidcClient(
     }
 
     /**
-     * Fetches and caches the discovery document. After a failure no new fetch happens for [DISCOVERY_RETRY_AFTER],
-     * so a flood of login attempts against an unreachable provider does not turn into a flood of requests.
+     * Fetches and caches the discovery document. After a failure no new fetch happens for [DISCOVERY_RETRY_AFTER], the
+     * same failure is returned instead, so a flood of login attempts against an unreachable provider does not turn into
+     * a flood of requests, and a wrong setting is not reported as an unreachable provider in the meantime.
      *
      * A trailing slash of the issuer (Authentik: `https://auth.example.com/application/o/dirl/`) is dropped before the
      * path is appended, as OpenID Connect Discovery 1.0 section 4 requires. The `iss` check still uses the issuer as
      * configured.
      */
-    private fun providerMetadata(): Result<ProviderMetadata> = metadata?.let { Result.success(it) } ?: runCatching {
-        val recentlyFailed = clock() - discoveryFailedAt < DISCOVERY_RETRY_AFTER.inWholeMilliseconds
-        check(recentlyFailed.not()) { "Provider discovery failed recently, retrying later" }
-        val request = HttpRequest.newBuilder(URI("${config.issuer.removeSuffix("/")}/.well-known/openid-configuration"))
-            .timeout(Duration.ofSeconds(10)).GET().build()
-        val response = limited { http.send(request, HttpResponse.BodyHandlers.ofString()) }
-        check(response.statusCode() == 200) { "Discovery returned HTTP ${response.statusCode()}" }
+    private fun providerMetadata(): ResultOf2<ProviderMetadata, LoginError> {
+        metadata?.let { return ResultOf2.Success(it) }
+        val failure = discoveryFailure
+        if (failure != null && clock() - failure.at < DISCOVERY_RETRY_AFTER.inWholeMilliseconds) return ResultOf2.Failure(failure.repeated())
+        val fetched = fetchMetadata()
+        when (fetched) {
+            is ResultOf2.Success -> {
+                infoLog { "Loaded OIDC discovery document of ${fetched.value.issuer}" }
+                metadata = fetched.value
+            }
 
-        val parsed = json.decodeFromString<ProviderMetadata>(response.body())
-        check(parsed.issuer == config.issuer) { "Discovery issuer \"${parsed.issuer}\" differs from the configured issuer" }
-        check(isSecureEndpoint(parsed.tokenEndpoint)) { "Token endpoint must use https" }
-        check(isSecureEndpoint(parsed.authorizationEndpoint)) { "Authorization endpoint must use https" }
-        infoLog { "Loaded OIDC discovery document of ${parsed.issuer}" }
-        parsed.also { metadata = it }
-    }.onFailure { discoveryFailedAt = clock() }
+            is ResultOf2.Failure -> discoveryFailure = DiscoveryFailure(clock(), fetched.value)
+        }
+        return fetched
+    }
+
+    /** One fetch of the discovery document, see [providerMetadata]. */
+    private fun fetchMetadata(): ResultOf2<ProviderMetadata, LoginError> {
+        val request = runCatching {
+            HttpRequest.newBuilder(URI("${config.issuer.removeSuffix("/")}/.well-known/openid-configuration"))
+                .timeout(Duration.ofSeconds(10)).GET().build()
+        }.getOrElse { return ResultOf2.Failure(LoginError.ProviderMisconfigured("Issuer is not a valid URL: ${it.message}")) }
+        val response = runCatching { limited { http.send(request, HttpResponse.BodyHandlers.ofString()) } }
+            .getOrElse { return ResultOf2.Failure(LoginError.ProviderUnavailable(it.message ?: it.toString())) }
+
+        val status = response.statusCode()
+        if (isTemporary(status)) return ResultOf2.Failure(LoginError.ProviderUnavailable("Discovery returned HTTP $status"))
+        // A 404 or a redirect: the issuer does not point at the discovery document.
+        if (status != 200) return ResultOf2.Failure(LoginError.ProviderMisconfigured("Discovery returned HTTP $status"))
+
+        val parsed = runCatching { json.decodeFromString<ProviderMetadata>(response.body()) }
+            .getOrElse { return ResultOf2.Failure(LoginError.ProviderMisconfigured("Discovery document is unreadable: ${it.message}")) }
+        val mismatch = when {
+            parsed.issuer != config.issuer -> "Discovery issuer \"${parsed.issuer}\" differs from the configured issuer"
+            isSecureEndpoint(parsed.tokenEndpoint).not() -> "Token endpoint must use https"
+            isSecureEndpoint(parsed.authorizationEndpoint).not() -> "Authorization endpoint must use https"
+            else -> null
+        }
+        if (mismatch != null) return ResultOf2.Failure(LoginError.ProviderMisconfigured(mismatch))
+        return ResultOf2.Success(parsed)
+    }
 
     /**
      * Runs [call] if a provider slot is free right now, fails otherwise. Waiting for a slot would hold an IO thread per
@@ -214,8 +262,14 @@ class OidcClient(
         }
     }
 
-    /** Exchanges the code for tokens and returns the raw ID token. */
-    private fun exchangeCode(provider: ProviderMetadata, code: String, codeVerifier: String): Result<String> = runCatching {
+    /**
+     * Exchanges the code for tokens and returns the raw ID token.
+     *
+     * The token endpoint answers `invalid_client` (RFC 6749 section 5.2, also with HTTP 401) when it does not accept the
+     * client ID or secret, and `unauthorized_client` when the client may not use this grant: both are settings, not a
+     * bad code. Every other refusal is [LoginError.InvalidToken].
+     */
+    private fun exchangeCode(provider: ProviderMetadata, code: String, codeVerifier: String): ResultOf2<String, LoginError> {
         val form = formEncode(
             mapOf(
                 "grant_type" to "authorization_code",
@@ -225,19 +279,33 @@ class OidcClient(
                 "code_verifier" to codeVerifier,
             )
         )
-        val request = HttpRequest.newBuilder(URI(provider.tokenEndpoint))
-            .timeout(Duration.ofSeconds(10))
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .header("Accept", "application/json")
-            .header("Authorization", basicAuth(config.clientId, config.clientSecret))
-            .POST(HttpRequest.BodyPublishers.ofString(form))
-            .build()
-        val response = limited { http.send(request, HttpResponse.BodyHandlers.ofString()) }
-        check(response.statusCode() == 200) { "Token endpoint returned HTTP ${response.statusCode()}" }
+        val response = runCatching {
+            val request = HttpRequest.newBuilder(URI(provider.tokenEndpoint))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("Accept", "application/json")
+                .header("Authorization", basicAuth(config.clientId, config.clientSecret))
+                .POST(HttpRequest.BodyPublishers.ofString(form))
+                .build()
+            limited { http.send(request, HttpResponse.BodyHandlers.ofString()) }
+        }.getOrElse { return ResultOf2.Failure(LoginError.ProviderUnavailable(it.message ?: it.toString())) }
 
-        val body = json.decodeFromString<TokenResponse>(response.body())
-        body.idToken ?: error("Token response contains no id_token")
+        val status = response.statusCode()
+        if (isTemporary(status)) return ResultOf2.Failure(LoginError.ProviderUnavailable("Token endpoint returned HTTP $status"))
+        val body = runCatching { json.decodeFromString<TokenResponse>(response.body()) }.getOrNull()
+        if (status != 200) {
+            // The error code comes from the provider, cleaned like every other text from outside before it is logged.
+            val error = body?.error?.let { cleanText(it, MAX_ERROR_LENGTH) }
+            val reason = "Token endpoint returned HTTP $status" + (error?.let { " ($it)" } ?: "")
+            val refusedClient = status == 401 || error == "invalid_client" || error == "unauthorized_client"
+            return ResultOf2.Failure(if (refusedClient) LoginError.ProviderMisconfigured(reason) else LoginError.InvalidToken(reason))
+        }
+        if (body == null) return ResultOf2.Failure(LoginError.InvalidToken("Token response is unreadable"))
+        return body.idToken?.let { ResultOf2.Success(it) } ?: ResultOf2.Failure(LoginError.InvalidToken("Token response contains no id_token"))
     }
+
+    /** An answer that may be different in a moment: the provider is overloaded, restarting or failing. */
+    private fun isTemporary(status: Int): Boolean = status >= 500 || status == 429
 
     /** `payload.signature`, both Base64url. The payload fields are Base64url tokens and a number, `|` never occurs in them. */
     private fun signAttempt(attempt: LoginAttempt): String {
@@ -263,7 +331,22 @@ class OidcClient(
     }
 
     @Serializable
-    private data class TokenResponse(@SerialName("id_token") val idToken: String? = null)
+    private data class TokenResponse(@SerialName("id_token") val idToken: String? = null, val error: String? = null)
+
+    /**
+     * A failed discovery fetch.
+     *
+     * @property at Unix milliseconds of the fetch.
+     * @property error What it returned, [repeated] until [DISCOVERY_RETRY_AFTER] has passed.
+     */
+    private class DiscoveryFailure(val at: Long, val error: LoginError) {
+        /** The same failure, with a reason that says no new fetch happened. */
+        fun repeated(): LoginError = when (error) {
+            is LoginError.ProviderUnavailable -> error.copy(reason = "${error.reason} (failed recently, retrying later)")
+            is LoginError.ProviderMisconfigured -> error.copy(reason = "${error.reason} (failed recently, retrying later)")
+            else -> error
+        }
+    }
 
     companion object {
         /** How long a login may take between redirect and callback. */

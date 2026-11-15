@@ -7,6 +7,8 @@ import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
+import com.sun.net.httpserver.HttpServer
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.nio.file.Files
 import kotlin.test.Test
@@ -77,5 +79,35 @@ class LoginPageTest {
         val card = response.bodyAsText().substringAfter("<div class=\"login-card\">").substringBefore("</div></div></div>")
         assertTrue(card.contains("<div class=\"notice error\">The identity provider is not reachable. Try again in a moment.</div>"), card)
         assertTrue(card.contains("href=\"/auth/start\""), "trying again is one click")
+    }
+
+    @Test
+    fun `a provider that does not fit the settings is reported as a setting, not as an outage`(): Unit = testApplication {
+        // The discovery document names another issuer, a typo in the config or the wrong provider application.
+        val provider = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        provider.createContext("/.well-known/openid-configuration") { ex ->
+            val doc = """{"issuer":"https://other.example.com","authorization_endpoint":"https://other.example.com/authorize","token_endpoint":"https://other.example.com/token"}""".toByteArray()
+            ex.sendResponseHeaders(200, doc.size.toLong())
+            ex.responseBody.use { it.write(doc) }
+        }
+        provider.start()
+        try {
+            val otherDir = Files.createTempDirectory("dirl-login-misconfigured").toFile()
+            val misconfigured = createDirl(
+                AppConfig(
+                    publicUrl = "https://ssh.example.com",
+                    dataDir = otherDir.absolutePath,
+                    oidc = OidcConfig(issuer = "http://127.0.0.1:${provider.address.port}", clientId = "dirl", clientSecret = "secret"),
+                ),
+                otherDir,
+            )
+            application { dirlModule(misconfigured) }
+            val response = createClient { followRedirects = false }.get("/auth/start")
+            assertEquals(HttpStatusCode.InternalServerError, response.status)
+            val card = response.bodyAsText().substringAfter("<div class=\"login-card\">").substringBefore("</div></div></div>")
+            assertTrue(card.contains("<div class=\"notice error\">Dirl's login settings do not match the identity provider. The server log names the reason.</div>"), card)
+        } finally {
+            provider.stop(0)
+        }
     }
 }

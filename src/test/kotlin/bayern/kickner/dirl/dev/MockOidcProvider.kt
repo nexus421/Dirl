@@ -83,10 +83,12 @@ class MockOidcProvider(
 
     private fun token(ex: HttpExchange) {
         val form = parse(ex.requestBody.readBytes().decodeToString())
+        // A client the provider does not accept is invalid_client with HTTP 401 (RFC 6749 section 5.2), as with real
+        // providers, before the code is looked at.
+        if (basicCredentials(ex) != (form["client_id"] to clientSecret)) return respond(ex, 401, "application/json", """{"error":"invalid_client"}""")
         val pending = codes.remove(form["code"].orEmpty())
         val valid = pending != null && pending.clientId == form["client_id"] && pending.redirectUri == form["redirect_uri"] &&
-            pkceChallenge(form["code_verifier"].orEmpty()) == pending.challenge &&
-            basicCredentials(ex) == (pending.clientId to clientSecret)
+            pkceChallenge(form["code_verifier"].orEmpty()) == pending.challenge
         if (valid.not()) return respond(ex, 400, "application/json", """{"error":"invalid_grant"}""")
 
         val now = System.currentTimeMillis() / 1000

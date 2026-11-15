@@ -4,6 +4,7 @@ import bayern.kickner.dirl.config.OidcConfig
 import com.sun.net.httpserver.HttpServer
 import kotnexlib.ResultOf2
 import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.net.URI
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -95,7 +96,8 @@ class OidcClientTest {
             val started = System.nanoTime()
             val result = replay()
             val waitedMillis = (System.nanoTime() - started) / 1_000_000
-            val error = assertIs<LoginError.InvalidToken>(assertIs<ResultOf2.Failure<LoginError>>(result).value)
+            // A full provider is an overload, not a bad code: the login page says to try again (HTTP 503).
+            val error = assertIs<LoginError.ProviderUnavailable>(assertIs<ResultOf2.Failure<LoginError>>(result).value)
             assertTrue(error.reason.startsWith("Too many concurrent"), error.reason)
             assertTrue(waitedMillis < 500, "callback waited $waitedMillis ms for a slot")
 
@@ -182,6 +184,108 @@ class OidcClientTest {
             assertEquals("no reason given", reason("\r\n", error = "\n"))
         } finally {
             provider.stop(0)
+        }
+    }
+
+    /**
+     * A provider whose discovery answers [discovery] (`ISSUER` in the body becomes its issuer URL) and whose token
+     * endpoint answers [token], both as status and body. The block gets the provider's issuer and a client for it.
+     */
+    private fun withProvider(
+        discovery: () -> Pair<Int, String> = { 200 to """{"issuer":"ISSUER","authorization_endpoint":"ISSUER/authorize","token_endpoint":"ISSUER/token"}""" },
+        token: () -> Pair<Int, String> = { 200 to "{}" },
+        block: (issuer: String, client: OidcClient) -> Unit,
+    ) {
+        val provider = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val issuer = "http://localhost:${provider.address.port}"
+        fun answer(ex: com.sun.net.httpserver.HttpExchange, response: Pair<Int, String>) {
+            val body = response.second.replace("ISSUER", issuer).toByteArray()
+            ex.sendResponseHeaders(response.first, if (body.isEmpty()) -1 else body.size.toLong())
+            ex.responseBody.use { it.write(body) }
+        }
+        provider.createContext("/.well-known/openid-configuration") { ex -> hits.incrementAndGet(); answer(ex, discovery()) }
+        provider.createContext("/token") { ex -> answer(ex, token()) }
+        provider.start()
+        try {
+            block(issuer, OidcClient(OidcConfig(issuer = issuer, clientId = "dirl", clientSecret = "secret"), "https://x/cb", clock = { now }))
+        } finally {
+            provider.stop(0)
+        }
+    }
+
+    private fun startError(client: OidcClient): LoginError = assertIs<ResultOf2.Failure<LoginError>>(client.startLogin()).value
+
+    @Test
+    fun `discovery failures say whether trying again can help`() {
+        val doc = """{"issuer":"ISSUER","authorization_endpoint":"ISSUER/authorize","token_endpoint":"ISSUER/token"}"""
+        val unavailable = listOf(503 to "", 500 to "", 429 to "")
+        val misconfigured = listOf(
+            404 to "",
+            301 to "",
+            200 to "<html>Welcome to nginx</html>",
+            200 to doc.replace("\"issuer\":\"ISSUER\"", "\"issuer\":\"https://other.example.com\""),
+            200 to doc.replace("\"token_endpoint\":\"ISSUER/token\"", "\"token_endpoint\":\"http://auth.example.com/token\""),
+            200 to doc.replace("\"authorization_endpoint\":\"ISSUER/authorize\"", "\"authorization_endpoint\":\"http://auth.example.com/authorize\""),
+        )
+        unavailable.forEach { answer -> withProvider(discovery = { answer }) { _, client -> assertIs<LoginError.ProviderUnavailable>(startError(client), answer.toString()) } }
+        misconfigured.forEach { answer -> withProvider(discovery = { answer }) { _, client -> assertIs<LoginError.ProviderMisconfigured>(startError(client), answer.toString()) } }
+
+        // Nobody listens: unreachable, not a wrong setting.
+        val closedPort = ServerSocket(0).use { it.localPort }
+        val nobody = OidcClient(OidcConfig(issuer = "http://127.0.0.1:$closedPort", clientId = "dirl", clientSecret = "secret"), "https://x/cb")
+        assertIs<LoginError.ProviderUnavailable>(startError(nobody))
+    }
+
+    @Test
+    fun `a wrong setting stays a wrong setting during the pause after a failed discovery`() {
+        withProvider(discovery = { 404 to "" }) { _, client ->
+            val first = assertIs<LoginError.ProviderMisconfigured>(startError(client))
+            val again = assertIs<LoginError.ProviderMisconfigured>(startError(client))
+            assertEquals(1, hits.get(), "no second fetch during the pause")
+            assertEquals("${first.reason} (failed recently, retrying later)", again.reason)
+            now += 16_000
+            assertIs<LoginError.ProviderMisconfigured>(startError(client))
+            assertEquals(2, hits.get())
+        }
+    }
+
+    @Test
+    fun `token endpoint failures say whether trying again can help`() {
+        var answer = 200 to "{}"
+        withProvider(token = { answer }) { _, client ->
+            val start = assertIs<ResultOf2.Success<LoginStart>>(client.startLogin()).value
+            val state = URI(start.redirectUrl).query.split('&').first { it.startsWith("state=") }.removePrefix("state=")
+            fun error(response: Pair<Int, String>): LoginError {
+                answer = response
+                return assertIs<ResultOf2.Failure<LoginError>>(client.finishLogin(start.cookie, state, "code", null, null)).value
+            }
+
+            assertIs<LoginError.ProviderUnavailable>(error(503 to ""))
+            assertIs<LoginError.ProviderUnavailable>(error(429 to ""))
+            // Wrong client ID or secret, or a client that may not use this grant: settings, not a bad code.
+            assertEquals("Token endpoint returned HTTP 401 (invalid_client)", assertIs<LoginError.ProviderMisconfigured>(error(401 to """{"error":"invalid_client"}""")).reason)
+            assertIs<LoginError.ProviderMisconfigured>(error(401 to ""))
+            assertIs<LoginError.ProviderMisconfigured>(error(400 to """{"error":"invalid_client"}"""))
+            assertIs<LoginError.ProviderMisconfigured>(error(400 to """{"error":"unauthorized_client"}"""))
+            // A bad code stays a refused login, also with a body that is not JSON.
+            assertEquals("Token endpoint returned HTTP 400 (invalid_grant)", assertIs<LoginError.InvalidToken>(error(400 to """{"error":"invalid_grant"}""")).reason)
+            assertIs<LoginError.InvalidToken>(error(400 to "<html>Bad Request</html>"))
+            assertIs<LoginError.InvalidToken>(error(200 to "{}"))
+            assertIs<LoginError.InvalidToken>(error(200 to "not json"))
+            // The provider's error code is cleaned before it reaches the log.
+            val forged = assertIs<LoginError.InvalidToken>(error(400 to """{"error":"x\n30.10.2026 15:00:00 INFO/Vault: unlocked"}"""))
+            assertTrue(forged.reason.contains('\n').not(), forged.reason)
+        }
+    }
+
+    @Test
+    fun `a token endpoint nobody listens on is unreachable`() {
+        val closedPort = ServerSocket(0).use { it.localPort }
+        val doc = """{"issuer":"ISSUER","authorization_endpoint":"ISSUER/authorize","token_endpoint":"http://127.0.0.1:$closedPort/token"}"""
+        withProvider(discovery = { 200 to doc }) { _, client ->
+            val start = assertIs<ResultOf2.Success<LoginStart>>(client.startLogin()).value
+            val state = URI(start.redirectUrl).query.split('&').first { it.startsWith("state=") }.removePrefix("state=")
+            assertIs<LoginError.ProviderUnavailable>(assertIs<ResultOf2.Failure<LoginError>>(client.finishLogin(start.cookie, state, "code", null, null)).value)
         }
     }
 }

@@ -60,6 +60,11 @@ Code Flow with PKCE (S256) for a confidential client with `client_secret_basic`,
 `iat`, `nonce` and `name` or `preferred_username`, and a token endpoint over `https`. Restrict the client to a group
 like `dirl` if the provider can, see [Security](security.md#access).
 
+When a login fails because of the provider, the login page tells the two cases apart. "The identity provider is not
+reachable" (HTTP 503) goes away by itself once the provider answers again. "Dirl's login settings do not match the
+identity provider" (HTTP 500) needs a change: the server log names the reason, for example another issuer in the
+discovery document, an endpoint without `https` or a client ID or secret the token endpoint refuses.
+
 Tested with Pocket ID: under Access "Selected user groups", optionally "Requires Re-Authentication", the issuer is the
 base URL (`https://id.example.com`). Authentik and Keycloak use longer issuers such as
 `https://auth.example.com/application/o/dirl/` or `https://kc.example.com/realms/home`.

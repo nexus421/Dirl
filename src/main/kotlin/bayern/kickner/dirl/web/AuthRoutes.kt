@@ -54,7 +54,7 @@ fun Route.authRoutes(dirl: Dirl) {
 
             is ResultOf2.Failure -> {
                 staticLog(KLogger.Level.ERROR, TAG) { "Cannot start login: ${start.value}" }
-                call.loginPage("The identity provider is not reachable. Try again in a moment.", HttpStatusCode.ServiceUnavailable)
+                call.loginPage(loginErrorText(start.value), loginErrorStatus(start.value))
             }
         }
     }
@@ -70,8 +70,10 @@ fun Route.authRoutes(dirl: Dirl) {
         val claims = when (result) {
             is ResultOf2.Success -> result.value
             is ResultOf2.Failure -> {
-                staticLog(KLogger.Level.WARN, TAG) { "Login failed: ${result.value}" }
-                return@get call.loginPage(loginErrorText(result.value), HttpStatusCode.Forbidden)
+                // A provider problem needs someone to look, a refused login is everyday noise.
+                val level = if (loginErrorStatus(result.value) == HttpStatusCode.Forbidden) KLogger.Level.WARN else KLogger.Level.ERROR
+                staticLog(level, TAG) { "Login failed: ${result.value}" }
+                return@get call.loginPage(loginErrorText(result.value), loginErrorStatus(result.value))
             }
         }
 
@@ -192,6 +194,18 @@ private fun loginErrorText(error: LoginError): String = when (error) {
     is LoginError.Denied -> "The identity provider denied the login: ${error.description}"
     LoginError.UnknownAttempt -> "The login took too long or was started in another browser. Please start again."
     LoginError.StateMismatch -> "The login response did not belong to this browser. Please start again."
-    is LoginError.ProviderUnavailable -> "The identity provider is not reachable."
+    is LoginError.ProviderUnavailable -> "The identity provider is not reachable. Try again in a moment."
+    is LoginError.ProviderMisconfigured -> "Dirl's login settings do not match the identity provider. The server log names the reason."
     is LoginError.InvalidToken -> "The identity provider's answer could not be verified."
+}
+
+/**
+ * HTTP status for a failed login. A login that was refused is 403. A provider that cannot answer right now is 503, so
+ * monitoring sees an outage and a proxy in front still passes Dirl's page through, which it does not for 502 and 504.
+ * Settings that do not fit the provider are 500: the server is set up wrong and trying again does not help.
+ */
+private fun loginErrorStatus(error: LoginError): HttpStatusCode = when (error) {
+    is LoginError.ProviderUnavailable -> HttpStatusCode.ServiceUnavailable
+    is LoginError.ProviderMisconfigured -> HttpStatusCode.InternalServerError
+    is LoginError.Denied, LoginError.UnknownAttempt, LoginError.StateMismatch, is LoginError.InvalidToken -> HttpStatusCode.Forbidden
 }

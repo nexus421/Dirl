@@ -145,8 +145,38 @@ class LoginFlowTest {
             otherDir,
         )
         application { dirlModule(wrong) }
-        val (_, cookie) = login(createClient { followRedirects = false }, ada)
+        val client = createClient { followRedirects = false }
+        val (status, cookie) = login(client, ada)
         assertEquals(null, cookie, "the provider must refuse the code without the right secret")
+        // A wrong secret is a setting, trying again does not help: 500 and a text that says so.
+        assertEquals(HttpStatusCode.InternalServerError, status)
+        mock.autoLogin = ada
+        val page = callbackPage(client)
+        assertTrue(page.contains("<div class=\"notice error\">Dirl's login settings do not match the identity provider. The server log names the reason.</div>"), page)
+    }
+
+    @Test
+    fun `a provider that goes down during the login is reported as unreachable`(): Unit = testApplication {
+        application { dirlModule(dirl) }
+        val client = createClient { followRedirects = false }
+        val start = client.get("/auth/start")
+        val loginCookie = start.headers.getAll(HttpHeaders.SetCookie)!!.first { it.startsWith(LOGIN_COOKIE) }.substringBefore(';')
+        val provider = jdk.send(HttpRequest.newBuilder(URI(start.headers[HttpHeaders.Location]!!)).build(), HttpResponse.BodyHandlers.discarding())
+        val callback = URI(provider.headers().firstValue("Location").get())
+        mock.close()
+
+        val result = client.get("${callback.path}?${callback.rawQuery}") { header(HttpHeaders.Cookie, loginCookie) }
+        assertEquals(HttpStatusCode.ServiceUnavailable, result.status)
+        assertTrue(result.bodyAsText().contains("<div class=\"notice error\">The identity provider is not reachable. Try again in a moment.</div>"))
+    }
+
+    /** Runs one more login and returns the page of its callback. */
+    private suspend fun callbackPage(client: HttpClient): String {
+        val start = client.get("/auth/start")
+        val loginCookie = start.headers.getAll(HttpHeaders.SetCookie)!!.first { it.startsWith(LOGIN_COOKIE) }.substringBefore(';')
+        val provider = jdk.send(HttpRequest.newBuilder(URI(start.headers[HttpHeaders.Location]!!)).build(), HttpResponse.BodyHandlers.discarding())
+        val callback = URI(provider.headers().firstValue("Location").get())
+        return client.get("${callback.path}?${callback.rawQuery}") { header(HttpHeaders.Cookie, loginCookie) }.bodyAsText()
     }
 
     @Test
