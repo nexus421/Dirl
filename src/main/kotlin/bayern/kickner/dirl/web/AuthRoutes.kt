@@ -201,8 +201,9 @@ private fun loginErrorText(error: LoginError): String = when (error) {
 
 /**
  * HTTP status for a failed login. A login that was refused is 403. A provider that cannot answer right now is 503, so
- * monitoring sees an outage and a proxy in front still passes Dirl's page through, which it does not for 502 and 504.
- * Settings that do not fit the provider are 500: the server is set up wrong and trying again does not help.
+ * monitoring sees an outage. Not 502 or 504: Cloudflare replaces those with its own error page, Dirl's page and its
+ * text would never arrive. Settings that do not fit the provider are 500: the server is set up wrong and trying again
+ * does not help.
  */
 private fun loginErrorStatus(error: LoginError): HttpStatusCode = when (error) {
     is LoginError.ProviderUnavailable -> HttpStatusCode.ServiceUnavailable
