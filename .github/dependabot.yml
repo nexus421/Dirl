@@ -1,5 +1,6 @@
 # Keeps the actions in .github/workflows current. They are pinned to commit hashes, Dependabot replaces the hash and
-# the version comment behind it. One pull request a month for all of them, against develop like every other change.
+# the version comment behind it. At most one pull request a week for all of them, against develop like every other
+# change. Actions pinned to a hash get no Dependabot alerts, so these pull requests are the only way fixes arrive.
 # Dependabot reads this file only on master, the default branch.
 version: 2
 updates:
@@ -7,7 +8,10 @@ updates:
     directory: /
     target-branch: develop
     schedule:
-      interval: monthly
+      interval: weekly
+    # The assignment makes GitHub send a notification, also without watching the repository.
+    assignees:
+      - nexus421
     groups:
       actions:
         patterns: ["*"]
