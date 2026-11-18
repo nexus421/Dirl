@@ -52,7 +52,7 @@ The fat JAR is `build/libs/dirl.jar`. After changing dependencies or the Shadow 
   (`-Xjdk-release=21`) because the target runs Debian 13's OpenJDK 21.
 - `bayern.kickner` libraries from `https://maven.kickner.bayern/releases`: Klogger 0.5.0 (with SLF4J provider),
   KotNexLib 4.4.1.
-- BouncyCastle is pinned to 1.86 through its BOM, sshj and KotNexLib pull older versions.
+- BouncyCastle is pinned to 1.87 through its BOM, sshj and KotNexLib pull older versions.
 - `BuildConfig` (`VERSION`, `BUILD_TIME`) is generated into `build/` on every build, never commit it.
 - xterm.js and addon-fit are vendored under `src/main/resources/static/vendor/xterm` with `SHA256SUMS`. Update them
   from the npm tarballs and verify the registry integrity value.
