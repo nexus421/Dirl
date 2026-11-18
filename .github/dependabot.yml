@@ -1,0 +1,13 @@
+# Keeps the actions in .github/workflows current. They are pinned to commit hashes, Dependabot replaces the hash and
+# the version comment behind it. One pull request a month for all of them, against develop like every other change.
+# Dependabot reads this file only on master, the default branch.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

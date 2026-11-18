@@ -78,7 +78,8 @@ builds the image on exactly that digest, logs `java -version`, runs `dockerImage
 `<version>` and `latest`. GitHub turns schedules off after 60 days without repository activity, watch for its mail
 and enable the workflow again.
 
-The actions are pinned to commit hashes. `gradle/actions/setup-gradle` caches through a closed-source component under
+The actions are pinned to commit hashes. Once a month [Dependabot](../.github/dependabot.yml) opens one pull request
+against `develop` with all new versions, hash and version comment. `gradle/actions/setup-gradle` caches through a closed-source component under
 the [Gradle Terms of Use](https://gradle.com/legal/terms-of-use/), `cache-provider: basic` would avoid that.
 
 ## Updating dependencies
