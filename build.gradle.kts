@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "bayern.kickner"
-version = "1.1.0"
+version = "1.1.1"
 
 repositories {
     mavenCentral()
@@ -41,7 +41,7 @@ dependencies {
     implementation("com.hierynomus:sshj:0.41.2")
 
     // sshj pulls BouncyCastle 1.84 and KotNexLib 1.85.2. The BOM lifts every BC module to the same current release
-    implementation(platform("org.bouncycastle:bc-jdk18on-bom:1.86"))
+    implementation(platform("org.bouncycastle:bc-jdk18on-bom:1.87"))
     implementation("org.bouncycastle:bcprov-jdk18on")
     implementation("org.bouncycastle:bcpkix-jdk18on")
 
