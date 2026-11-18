@@ -4,7 +4,8 @@ name: Release
 # version = "1.2.0"), otherwise the run fails and attaches nothing. Then it runs all tests including the SSH
 # integration tests and the Docker image test, builds dirl.jar, checks it and attaches it together with its SHA-256
 # sum. Afterwards the image job builds the Docker image from exactly that attached JAR for amd64 and arm64 and pushes
-# it to ghcr.io as <version> and, unless it is a pre-release, as latest.
+# it to ghcr.io as <version> and, unless it is a pre-release, as latest. rebuild-image.yml renews that image later when
+# its base image changes.
 on:
   release:
     types: [published]
@@ -46,6 +47,9 @@ jobs:
 
       - name: Build Docker image
         run: docker build --tag dirl:test .
+
+      - name: Log the Java version of the image
+        run: docker run --rm --entrypoint java dirl:test -version
 
       - name: Test Docker image
         env:
@@ -97,4 +101,15 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           tags=(--tag "$image:$version")
           if [ "$PRERELEASE" != "true" ]; then tags+=(--tag "$image:latest"); fi
-          docker buildx build --platform linux/amd64,linux/arm64 --build-arg VERSION="$version" "${tags[@]}" --push .
+          # Same pinning and label as rebuild-image.yml, so that it only rebuilds once the base image changes.
+          base="amazoncorretto:21-al2023-headless"
+          digest="$(docker buildx imagetools inspect "$base" --format '{{json .Manifest}}' | jq -r .digest)"
+          if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Could not read the digest of $base"
+            exit 1
+          fi
+          docker buildx build --platform linux/amd64,linux/arm64 --build-arg VERSION="$version" \
+            --build-context "$base=docker-image://$base@$digest" \
+            --label "org.opencontainers.image.base.name=$base" \
+            --label "org.opencontainers.image.base.digest=$digest" \
+            "${tags[@]}" --push .

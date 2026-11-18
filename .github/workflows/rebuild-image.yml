@@ -1,0 +1,161 @@
+name: Rebuild image
+
+# Rebuilds the Docker image of the latest release when its base image (Corretto on Amazon Linux) has a new digest, so
+# security updates reach the image without a new Dirl release. Runs daily and by hand. The source is the tag of the
+# latest release and the dirl.jar attached to it, checked against its checksum, never master. Older releases are not
+# rebuilt. The image is tested before it is pushed as <version>-r<n> (n counts up from 2, never overwritten) and
+# overwrites <version> and latest.
+#
+# The digest the image was built on is stored in its label org.opencontainers.image.base.digest, the next run compares
+# against that. GitHub switches schedules off after 60 days without activity in the repository.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even if the base image has not changed
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# With an explicit bash GitHub adds -o pipefail, a failed command in a pipe then stops the step.
+defaults:
+  run:
+    shell: bash
+
+# Never two rebuilds at once, they would pick the same -r<n>.
+concurrency:
+  group: image-publish
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # Has to be the FROM line of the Dockerfile, the build replaces it with the digest checked here.
+      BASE: amazoncorretto:21-al2023-headless
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Log in to ghcr.io
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: echo "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Compare the base image with the published image
+        id: check
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Unexpected release tag $tag"; exit 1; }
+          version="${tag#v}"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          # The digest of the manifest list, the same for every platform.
+          base_digest="$(docker buildx imagetools inspect "$BASE" --format '{{json .Manifest}}' | jq -r .digest)"
+          if ! [[ "$base_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Could not read the digest of $BASE"
+            exit 1
+          fi
+
+          # Only a missing image counts as never built, any other error stops the run.
+          published=""
+          if out="$(docker buildx imagetools inspect "$image:$version" 2>&1)"; then
+            docker pull --quiet --platform linux/amd64 "$image:$version" > /dev/null
+            published="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.base.digest" }}' "$image:$version")"
+          elif ! grep -q "not found" <<< "$out"; then
+            echo "::error::$out"
+            exit 1
+          fi
+
+          echo "Release $tag, base image $base_digest, published image built on '${published}'"
+          if [ "$published" = "$base_digest" ] && [ "$FORCE" != "true" ]; then
+            echo "Base image unchanged, nothing to do."
+            echo "rebuild=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "rebuild=true" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "image=$image"
+            echo "base_digest=$base_digest"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.check.outputs.rebuild == 'true'
+        with:
+          ref: refs/tags/${{ steps.check.outputs.tag }}
+
+      - name: Download dirl.jar from the release
+        if: steps.check.outputs.rebuild == 'true'
+        env:
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          mkdir -p build/libs
+          cd build/libs
+          gh release download "$TAG" --pattern dirl.jar --pattern dirl.jar.sha256 --repo "$GITHUB_REPOSITORY"
+          sha256sum -c dirl.jar.sha256
+
+      # Only for dockerImageTest, the image holds the downloaded JAR.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        if: steps.check.outputs.rebuild == 'true'
+        with:
+          distribution: corretto
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        if: steps.check.outputs.rebuild == 'true'
+
+      # The Docker image test starts its own sshd as the runner user, the package only provides the binaries.
+      - name: Install OpenSSH server binaries
+        if: steps.check.outputs.rebuild == 'true'
+        run: sudo apt-get update && sudo apt-get install -y openssh-server
+
+      # QEMU only runs the one RUN step of the Dockerfile for arm64, the JAR itself is the same on every platform.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        if: steps.check.outputs.rebuild == 'true'
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: steps.check.outputs.rebuild == 'true'
+
+      - name: Build, test and push the image
+        if: steps.check.outputs.rebuild == 'true'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+          IMAGE: ${{ steps.check.outputs.image }}
+          BASE_DIGEST: ${{ steps.check.outputs.base_digest }}
+        run: |
+          grep -qx "FROM $BASE" Dockerfile || { echo "::error::The Dockerfile does not start FROM $BASE"; exit 1; }
+
+          # The first free -r<n>. Only "not found" ends the search, a network error must not overwrite an existing tag.
+          n=2
+          while true; do
+            if out="$(docker buildx imagetools inspect "$IMAGE:$VERSION-r$n" 2>&1)"; then
+              n=$((n + 1))
+            elif grep -q "not found" <<< "$out"; then
+              break
+            else
+              echo "::error::$out"
+              exit 1
+            fi
+          done
+
+          common=(
+            --build-arg VERSION="$VERSION"
+            --build-context "$BASE=docker-image://$BASE@$BASE_DIGEST"
+            --label "org.opencontainers.image.base.name=$BASE"
+            --label "org.opencontainers.image.base.digest=$BASE_DIGEST"
+          )
+
+          docker buildx build "${common[@]}" --platform linux/amd64 --tag dirl:test --load .
+          docker run --rm --entrypoint java dirl:test -version
+          DIRL_DOCKER_IMAGE=dirl:test ./gradlew dockerImageTest
+
+          docker buildx build "${common[@]}" --platform linux/amd64,linux/arm64 \
+            --tag "$IMAGE:$VERSION" --tag "$IMAGE:$VERSION-r$n" --tag "$IMAGE:latest" --push .
+          echo "Pushed $IMAGE:$VERSION-r$n, $IMAGE:$VERSION and $IMAGE:latest on $BASE_DIGEST" >> "$GITHUB_STEP_SUMMARY"

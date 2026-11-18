@@ -1,8 +1,9 @@
 # Image for Dirl, built from the finished fat JAR, so it holds the same dirl.jar as the release. Build it with
 # `./gradlew shadowJar` first, then `docker build -t dirl .`. How to run it: docs/deployment.md "Docker".
 #
-# The base image is not pinned on purpose: every release build picks up the current security updates of Corretto
-# and Amazon Linux.
+# The base image is not pinned here on purpose: every build picks up the current security updates of Corretto and
+# Amazon Linux. The workflows replace this FROM by its digest and label the image with it (release.yml for a release,
+# rebuild-image.yml renews the image of the latest release when the digest changes).
 FROM amazoncorretto:21-al2023-headless
 
 ARG VERSION=dev

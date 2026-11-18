@@ -84,9 +84,12 @@ one machine, see [Network between the proxy and Dirl](#network-between-the-proxy
 
 - `ghcr.io/nexus421/dirl` for amd64 and arm64, tagged with the version and `latest`. Same `dirl.jar` on Corretto 21,
   UID 10001, config `/etc/dirl/config.json`, data `/var/lib/dirl`.
+- Base image updates: a daily workflow rebuilds the image of the latest release when Corretto or Amazon Linux has a
+  new digest. The rebuild has the same `dirl.jar`, passes the image test and gets the tag `<version>-r2`, `-r3` and so
+  on (never overwritten), `<version>` and `latest` move to it. Older releases are not rebuilt. Get it with
+  `docker compose pull`, whoever pins a digest or a `-rN` tag gets nothing on their own.
 - The compose file restricts the container like the unit: read-only file system except `data`, no capabilities, no
   core dumps, 512 MiB without swap.
-- Base image updates arrive with the next Dirl release, a published image is never rebuilt.
 - A rejected config exits with code 78 and Compose restarts it over and over, `docker compose logs` shows why.
 
 ### Network between the proxy and Dirl

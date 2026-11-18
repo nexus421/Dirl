@@ -70,6 +70,14 @@ and `dirl.jar.sha256` to the release and pushes the image for amd64 and arm64 to
 `<version>` and, unless it is a pre-release, `latest`. Should the package show up as private after the first release,
 set it to public once in its settings on GitHub.
 
+[rebuild-image.yml](../.github/workflows/rebuild-image.yml) renews the image of the latest release without a new
+release: daily (and by hand, `force` rebuilds without a change) it compares the digest of
+`amazoncorretto:21-al2023-headless` with the label `org.opencontainers.image.base.digest` of the published image.
+On a difference it checks out the tag of the latest release, downloads its `dirl.jar` (checked against the sum),
+builds the image on exactly that digest, logs `java -version`, runs `dockerImageTest` and pushes `<version>-r<n>`,
+`<version>` and `latest`. GitHub turns schedules off after 60 days without repository activity, watch for its mail
+and enable the workflow again.
+
 The actions are pinned to commit hashes. `gradle/actions/setup-gradle` caches through a closed-source component under
 the [Gradle Terms of Use](https://gradle.com/legal/terms-of-use/), `cache-provider: basic` would avoid that.
 
