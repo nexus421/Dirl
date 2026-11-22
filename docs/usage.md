@@ -8,8 +8,8 @@
 - **Host**: connection, host key, the `authorized_keys` line for this host and a command that puts it in place,
   the latest values and disks.
 - **Terminal**: snippet buttons (`⏎` runs on the click, `{ }` asks for values, unmarked ones show the command first),
-  a key bar on touch devices, [Actions mode](#actions-mode) for phones. Leaving the page ends the shell, run long jobs
-  in [tmux](#long-jobs-with-tmux).
+  a key bar above the terminal on touch devices, [Actions mode](#actions-mode) for phones. Leaving the page ends the
+  shell, run long jobs in [tmux](#long-jobs-with-tmux).
 - **Files**: browse, download, upload by dropping or choosing files (existing ones only with "Overwrite existing
   files"), new directory, rename, delete. There is no editor. A symlink behaves like its target, deleting one removes
   only the link.

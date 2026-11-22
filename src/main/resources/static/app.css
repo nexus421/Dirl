@@ -481,7 +481,9 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
 }
 .menu-items .btn { justify-content: flex-start; text-align: left; }
 .terminal { flex: 1; min-height: 200px; background: #0b0d10; border-radius: 10px; padding: 6px; overflow: hidden; }
-.keybar { display: none; gap: 6px; margin-top: 8px; overflow-x: auto; }
+/* Scrolls sideways by swiping without a scrollbar, like the nav: the key cut off at the edge shows there is more. */
+.keybar { display: none; gap: 6px; margin-bottom: 10px; overflow-x: auto; scrollbar-width: none; }
+.keybar::-webkit-scrollbar { display: none; }
 .keybar .btn { min-width: 46px; }
 .keybar .btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 @media (pointer: coarse) { .keybar { display: flex; } }

@@ -173,6 +173,9 @@ class SnippetFolderTest {
         val bar = page.substringAfter("<div class=\"term-bar\">").substringBefore("<div class=\"terminal\"")
         assertTrue(bar.contains("<button type=\"button\" class=\"btn sm primary\" id=\"mode\""), "the mode toggle sits in the bar")
         assertTrue(bar.indexOf("id=\"mode\"") < bar.indexOf("Files"), "before Files and Details")
+        // The key bar sits between the bar and the terminal: in the installed app the system bar covers the bottom edge.
+        val keyBar = bar.substringAfter("<div class=\"keybar\">", "")
+        assertTrue(keyBar.contains("id=\"ctrl\"") && keyBar.contains(">Esc<"), "the key bar comes right before the terminal")
 
         val actionBar = page.substringAfter("<div class=\"actionbar\">").substringBefore("</div>")
         // Named keys, not data-send: the HTML parser turns a carriage return in an attribute into a line feed.
@@ -180,7 +183,7 @@ class SnippetFolderTest {
         assertTrue(actionBar.contains("data-send").not(), "the action bar sends no bytes from the page")
         assertTrue(actionBar.contains(">Enter") && actionBar.contains(">Cancel"))
 
-        val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("<div class=\"keybar\">")
+        val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("</main>")
         assertTrue(page.indexOf("<div class=\"actionbar\">") < page.indexOf("<div class=\"snippet-panel\">"), "the panel follows the action bar")
         assertTrue(Regex("<details class=\"panel-folder\"><summary>Docker<span class=\"muted\">2</span></summary>").containsMatchIn(panel), panel)
         snippets.forEach { s ->
@@ -196,7 +199,7 @@ class SnippetFolderTest {
         val host = Host(id = "h", name = "web", address = "127.0.0.1", port = 1, username = "u", keyId = key.id)
         dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(host), snippets = emptyList()) }
         val page = client.get("/hosts/h/terminal") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
-        val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("<div class=\"keybar\">")
+        val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("</main>")
         assertTrue(panel.contains("No snippets yet.") && panel.contains("href=\"/snippets\""), panel)
     }
 
@@ -209,7 +212,7 @@ class SnippetFolderTest {
         val hostile = Snippet("1", "<img src=x onerror=alert(1)>", "echo \"<b>\" '&amp;'\n", "<i>x</i>")
         dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(host), snippets = listOf(hostile)) }
         val page = client.get("/hosts/h/terminal") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
-        val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("<div class=\"keybar\">")
+        val panel = page.substringAfter("<div class=\"snippet-panel\">").substringBefore("</main>")
         assertTrue(panel.contains("&lt;img src=x onerror=alert(1)&gt;"), panel)
         assertTrue(panel.contains("<summary>&lt;i&gt;x&lt;/i&gt;"), panel)
         assertTrue(panel.contains("data-send=\"echo &quot;&lt;b&gt;&quot; '&amp;amp;'"), panel)
