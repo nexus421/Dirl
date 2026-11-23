@@ -206,6 +206,8 @@ data class Snippet(
  * @property updateCheck Whether Dirl asks GitHub at most once an hour for a newer release, see
  *   [bayern.kickner.dirl.UpdateCheck]. On by default. Only written to the file when off, older versions of Dirl
  *   cannot read a vault where it is off.
+ * @property terminalClipboard Copy on select and paste on right click in the terminal, for every user. Off by default
+ *   and only written to the file when on, versions before 1.2.0 cannot read a vault where it is on.
  */
 @Serializable
 data class VaultSettings(
@@ -213,6 +215,7 @@ data class VaultSettings(
     val sshSourceAddress: String? = null,
     val sshSourceUnrestricted: Boolean = false,
     val updateCheck: Boolean = true,
+    val terminalClipboard: Boolean = false,
 )
 
 /**

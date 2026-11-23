@@ -179,6 +179,19 @@
   function fillPlaceholders(command, values) {
     return command.replace(placeholderPattern, function (all, name) { return values[name]; });
   }
+  // Pasted text reaches the shell as it is. A line break in it runs the command right away, unless the shell takes
+  // pastes bracketed and only puts them on the command line. Without brackets Dirl asks first. Other control
+  // characters always ask: xterm passes an escape on, and \e[201~ in the text would end the bracket early.
+  function pasteNeedsConfirm(text, bracketed) {
+    return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text) || (bracketed !== true && /[\r\n]/.test(text));
+  }
+  // The paste preview shows line breaks as lines and every other control character in caret notation (^[ for an
+  // escape), so nothing that would be sent stays invisible.
+  function showControls(text) {
+    return text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, function (c) {
+      return c === '\u007f' ? '^?' : '^' + String.fromCharCode(c.charCodeAt(0) + 64);
+    });
+  }
 
   // Password managers ignore autocomplete="off" and offer to fill a field labelled "Name" with a person's name.
   // These are the attributes the common ones honour instead: Proton Pass, 1Password, Bitwarden, LastPass, Dashlane.
@@ -291,9 +304,27 @@
       first.select();
     } else askSend.focus();
   }
+  // The same form asks before a paste with a line break, the text as preview and no fields.
+  function openPaste(text) {
+    asking = { paste: text };
+    askTitle.textContent = 'Paste';
+    askFields.replaceChildren();
+    askPreview.replaceChildren(document.createTextNode(showControls(text)));
+    placeAsk();
+    ask.hidden = false;
+    if (actionEnter) actionEnter.disabled = true;
+    askSend.focus();
+  }
   ask.addEventListener('submit', function (event) {
     event.preventDefault();
     if (!asking) return;
+    if (asking.paste !== undefined) {
+      // Pasted as it is: no placeholders, no line break added. xterm brackets it when the shell asked for that.
+      const text = asking.paste;
+      closeAsk();
+      term.paste(text);
+      return;
+    }
     // Send always runs the command, also one stored without the Enter of "run immediately".
     const command = fillPlaceholders(asking.command, askValues()).replace(/\n?$/, '\n');
     closeAsk();
@@ -306,6 +337,65 @@
       closeAsk();
     }
   });
+
+  // Whether the pointer that last went down on the terminal was a finger. Mouse input never depends on it.
+  let touch = false;
+  el.addEventListener('pointerdown', function (event) { touch = event.pointerType === 'touch'; }, true);
+  // A long press selects text natively, where app.css turns that on (pointer: coarse, the same query as here). xterm
+  // must not see the touch: on the contextmenu of the long press it moves its input field under the finger and
+  // Android selects that empty field instead, and after a tap it redraws the rows on the next long press, which drops
+  // the selection. Without the tap xterm does not focus itself, so the classic terminal does that here to bring up the
+  // keyboard. A program with mouse support in the classic terminal still gets the taps, as before.
+  const nativeSelection = window.matchMedia('(pointer: coarse)');
+  ['mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'].forEach(function (type) {
+    el.addEventListener(type, function (event) {
+      if (touch === false || nativeSelection.matches === false) return;
+      if (actionsMode === false && term.modes.mouseTrackingMode !== 'none') return;
+      event.stopPropagation();
+      if (type === 'click') focusTerminal();
+    }, true);
+  });
+
+  // Copy on select and paste on right click, only when turned on in the settings (data-clipboard on the terminal) and
+  // only with a mouse. Ctrl+C stays the interrupt of the shell. Reading the clipboard needs HTTPS or localhost, Chrome
+  // asks once, Firefox on every paste. A refused or failed read does nothing.
+  function pasteText(text) {
+    if (typeof text !== 'string' || text === '' || asking !== null) return;
+    if (pasteNeedsConfirm(text, term.modes.bracketedPasteMode)) openPaste(text);
+    else term.paste(text);
+  }
+  if (el.dataset.clipboard === 'on') {
+    // A selection starts on the terminal but may end anywhere on the page, so the release is watched on the document.
+    let selecting = false;
+    el.addEventListener('mousedown', function (event) { selecting = touch === false && event.button === 0; });
+    document.addEventListener('mouseup', function (event) {
+      if (selecting === false || event.button !== 0) return;
+      selecting = false;
+      if (!navigator.clipboard) return;
+      // After xterm has finished the selection, still within the click that allows writing the clipboard.
+      setTimeout(function () {
+        if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(function () {});
+      }, 0);
+    });
+    el.addEventListener('contextmenu', function (event) {
+      if (touch || actionsMode || asking !== null || !navigator.clipboard || !navigator.clipboard.readText) return;
+      // A program with mouse support (htop, vim, tmux) gets the right click itself, as in other terminals.
+      if (term.modes.mouseTrackingMode !== 'none') return;
+      event.preventDefault();
+      event.stopPropagation();
+      navigator.clipboard.readText().then(pasteText, function () {});
+      focusTerminal();
+    }, true);
+    // The browser's own paste (Ctrl+Shift+V, the menu) gets the same question before a line break runs it.
+    el.addEventListener('paste', function (event) {
+      if (actionsMode || !event.clipboardData) return;
+      const text = event.clipboardData.getData('text/plain');
+      if (pasteNeedsConfirm(text, term.modes.bracketedPasteMode) === false) return;
+      event.preventDefault();
+      event.stopPropagation();
+      pasteText(text);
+    }, true);
+  }
 
   document.querySelectorAll('[data-send]').forEach(function (button) {
     button.addEventListener('click', function () {

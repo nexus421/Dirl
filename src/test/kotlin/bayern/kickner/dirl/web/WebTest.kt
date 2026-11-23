@@ -176,6 +176,41 @@ class WebTest {
         assertTrue(client.get("/") { header(HttpHeaders.Cookie, cookie) }.bodyAsText().contains("99.0.0 available"))
     }
 
+    @Test
+    fun `the terminal clipboard can be turned on and off in the settings`(): Unit = testApplication {
+        val dirl = dirlWithRelease(null)
+        application { dirlModule(dirl) }
+        val client = noRedirects()
+        val cookie = "$SESSION_COOKIE=${dirl.sessions.create(Actor("user-1", "Ada")).token}"
+        val key = bayern.kickner.dirl.ssh.generateEd25519Key("k")
+        val host = bayern.kickner.dirl.vault.Host(id = "h", name = "web", address = "127.0.0.1", port = 1, username = "u", keyId = key.id)
+        dirl.vault.update { it.copy(keys = listOf(key), hosts = listOf(host)) }
+        suspend fun save(on: Boolean) = client.submitForm("/settings/terminal", parameters { if (on) append("terminalClipboard", "on") }) {
+            header(HttpHeaders.Cookie, cookie)
+            header(HttpHeaders.Origin, "https://ssh.example.com")
+        }
+        suspend fun terminal() = client.get("/hosts/h/terminal") { header(HttpHeaders.Cookie, cookie) }.bodyAsText()
+
+        assertFalse(dirl.vault.content!!.settings.terminalClipboard, "off by default")
+        assertFalse(terminal().contains("data-clipboard"))
+        assertTrue(client.get("/settings") { header(HttpHeaders.Cookie, cookie) }.bodyAsText().contains("name=\"terminalClipboard\""))
+
+        val on = save(on = true)
+        assertEquals(HttpStatusCode.Found, on.status)
+        assertEquals("/settings?done=settings-saved", on.headers[HttpHeaders.Location])
+        assertTrue(dirl.vault.content!!.settings.terminalClipboard)
+        assertEquals("terminalClipboard=on", dirl.audit.tail().first().detail)
+        assertEquals(AuditAction.SETTINGS_CHANGED, dirl.audit.tail().first().action)
+        assertTrue(terminal().contains("data-clipboard=\"on\""))
+        val checkbox = Regex("<input[^>]*name=\"terminalClipboard\"[^>]*>").find(client.get("/settings") { header(HttpHeaders.Cookie, cookie) }.bodyAsText())!!.value
+        assertTrue(checkbox.contains("checked"), "the settings show it as on")
+
+        save(on = false)
+        assertFalse(dirl.vault.content!!.settings.terminalClipboard)
+        assertEquals("terminalClipboard=off", dirl.audit.tail().first().detail)
+        assertFalse(terminal().contains("data-clipboard"))
+    }
+
     /** A sample like a Debian 13 host sends, with a hostile unit name. */
     private val sample = bayern.kickner.dirl.ssh.RawMetrics(
         uptimeSeconds = 3 * 86400.0 + 7200, load1 = 0.54, load5 = 0.50, load15 = 0.37, cpuPercent = 12.0, cores = 4,

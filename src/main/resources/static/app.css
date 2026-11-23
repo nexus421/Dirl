@@ -487,6 +487,15 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
 .keybar .btn { min-width: 46px; }
 .keybar .btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 @media (pointer: coarse) { .keybar { display: flex; } }
+/* Touch screens select terminal text natively with a long press, with the handles and the menu of the system.
+   xterm.css loads after this file and turns selection off, its DOM renderer lets no touch reach the rows, so these
+   selectors are more specific than both. terminal.js keeps the touch mouse events away from xterm. */
+@media (pointer: coarse) {
+  .term-page .terminal .xterm, .term-page .terminal .xterm-screen, .term-page .terminal .xterm-rows {
+    user-select: text; -webkit-user-select: text;
+  }
+  .term-page .terminal .xterm-rows { pointer-events: auto; }
+}
 
 /* Actions mode (terminal.js): the terminal only shows output, Enter, Cancel and the snippets below it are the input.
    The folder menus, the snippet row and the key bar of the classic mode are hidden. */

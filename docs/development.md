@@ -160,7 +160,7 @@ user. While the vault is sealed only `/unlock`, `/setup`, `/setup/restore` and `
 | POST   | `/snippets`, `/snippets/{id}`, `/snippets/{id}/delete`, `/snippets/import`, `/snippets/import/apply` | Snippet actions |
 | GET    | `/audit?q=`                                                  | Audit log                                       |
 | GET    | `/settings`, `/settings/backup`                              | Settings, encrypted vault download              |
-| POST   | `/settings/users/allow`, `/settings/users/revoke`, `/settings/requests/dismiss`, `/settings/sessions/revoke`, `/settings/ssh`, `/settings/updates`, `/settings/passphrase`, `/vault/seal` | Settings actions |
+| POST   | `/settings/users/allow`, `/settings/users/revoke`, `/settings/requests/dismiss`, `/settings/sessions/revoke`, `/settings/ssh`, `/settings/updates`, `/settings/terminal`, `/settings/passphrase`, `/vault/seal` | Settings actions |
 
 The terminal WebSocket carries terminal bytes as binary frames, text frames are JSON control messages:
 `{"type":"resize","cols":120,"rows":40}` from the browser, `{"type":"error","message":"..."}` from the server.

@@ -8,8 +8,9 @@
 - **Host**: connection, host key, the `authorized_keys` line for this host and a command that puts it in place,
   the latest values and disks.
 - **Terminal**: snippet buttons (`⏎` runs on the click, `{ }` asks for values, unmarked ones show the command first),
-  a key bar above the terminal on touch devices, [Actions mode](#actions-mode) for phones. Leaving the page ends the
-  shell, run long jobs in [tmux](#long-jobs-with-tmux).
+  a key bar above the terminal on touch devices, [Actions mode](#actions-mode) for phones. A long press selects text on
+  touch devices, [copy and paste](#copy-and-paste) with the mouse can be turned on. Leaving the page ends the shell,
+  run long jobs in [tmux](#long-jobs-with-tmux).
 - **Files**: browse, download, upload by dropping or choosing files (existing ones only with "Overwrite existing
   files"), new directory, rename, delete. There is no editor. A symlink behaves like its target, deleting one removes
   only the link.
@@ -17,8 +18,8 @@
 - **Snippets**: commands as buttons above every terminal, in folders, with [placeholders](#placeholders-in-snippets),
   [export and import](#sharing-snippets).
 - **Audit**: the latest entries, filterable.
-- **Settings**: allowed users and access requests, sessions, Dirl's source address, update check, passphrase change,
-  encrypted backup, seal.
+- **Settings**: allowed users and access requests, sessions, Dirl's source address, update check, terminal clipboard,
+  passphrase change, encrypted backup, seal.
 
 "Reboot needed" compares the installed with the running kernel. On Arch and Alpine the kernel image has no version in
 its name, there a host always shows it.
@@ -32,6 +33,26 @@ For a phone in an emergency: the terminal only shows output, input comes from th
 and from the snippets in a panel. A tap on the terminal never opens the keyboard or clicks into a program. The button
 in the terminal bar switches to the classic terminal, for a `sudo` password for example. Touch devices start in Actions,
 the choice is remembered per device.
+
+## Copy and paste
+
+On a phone or tablet a long press selects text in the terminal, with the handles and the menu of the system, in both
+modes. New output in the terminal drops the selection. With the keyboard open the first long press only closes it.
+A program with mouse support in the classic terminal (mc, htop) still gets taps as clicks.
+
+With a mouse, "Copy selected text and paste with a right click" under Settings, off by default, works like PuTTY:
+
+- Selecting text copies it.
+- A right click pastes. Ctrl+C stays the interrupt of the shell, Ctrl+Shift+V pastes as before.
+- Text with a line break that the shell would run right away (no bracketed paste) first shows up above the terminal
+  with Send and Cancel. Shells with bracketed paste (bash 5.1 and later, zsh, fish) only put it on the command line.
+  Text with other control characters always asks, they show as `^[`, `^C` and so on: an escape could end the
+  bracketed paste early and run the rest.
+- A program with mouse support (htop, vim, tmux with `mouse on`) gets the right click itself.
+- The browser only allows the clipboard over HTTPS. Chrome asks once, Firefox on every paste.
+
+The setting applies to every user. While it is on, Dirl versions before 1.2.0 cannot open the vault, turn it off before
+going back to such a version.
 
 ## Long jobs with tmux
 

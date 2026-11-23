@@ -36,6 +36,14 @@ class TerminalJsTest {
     private val askValuesCode = Regex("(?s)  function askValues\\(\\) \\{.*?\n  }\n")
         .find(script)?.value ?: error("askValues not found in terminal.js, update TerminalJsTest")
 
+    /** `pasteNeedsConfirm`, which decides whether pasted text asks before it reaches the shell. */
+    private val pasteNeedsConfirmCode = Regex("(?s)  function pasteNeedsConfirm\\(text, bracketed\\) \\{.*?\n  }\n")
+        .find(script)?.value ?: error("pasteNeedsConfirm not found in terminal.js, update TerminalJsTest")
+
+    /** `showControls`, which makes control characters visible in the paste preview. */
+    private val showControlsCode = Regex("(?s)  function showControls\\(text\\) \\{.*?\n  }\n")
+        .find(script)?.value ?: error("showControls not found in terminal.js, update TerminalJsTest")
+
     private fun nodeAvailable() = runCatching {
         val process = ProcessBuilder("node", "--version").redirectErrorStream(true).start()
         process.waitFor(10, TimeUnit.SECONDS) && process.exitValue() == 0
@@ -48,7 +56,7 @@ class TerminalJsTest {
             val inputFile = File(dir, "input.json").apply { writeText(input) }
             // askFields is the form above the terminal in the page, here a stand-in with the same querySelectorAll.
             val program = File(dir, "test.js").apply {
-                writeText("const input = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));\nlet askFields;\n$placeholderCode$askValuesCode$body\n")
+                writeText("const input = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));\nlet askFields;\n$placeholderCode$askValuesCode$pasteNeedsConfirmCode$showControlsCode$body\n")
             }
             val process = ProcessBuilder("node", program.absolutePath, inputFile.absolutePath).redirectErrorStream(true).start()
             val output = process.inputStream.bufferedReader().readText()
@@ -97,6 +105,40 @@ class TerminalJsTest {
             jsMatches != ktMatches || jsNames != ktNames
         }
         assertEquals(emptyList(), differing.take(5).map { cases[it] }, "${differing.size} of ${cases.size} inputs differ")
+    }
+
+    @Test
+    fun `pasted text asks only when a line break would run it`() {
+        assumeTrue(nodeAvailable(), "No node on the path")
+        val cases = listOf(
+            Triple("ls", false, false),
+            Triple("ls\n", false, true),
+            Triple("a\r\nb", false, true),
+            Triple("a\rb", false, true),
+            Triple("a\nb", true, false),
+            Triple("", false, false),
+            Triple("a\tb", true, false),
+            // Bracketed paste does not protect against an escape: xterm passes it on, \e[201~ ends the bracket early.
+            Triple("a\u001b[201~rm -rf ~\r", true, true),
+            Triple("x\u001b", false, true),
+            Triple("a\u0003", true, true),
+            Triple("a\u007f", true, true),
+        )
+        val input = buildJsonArray { cases.forEach { (text, bracketed, _) -> add(buildJsonArray { add(JsonPrimitive(text)); add(JsonPrimitive(bracketed)) }) } }
+        val output = runInNode(
+            input.toString(),
+            "process.stdout.write(JSON.stringify(input.map(([text, bracketed]) => pasteNeedsConfirm(text, bracketed))));",
+        )
+        assertEquals(cases.map { it.third }, Json.parseToJsonElement(output).jsonArray.map { it.jsonPrimitive.content.toBoolean() })
+    }
+
+    @Test
+    fun `the paste preview shows control characters`() {
+        assumeTrue(nodeAvailable(), "No node on the path")
+        val cases = listOf("ls -l\nwho\r\n" to "ls -l\nwho\n", "a\tb" to "a\tb", "a\u001b[201~b" to "a^[[201~b", "\u0003\u007f" to "^C^?")
+        val input = buildJsonArray { cases.forEach { add(JsonPrimitive(it.first)) } }
+        val output = runInNode(input.toString(), "process.stdout.write(JSON.stringify(input.map(showControls)));")
+        assertEquals(cases.map { it.second }, Json.parseToJsonElement(output).jsonArray.map { it.jsonPrimitive.content })
     }
 
     @Test

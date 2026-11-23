@@ -43,6 +43,15 @@ class VaultTest {
     }
 
     @Test
+    fun `the terminal clipboard setting is off by default and only written when on`() {
+        val json = Json { ignoreUnknownKeys = false }
+        val old = json.decodeFromString<VaultSettings>("{}")
+        assertFalse(old.terminalClipboard)
+        assertTrue("terminalClipboard" !in json.encodeToString<VaultSettings>(old), "a vault with the setting off stays readable by 1.1")
+        assertTrue("\"terminalClipboard\":true" in json.encodeToString<VaultSettings>(old.copy(terminalClipboard = true)))
+    }
+
+    @Test
     fun `hosts from before the overview choice keep the default, and the default is not written`() {
         val json = Json { ignoreUnknownKeys = false }
         val old =

@@ -127,6 +127,9 @@ A host behind a jump host gets the "Address seen by hosts behind it" of the jump
   shows what a click sends.
 - Terminal output only goes into xterm.js, never into the page. Remote file names are cleaned before they go into a
   download header. A private key export asks for the passphrase again.
+- The terminal reads the clipboard only on a right click and only with "Copy selected text and paste with a right
+  click" on under Settings (off by default). Pasted text with a line break that would run right away, or with any
+  other control character (an escape could end bracketed paste early), asks first and shows those characters.
 
 ## Update check
 

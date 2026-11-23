@@ -49,6 +49,7 @@ import java.time.LocalDate
  * - `POST /settings/sessions/revoke`.
  * - `POST /settings/ssh` for the source address used in the `authorized_keys` lines, or none at all.
  * - `POST /settings/updates` turns the update check on or off, see [bayern.kickner.dirl.UpdateCheck].
+ * - `POST /settings/terminal` turns copy on select and paste on right click in the terminal on or off.
  * - `POST /settings/passphrase`, `GET /settings/backup`, `POST /vault/seal`.
  * - `GET /audit?q=` latest audit entries, filterable.
  */
@@ -123,6 +124,14 @@ fun Route.settingsRoutes(dirl: Dirl) {
         val on = call.receiveParameters()["updateCheck"] == "on"
         dirl.vault.update { it.copy(settings = it.settings.copy(updateCheck = on)) }
         dirl.audit.record(call.session.actor, AuditAction.SETTINGS_CHANGED, detail = "updateCheck=${if (on) "on" else "off"}")
+        call.respondRedirect("/settings?done=settings-saved")
+    }
+
+    post("/settings/terminal") {
+        // An unticked checkbox is not sent at all, so a missing field means off.
+        val on = call.receiveParameters()["terminalClipboard"] == "on"
+        dirl.vault.update { it.copy(settings = it.settings.copy(terminalClipboard = on)) }
+        dirl.audit.record(call.session.actor, AuditAction.SETTINGS_CHANGED, detail = "terminalClipboard=${if (on) "on" else "off"}")
         call.respondRedirect("/settings?done=settings-saved")
     }
 
@@ -365,6 +374,18 @@ private suspend fun ApplicationCall.settingsPage(dirl: Dirl, error: String?, ssh
                 form(action = "/settings/updates", method = FormMethod.post, classes = "form") {
                     checkField("Ask GitHub for a newer release, at most once an hour while Dirl is used", "updateCheck", content.settings.updateCheck)
                     p("muted small") { +"Only the version number is read, nothing is downloaded or installed. GitHub sees the address of this server." }
+                    div("btn-row") { submit("Save") }
+                }
+            }
+
+            card("Terminal") {
+                form(action = "/settings/terminal", method = FormMethod.post, classes = "form") {
+                    checkField("Copy selected text and paste with a right click", "terminalClipboard", content.settings.terminalClipboard)
+                    p("muted small") {
+                        +"For every user. Text with a line break asks first when the shell would run it right away. "
+                        +"Chrome asks once for the clipboard, Firefox on every paste. "
+                        +"While this is on, Dirl versions before 1.2.0 cannot open the vault."
+                    }
                     div("btn-row") { submit("Save") }
                 }
             }

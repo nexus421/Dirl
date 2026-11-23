@@ -99,6 +99,8 @@ fun Route.terminalRoutes(dirl: Dirl) {
                 div("terminal") {
                     id = "terminal"
                     attributes["data-ws"] = "/ws/terminal/${host.id}"
+                    // terminal.js copies on select and pastes on right click only with this, see VaultSettings.
+                    if (content.settings.terminalClipboard) attributes["data-clipboard"] = "on"
                 }
                 // Actions mode only: the two keys a running command needs and every snippet, folders open in place.
                 // Named keys that terminal.js maps to bytes: the HTML parser turns a carriage return in an attribute into
