@@ -18,7 +18,7 @@ repositories {
     }
 }
 
-val ktorVersion = "3.6.0"
+val ktorVersion = "3.6.1"
 
 // Exact versions of every dependency, transitive ones included, are pinned in gradle.lockfile.
 // Update it after a version change, see docs/development.md "Updating dependencies".
@@ -36,7 +36,7 @@ dependencies {
     implementation("io.ktor:ktor-server-html-builder:$ktorVersion")
     implementation("io.ktor:ktor-server-status-pages:$ktorVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.13.0")
 
     implementation("com.hierynomus:sshj:0.41.2")
 
