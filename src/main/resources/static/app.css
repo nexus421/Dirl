@@ -452,6 +452,23 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
   box-shadow: 0 16px 40px rgb(0 0 0 / .35);
 }
 .snippet-ask[hidden] { display: none; }
+/* "Copied" near the mouse after copy on select (terminal.js places it). Clicks go through, it never moves, it stays
+   below the snippet form. */
+.copy-hint {
+  position: absolute;
+  z-index: 25;
+  pointer-events: none;
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgb(0 0 0 / .35);
+}
+.copy-hint[hidden] { display: none; }
 .snippet-ask-title { font-weight: 650; }
 .snippet-ask-fields { display: grid; gap: 8px; }
 /* A snippet without variables only shows its command, no gap for the missing fields. */

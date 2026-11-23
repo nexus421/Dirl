@@ -42,7 +42,7 @@ A program with mouse support in the classic terminal (mc, htop) still gets taps 
 
 With a mouse, "Copy selected text and paste with a right click" under Settings, off by default, works like PuTTY:
 
-- Selecting text copies it.
+- Selecting text copies it, a short "Copied" near the mouse confirms it.
 - A right click pastes. Ctrl+C stays the interrupt of the shell, Ctrl+Shift+V still pastes too.
 - Text with a line break that the shell would run right away (no bracketed paste) first shows up above the terminal
   with Send and Cancel, from a right click as from Ctrl+Shift+V. Shells with bracketed paste (bash 5.1 and later, zsh, fish) only put it on the command line.

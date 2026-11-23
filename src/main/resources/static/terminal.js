@@ -192,6 +192,21 @@
       return c === '\u007f' ? '^?' : '^' + String.fromCharCode(c.charCodeAt(0) + 64);
     });
   }
+  // Where the "Copied" hint goes, in pixels from the top left of the terminal: centred a little above the point where
+  // the mouse let go, below it when there is no room above, and inside the terminal as far as it fits. A point outside
+  // the terminal (the drag ended elsewhere) counts as the nearest edge.
+  function hintPosition(x, y, width, height, boxWidth, boxHeight) {
+    const margin = 4;
+    const gap = 6;
+    const pointerHeight = 20;
+    const px = Math.min(Math.max(Number.isFinite(x) ? x : 0, 0), boxWidth);
+    const py = Math.min(Math.max(Number.isFinite(y) ? y : 0, 0), boxHeight);
+    let top = py - height - gap;
+    if (top < margin) top = py + pointerHeight;
+    top = Math.max(Math.min(top, boxHeight - height - margin), 0);
+    const left = Math.max(Math.min(Math.max(px - width / 2, margin), boxWidth - width - margin), 0);
+    return { left: Math.round(left), top: Math.round(top) };
+  }
 
   // Password managers ignore autocomplete="off" and offer to fill a field labelled "Name" with a person's name.
   // These are the attributes the common ones honour instead: Proton Pass, 1Password, Bitwarden, LastPass, Dashlane.
@@ -370,16 +385,50 @@
     // selection in a program with mouse support (htop, vim, tmux). There only Shift selects, a plain click belongs to
     // the program and must not copy a selection that is still shown.
     let selecting = false;
+    // "Copied" near the mouse once the clipboard took the text, gone after a moment. Only this fixed word goes into
+    // the page, never the copied text. It lets every click through and does not move (no animation).
+    const copyHint = document.createElement('div');
+    copyHint.className = 'copy-hint';
+    copyHint.hidden = true;
+    copyHint.setAttribute('role', 'status');
+    el.parentNode.insertBefore(copyHint, el);
+    let copyHintTimer = null;
+    function hideCopied() {
+      clearTimeout(copyHintTimer);
+      copyHint.hidden = true;
+      copyHint.textContent = '';
+    }
+    function showCopied(x, y) {
+      copyHint.textContent = 'Copied';
+      copyHint.hidden = false;
+      const at = hintPosition(x, y, copyHint.offsetWidth, copyHint.offsetHeight, el.offsetWidth, el.offsetHeight);
+      copyHint.style.left = (el.offsetLeft + at.left) + 'px';
+      copyHint.style.top = (el.offsetTop + at.top) + 'px';
+      clearTimeout(copyHintTimer);
+      copyHintTimer = setTimeout(hideCopied, 1500);
+    }
+    // A press elsewhere ends a selection whose release the page never saw (let go outside the window), so a later
+    // click on a button does not copy again.
+    document.addEventListener('mousedown', function (event) {
+      if (el.contains(event.target) === false) selecting = false;
+    }, true);
     el.addEventListener('mousedown', function (event) {
+      hideCopied();
       selecting = touch === false && event.button === 0 && (term.modes.mouseTrackingMode === 'none' || event.shiftKey);
     }, true);
     document.addEventListener('mouseup', function (event) {
       if (selecting === false || event.button !== 0) return;
       selecting = false;
       if (!navigator.clipboard) return;
+      const box = el.getBoundingClientRect();
+      const x = event.clientX - box.left;
+      const y = event.clientY - box.top;
       // After xterm has finished the selection, still within the click that allows writing the clipboard.
       setTimeout(function () {
-        if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(function () {});
+        // Only empty cells selected (past the end of a line) gives no text: the clipboard keeps what it holds.
+        const text = term.hasSelection() ? term.getSelection() : '';
+        if (text === '') return;
+        navigator.clipboard.writeText(text).then(function () { showCopied(x, y); }, function () {});
       }, 0);
     });
     el.addEventListener('contextmenu', function (event) {

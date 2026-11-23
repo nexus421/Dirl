@@ -44,6 +44,10 @@ class TerminalJsTest {
     private val showControlsCode = Regex("(?s)  function showControls\\(text\\) \\{.*?\n  }\n")
         .find(script)?.value ?: error("showControls not found in terminal.js, update TerminalJsTest")
 
+    /** `hintPosition`, which places the "Copied" hint near the mouse inside the terminal. */
+    private val hintPositionCode = Regex("(?s)  function hintPosition\\(x, y, width, height, boxWidth, boxHeight\\) \\{.*?\n  }\n")
+        .find(script)?.value ?: error("hintPosition not found in terminal.js, update TerminalJsTest")
+
     private fun nodeAvailable() = runCatching {
         val process = ProcessBuilder("node", "--version").redirectErrorStream(true).start()
         process.waitFor(10, TimeUnit.SECONDS) && process.exitValue() == 0
@@ -56,7 +60,7 @@ class TerminalJsTest {
             val inputFile = File(dir, "input.json").apply { writeText(input) }
             // askFields is the form above the terminal in the page, here a stand-in with the same querySelectorAll.
             val program = File(dir, "test.js").apply {
-                writeText("const input = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));\nlet askFields;\n$placeholderCode$askValuesCode$pasteNeedsConfirmCode$showControlsCode$body\n")
+                writeText("const input = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));\nlet askFields;\n$placeholderCode$askValuesCode$pasteNeedsConfirmCode$showControlsCode$hintPositionCode$body\n")
             }
             val process = ProcessBuilder("node", program.absolutePath, inputFile.absolutePath).redirectErrorStream(true).start()
             val output = process.inputStream.bufferedReader().readText()
@@ -139,6 +143,57 @@ class TerminalJsTest {
         val input = buildJsonArray { cases.forEach { add(JsonPrimitive(it.first)) } }
         val output = runInNode(input.toString(), "process.stdout.write(JSON.stringify(input.map(showControls)));")
         assertEquals(cases.map { it.second }, Json.parseToJsonElement(output).jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    /** Runs `hintPosition` in Node for each `[x, y, width, height, boxWidth, boxHeight]`, `null` for a missing number. */
+    private fun hintPositions(cases: List<List<Double?>>): List<Pair<Double, Double>> {
+        val input = buildJsonArray { cases.forEach { case -> add(buildJsonArray { case.forEach { add(JsonPrimitive(it)) } }) } }
+        val output = runInNode(input.toString(), "process.stdout.write(JSON.stringify(input.map(a => { const p = hintPosition(...a); return [p.left, p.top]; })));")
+        return Json.parseToJsonElement(output).jsonArray.map { it.jsonArray[0].jsonPrimitive.content.toDouble() to it.jsonArray[1].jsonPrimitive.content.toDouble() }
+    }
+
+    @Test
+    fun `the copied hint sits above the mouse and moves inside the terminal at its edges`() {
+        assumeTrue(nodeAvailable(), "No node on the path")
+        // A 60 x 20 hint in an 800 x 400 terminal, unless the case says otherwise.
+        val cases = listOf(
+            listOf(200.0, 100.0) to (170.0 to 74.0), // centred, a gap above the mouse
+            listOf(200.0, 30.0) to (170.0 to 4.0), // just enough room above
+            listOf(200.0, 29.0) to (170.0 to 49.0), // no room above: below the mouse pointer
+            listOf(200.0, 0.0) to (170.0 to 20.0), // top edge
+            listOf(0.0, 100.0) to (4.0 to 74.0), // left edge
+            listOf(10.0, 100.0) to (4.0 to 74.0), // near the left edge
+            listOf(800.0, 100.0) to (736.0 to 74.0), // right edge
+            listOf(800.0, 400.0) to (736.0 to 374.0), // bottom right corner
+            listOf(0.0, 0.0) to (4.0 to 20.0), // top left corner
+            listOf(1000.0, 600.0) to (736.0 to 374.0), // drag ended right of and below the terminal
+            listOf(-50.0, -30.0) to (4.0 to 20.0), // drag ended left of and above the terminal
+            listOf(null, null) to (4.0 to 20.0), // not a number counts as the top left
+            listOf(200.6, 100.4) to (171.0 to 74.0), // whole pixels
+        )
+        val output = hintPositions(cases.map { it.first + listOf(60.0, 20.0, 800.0, 400.0) })
+        assertEquals(cases.map { it.second }, output)
+
+        // A terminal too small for the hint pins it to the top left instead of a negative position, a flat one keeps
+        // it inside below the mouse.
+        assertEquals(listOf(0.0 to 0.0, 370.0 to 16.0), hintPositions(listOf(listOf(25.0, 10.0, 60.0, 20.0, 50.0, 20.0), listOf(400.0, 5.0, 60.0, 20.0, 800.0, 40.0))))
+    }
+
+    @Test
+    fun `the copied hint stays inside the terminal and never covers the mouse, wherever it lets go`() {
+        assumeTrue(nodeAvailable(), "No node on the path")
+        val random = Random(7)
+        val points = (-100..900 step 25).flatMap { x -> (-100..500 step 25).map { y -> x.toDouble() to y.toDouble() } } +
+            List(2000) { random.nextDouble(-200.0, 1000.0) to random.nextDouble(-200.0, 600.0) }
+        val output = hintPositions(points.map { (x, y) -> listOf(x, y, 60.0, 20.0, 800.0, 400.0) })
+        points.zip(output).forEach { (point, at) ->
+            val (left, top) = at
+            val x = point.first.coerceIn(0.0, 800.0)
+            val y = point.second.coerceIn(0.0, 400.0)
+            assertTrue(left in 4.0..736.0 && top in 4.0..376.0, "$point gives $at outside the terminal")
+            assertTrue(left == Math.rint(left) && top == Math.rint(top), "$point gives $at, not whole pixels")
+            assertTrue(y < top || y > top + 20, "$point gives $at over the mouse")
+        }
     }
 
     @Test
