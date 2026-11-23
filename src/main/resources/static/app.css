@@ -502,6 +502,7 @@ code.inline { background: var(--code); padding: 2px 6px; border-radius: 6px; ove
 .keybar { display: none; gap: 6px; margin-bottom: 10px; overflow-x: auto; scrollbar-width: none; }
 .keybar::-webkit-scrollbar { display: none; }
 .keybar .btn { min-width: 46px; }
+.keybar .btn[hidden] { display: none; }
 .keybar .btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 @media (pointer: coarse) { .keybar { display: flex; } }
 /* Touch screens select terminal text natively with a long press, with the handles and the menu of the system.

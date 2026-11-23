@@ -44,9 +44,9 @@ private val keyBar = listOf(
  * Terminal page and its WebSocket.
  *
  * - `GET /hosts/{id}/terminal` renders the page: xterm.js, a menu per snippet folder, the other snippet buttons and,
- *   on touch devices, a key bar above the terminal with Ctrl, Esc, Tab and arrows. For the Actions mode (`terminal.js`)
- *   it also renders the mode toggle, an action bar with Enter and Cancel and a panel with every snippet, hidden in the
- *   classic mode.
+ *   on touch devices, a key bar above the terminal with Paste, Ctrl, Esc, Tab and arrows. For the Actions mode
+ *   (`terminal.js`) it also renders the mode toggle, an action bar with Enter and Cancel and a panel with every snippet,
+ *   hidden in the classic mode.
  * - `WS /ws/terminal/{id}` bridges the browser to a PTY shell on the host. Binary frames are terminal bytes in both
  *   directions, text frames are JSON control messages ([TerminalControl]).
  *
@@ -93,6 +93,9 @@ fun Route.terminalRoutes(dirl: Dirl) {
                 // Above the terminal, not below: in the installed app the system bar can cover the bottom edge of the
                 // page, and the page does not scroll.
                 div("keybar") {
+                    // Pastes from the clipboard, the long press of a touch screen selects text and offers no paste.
+                    // Hidden until terminal.js finds a clipboard it may read (HTTPS or localhost).
+                    button(type = ButtonType.button, classes = "btn sm") { id = "paste"; hidden = true; +"Paste" }
                     button(type = ButtonType.button, classes = "btn sm") { id = "ctrl"; +"Ctrl" }
                     keyBar.forEach { (label, seq) -> button(type = ButtonType.button, classes = "btn sm") { attributes["data-send"] = seq; +label } }
                 }

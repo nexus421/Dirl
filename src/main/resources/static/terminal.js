@@ -477,6 +477,19 @@
       send(actionKeys[button.dataset.key]);
     });
   });
+  // Paste of the key bar (touch screens, classic terminal): the long press selects text, so its menu has no paste. It
+  // reads the clipboard only on this tap and pastes like the right click, with the same question before a line break
+  // runs. Independent of the clipboard setting, which is about the mouse. Without a readable clipboard (plain HTTP)
+  // the key stays hidden.
+  const pasteButton = document.getElementById('paste');
+  if (pasteButton && navigator.clipboard && navigator.clipboard.readText) {
+    pasteButton.hidden = false;
+    pasteButton.addEventListener('click', function () {
+      if (actionsMode || asking !== null) return;
+      navigator.clipboard.readText().then(pasteText, function () {});
+      focusTerminal();
+    });
+  }
   if (ctrlButton) ctrlButton.addEventListener('click', function () {
     setCtrl(!ctrl);
     focusTerminal();

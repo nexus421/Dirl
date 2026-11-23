@@ -8,7 +8,7 @@
 - **Host**: connection, host key, the `authorized_keys` line for this host and a command that puts it in place,
   the latest values and disks.
 - **Terminal**: snippet buttons (`⏎` runs on the click, `{ }` asks for values, unmarked ones show the command first),
-  a key bar above the terminal on touch devices, [Actions mode](#actions-mode) for phones. A long press selects text on
+  a key bar with Paste above the terminal on touch devices, [Actions mode](#actions-mode) for phones. A long press selects text on
   touch devices, [copy and paste](#copy-and-paste) with the mouse can be turned on. Leaving the page ends the shell,
   run long jobs in [tmux](#long-jobs-with-tmux).
 - **Files**: browse, download, upload by dropping or choosing files (existing ones only with "Overwrite existing
@@ -39,6 +39,11 @@ the choice is remembered per device.
 On a phone or tablet a long press selects text in the terminal, with the handles and the menu of the system, in both
 modes. New output in the terminal drops the selection. With the keyboard open the first long press only closes it.
 A program with mouse support in the classic terminal (mc, htop) still gets taps as clicks.
+
+The menu of the long press has no paste. In the classic terminal Paste in the key bar pastes instead, and like the
+right click below it asks first when a line break would run right away. The browser may ask before it hands out the
+clipboard and only does so over HTTPS, without HTTPS the key is missing. The clipboard of the keyboard (Gboard, the shortcut bar on an iPad)
+pastes as well, but as typed text and without that question.
 
 With a mouse, "Copy selected text and paste with a right click" under Settings, off by default, works like PuTTY:
 

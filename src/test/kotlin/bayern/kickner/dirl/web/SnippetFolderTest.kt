@@ -176,6 +176,10 @@ class SnippetFolderTest {
         // The key bar sits between the bar and the terminal: in the installed app the system bar covers the bottom edge.
         val keyBar = bar.substringAfter("<div class=\"keybar\">", "")
         assertTrue(keyBar.contains("id=\"ctrl\"") && keyBar.contains(">Esc<"), "the key bar comes right before the terminal")
+        // Paste comes first, hidden until terminal.js finds a readable clipboard, and sends no bytes from the page.
+        val paste = Regex("<button[^>]*id=\"paste\"[^>]*>Paste</button>").find(keyBar)?.value
+        assertTrue(paste != null && keyBar.indexOf("id=\"paste\"") < keyBar.indexOf("id=\"ctrl\""), keyBar)
+        assertTrue(paste.contains("hidden") && paste.contains("type=\"button\"") && paste.contains("data-send").not(), paste)
 
         val actionBar = page.substringAfter("<div class=\"actionbar\">").substringBefore("</div>")
         // Named keys, not data-send: the HTML parser turns a carriage return in an attribute into a line feed.
