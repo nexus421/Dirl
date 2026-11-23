@@ -48,7 +48,8 @@ With a mouse, "Copy selected text and paste with a right click" under Settings, 
   with Send and Cancel, from a right click as from Ctrl+Shift+V. Shells with bracketed paste (bash 5.1 and later, zsh, fish) only put it on the command line.
   Text with other control characters always asks, they show as `^[`, `^C` and so on: an escape could end the
   bracketed paste early and run the rest.
-- A program with mouse support (htop, vim, tmux with `mouse on`) gets the right click itself.
+- A program with mouse support (htop, vim, tmux with `mouse on`) gets the right click itself. There Shift and drag
+  selects, and that copies too. Not on a Mac: xterm.js does not select there while a program uses the mouse.
 - The browser only allows the clipboard over HTTPS. Chrome asks once, Firefox on every paste.
 
 With the setting off nothing asks, Ctrl+Shift+V pastes as it did before 1.2.0.

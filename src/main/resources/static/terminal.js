@@ -366,8 +366,13 @@
   }
   if (el.dataset.clipboard === 'on') {
     // A selection starts on the terminal but may end anywhere on the page, so the release is watched on the document.
+    // The press is watched in the capture phase, only read and never stopped: xterm stops it when Shift forces a
+    // selection in a program with mouse support (htop, vim, tmux). There only Shift selects, a plain click belongs to
+    // the program and must not copy a selection that is still shown.
     let selecting = false;
-    el.addEventListener('mousedown', function (event) { selecting = touch === false && event.button === 0; });
+    el.addEventListener('mousedown', function (event) {
+      selecting = touch === false && event.button === 0 && (term.modes.mouseTrackingMode === 'none' || event.shiftKey);
+    }, true);
     document.addEventListener('mouseup', function (event) {
       if (selecting === false || event.button !== 0) return;
       selecting = false;
