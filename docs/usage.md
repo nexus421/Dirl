@@ -43,13 +43,15 @@ A program with mouse support in the classic terminal (mc, htop) still gets taps 
 With a mouse, "Copy selected text and paste with a right click" under Settings, off by default, works like PuTTY:
 
 - Selecting text copies it.
-- A right click pastes. Ctrl+C stays the interrupt of the shell, Ctrl+Shift+V pastes as before.
+- A right click pastes. Ctrl+C stays the interrupt of the shell, Ctrl+Shift+V still pastes too.
 - Text with a line break that the shell would run right away (no bracketed paste) first shows up above the terminal
-  with Send and Cancel. Shells with bracketed paste (bash 5.1 and later, zsh, fish) only put it on the command line.
+  with Send and Cancel, from a right click as from Ctrl+Shift+V. Shells with bracketed paste (bash 5.1 and later, zsh, fish) only put it on the command line.
   Text with other control characters always asks, they show as `^[`, `^C` and so on: an escape could end the
   bracketed paste early and run the rest.
 - A program with mouse support (htop, vim, tmux with `mouse on`) gets the right click itself.
 - The browser only allows the clipboard over HTTPS. Chrome asks once, Firefox on every paste.
+
+With the setting off nothing asks, Ctrl+Shift+V pastes as it did before 1.2.0.
 
 The setting applies to every user. While it is on, Dirl versions before 1.2.0 cannot open the vault, turn it off before
 going back to such a version. The same holds for a backup made while it was on: only 1.2.0 and later restore it.
