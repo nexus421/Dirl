@@ -52,7 +52,7 @@ With a mouse, "Copy selected text and paste with a right click" under Settings, 
 - The browser only allows the clipboard over HTTPS. Chrome asks once, Firefox on every paste.
 
 The setting applies to every user. While it is on, Dirl versions before 1.2.0 cannot open the vault, turn it off before
-going back to such a version.
+going back to such a version. The same holds for a backup made while it was on: only 1.2.0 and later restore it.
 
 ## Long jobs with tmux
 
